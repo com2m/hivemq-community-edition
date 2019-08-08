@@ -11,3 +11,8 @@ out/
 !.idea/codeStyles
 !.idea/inspectionProfiles
 !.idea/runConfigurations
+
+# Eclipse
+.classpath
+.project
+.settings/
