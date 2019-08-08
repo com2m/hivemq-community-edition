@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static com.hivemq.persistence.local.xodus.EnvironmentUtil.GCType;
+import com.hivemq.persistence.local.xodus.EnvironmentUtil.GCType;
 
 /**
  * @author Christoph Schäbel
