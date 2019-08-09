@@ -15,6 +15,8 @@ RUN dos2unix gradlew
 RUN ./gradlew build -x test && ls -la && ls -la ./build && ls -la ./build/zip
 RUN unzip ./build/zip/hivemq-ce-2019.2-SNAPSHOT.zip
 
+RUN find ./build/zip/hivemq-ce-2019.2-SNAPSHOT -type f -print0 | xargs -0 dos2unix
+
 # FROM com2m Alpine Base Image
 FROM docker.com2m.de/iot/core/iot-openjdk11-alpine-base:snapshot
 
@@ -44,7 +46,7 @@ RUN addgroup -g ${HIVEMQ_GID} hivemq \
     && adduser -D -G hivemq -h /opt/hivemq-ce-2019.2-SNAPSHOT -u ${HIVEMQ_UID} hivemq \
     && chown -R hivemq:hivemq /opt/hivemq-ce-2019.2-SNAPSHOT \
     && chmod -R 777 /opt \
-    && chmod +x /opt/hivemq/bin/run.sh
+    && chmod +x /opt/hivemq-ce-2019.2-SNAPSHOT/bin/run.sh
 
 # Substitute eval for exec and replace OOM flag if necessary (for older releases). This is necessary for proper signal propagation
 RUN sed -i -e 's|eval \\"java\\" "$HOME_OPT" "$JAVA_OPTS" -jar "$JAR_PATH"|exec "java" $HOME_OPT $JAVA_OPTS -jar "$JAR_PATH"|' /opt/hivemq/bin/run.sh && \
@@ -66,4 +68,4 @@ WORKDIR /opt/hivemq
 # USER ${HIVEMQ_UID}
 
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["/opt/hivemq/bin/run.sh"]
+CMD ["/opt/hivemq-ce-2019.2-SNAPSHOT/bin/run.sh"]
