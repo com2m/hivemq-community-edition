@@ -6,17 +6,19 @@ WORKDIR /tmp/hivemq-source
 
 COPY ./ ./
 
+RUN ls -la
+
 RUN apt-get update
 RUN apt-get install dos2unix
 RUN dos2unix gradlew
 
-RUN ./gradlew build -x test
+RUN ./gradlew build -x test && ls -la && ls -la ./build && ls -la ./build/zip
+RUN unzip ./build/zip/hivemq-ce-2019.2-SNAPSHOT.zip
 
 # FROM com2m Alpine Base Image
 FROM docker.com2m.de/iot/core/iot-openjdk11-alpine-base:snapshot
 
 # Script parameter for HiveMQ Version, Group ID and User ID.
-ARG HIVEMQ_CE_VERSION=2019.2
 ARG HIVEMQ_GID=10000
 ARG HIVEMQ_UID=10000
 
@@ -25,25 +27,22 @@ ENV JAVA_OPTS "-XX:+UseNUMA"
 
 RUN set -x \
 	&& apk update \
-	&& apk add --no-cache curl tini
+	&& apk add --no-cache tini
 
 # Build HiveMQ
-RUN mkdir /tmp/hivemq-source
-WORKDIR /tmp/hivemq-source
-COPY ./ ./
 
-RUN ls -la
-RUN ./gradlew build -x test
-COPY --from=builder /tmp/hivemq-source/build/zip/hivemq-ce-${HIVEMQ_CE_VERSION}-SNAPSHOT.zip -d /opt/
-RUN rm -rf /tmp/hivemq-source/
-RUN ln -s /opt/hivemq-ce-${HIVEMQ_CE_VERSION}-SNAPSHOT /opt/hivemq
+COPY --from=builder /tmp/hivemq-source/build/zip/hivemq-ce-2019.2-SNAPSHOT /opt/hivemq-ce-2019.2-SNAPSHOT
+RUN ln -s /opt/hivemq-ce-2019.2-SNAPSHOT /opt/hivemq
+
+RUN ls -la /opt
+RUN ls -la /opt/hivemq-ce-2019.2-SNAPSHOT
 
 WORKDIR /opt/hivemq
 
 # Configure user and group for HiveMQ
 RUN addgroup -g ${HIVEMQ_GID} hivemq \
-    && adduser -D -G hivemq -h /opt/hivemq -u ${HIVEMQ_UID} hivemq \
-    && chown -R hivemq:hivemq /opt/hivemq-ce-${HIVEMQ_CE_VERSION} \
+    && adduser -D -G hivemq -h /opt/hivemq-ce-2019.2-SNAPSHOT -u ${HIVEMQ_UID} hivemq \
+    && chown -R hivemq:hivemq /opt/hivemq-ce-2019.2-SNAPSHOT \
     && chmod -R 777 /opt \
     && chmod +x /opt/hivemq/bin/run.sh
 
