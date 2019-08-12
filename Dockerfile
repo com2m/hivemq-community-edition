@@ -1,20 +1,21 @@
 FROM gradle:jdk11 AS builder
+# Build HiveMQ on gradle:jdk11 image.
 
-# Build HiveMQ
+# Make tmp directory and set workdir.
 RUN mkdir /tmp/hivemq-source
 WORKDIR /tmp/hivemq-source
 
-COPY ./ ./
-
-RUN ls -la
-
+# Install dos2unix (for docker issue).
 RUN apt-get update
 RUN apt-get install dos2unix
 RUN dos2unix gradlew
 
-RUN ./gradlew build -x test && ls -la && ls -la ./build && ls -la ./build/zip
-RUN unzip ./build/zip/hivemq-ce-2019.2-SNAPSHOT.zip
+# Copy source code and build HiveMQ.
+COPY ./ ./
+RUN ./gradlew build -x test
 
+# Unzip HiveMQ and run dos2unix on every file (issue with docker).
+RUN unzip ./build/zip/hivemq-ce-2019.2-SNAPSHOT.zip
 RUN find ./build/zip/hivemq-ce-2019.2-SNAPSHOT -type f -print0 | xargs -0 dos2unix
 
 # FROM com2m Alpine Base Image
