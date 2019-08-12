@@ -5,13 +5,15 @@ FROM gradle:jdk11 AS builder
 RUN mkdir /tmp/hivemq-source
 WORKDIR /tmp/hivemq-source
 
+COPY ./ ./
+
 # Install dos2unix (for docker issue).
 RUN apt-get update
 RUN apt-get install dos2unix
 RUN dos2unix ./gradlew
 
 # Copy source code and build HiveMQ.
-COPY ./ ./
+RUN whoami
 RUN ./gradlew clean packaging -x test && ls -la && ls -la ./build && ls -la ./build/zip
 
 # Unzip HiveMQ and run dos2unix on every file (issue with docker).
