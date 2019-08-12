@@ -8,7 +8,7 @@ WORKDIR /tmp/hivemq-source
 # Install dos2unix (for docker issue).
 RUN apt-get update
 RUN apt-get install dos2unix
-RUN dos2unix gradlew
+RUN dos2unix ./gradlew
 
 # Copy source code and build HiveMQ.
 COPY ./ ./
