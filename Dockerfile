@@ -12,10 +12,10 @@ RUN dos2unix gradlew
 
 # Copy source code and build HiveMQ.
 COPY ./ ./
-RUN ./gradlew build -x test
+RUN ./gradlew clean packaging -x test && ls -la && ls -la ./build && ls -la ./build/zip
 
 # Unzip HiveMQ and run dos2unix on every file (issue with docker).
-RUN unzip ./build/zip/hivemq-ce-2019.2-SNAPSHOT.zip
+RUN unzip ./build/zip/hivemq-ce-2019.2-SNAPSHOT.zip -d ./build/zip/
 RUN find ./build/zip/hivemq-ce-2019.2-SNAPSHOT -type f -print0 | xargs -0 dos2unix
 
 # FROM com2m Alpine Base Image
