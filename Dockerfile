@@ -21,7 +21,7 @@ RUN unzip ./build/zip/hivemq-ce-2019.2-SNAPSHOT.zip -d ./build/zip/
 RUN find ./build/zip/hivemq-ce-2019.2-SNAPSHOT -type f -print0 | xargs -0 dos2unix
 
 # FROM com2m Alpine Base Image
-FROM docker.com2m.de/iot/core/iot-base-image:adoptopenjdk-jre-11.0.5_10-openj9-0.17.0-alpine-0
+FROM docker.com2m.de/iot/core/iot-base-image:adoptopenjdk-jre-11.0.5_10-openj9-0.17.0-alpine-1
 
 # Script parameter for HiveMQ Version, Group ID and User ID.
 ARG HIVEMQ_GID=10000
