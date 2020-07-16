@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,27 +13,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.mqtt.topic.tree;
 
 import com.codahale.metrics.Counter;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.primitives.ImmutableIntArray;
 import com.google.common.util.concurrent.Striped;
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.metrics.MetricsHolder;
 import com.hivemq.mqtt.message.subscribe.Topic;
 import com.hivemq.mqtt.topic.SubscriberWithIdentifiers;
 import com.hivemq.mqtt.topic.SubscriberWithQoS;
-import com.hivemq.persistence.PersistenceFilter;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
-import java.util.*;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.Lock;
@@ -296,11 +297,12 @@ public class TopicTreeImpl implements LocalTopicTree {
                 } else {
                     last.setQos(current.getQos());
                     if (current.getSubscriptionIdentifier() != null) {
-                        final ImmutableList<Integer> subscriptionIds = last.getSubscriptionIdentifier();
+                        final ImmutableIntArray subscriptionIds = last.getSubscriptionIdentifier();
                         final Integer subscriptionId = current.getSubscriptionIdentifier();
-                        final ImmutableList<Integer> mergedSubscriptionIds = ImmutableList
-                                .<Integer>builderWithExpectedSize(subscriptionIds.size() + 1)
-                                .addAll(subscriptionIds).add(subscriptionId).build();
+                        final ImmutableIntArray mergedSubscriptionIds = ImmutableIntArray.builder(subscriptionIds.length() + 1)
+                                .addAll(subscriptionIds)
+                                .add(subscriptionId)
+                                .build();
                         last.setSubscriptionIdentifiers(mergedSubscriptionIds);
                     }
                 }
@@ -450,94 +452,6 @@ public class TopicTreeImpl implements LocalTopicTree {
         rootWildcardSubscribers.removeAll(foundSubscriberList);
         subscriptionCounter.dec(foundSubscriberList.size());
         return foundSubscriberList.size() > 0;
-    }
-
-    /**
-     * removes the clients from the root wildcard subscribers that match the condition
-     *
-     * @param condition a condition which is checked for every subscriber
-     * @return if a subscriber for this condition already existed
-     */
-    private boolean removeRootWildcardSubscriber(@NotNull final Condition condition) {
-        final ImmutableList.Builder<SubscriberWithQoS> foundSubscribers = ImmutableList.builder();
-        for (final SubscriberWithQoS rootWildcardSubscriber : rootWildcardSubscribers) {
-            if (condition.check(rootWildcardSubscriber, "#")) {
-                foundSubscribers.add(rootWildcardSubscriber);
-            }
-        }
-        final ImmutableList<SubscriberWithQoS> foundSubscriberList = foundSubscribers.build();
-        rootWildcardSubscribers.removeAll(foundSubscriberList);
-        subscriptionCounter.dec(foundSubscriberList.size());
-        return foundSubscriberList.size() > 0;
-    }
-
-    private boolean removeSubscriberFromAllSubnodes(@NotNull final Node node, @NotNull final Condition condition, @NotNull final String topic) {
-        if (node.exactSubscriberMap != null) {
-            final Set<SubscriberWithQoS> removeSet = new HashSet<>();
-            for (final SubscriberWithQoS exactSubscriber : node.exactSubscriberMap.values()) {
-                if (condition.check(exactSubscriber, topic + node.getTopicPart())) {
-                    removeSet.add(exactSubscriber);
-                }
-            }
-            for (final SubscriberWithQoS exactSubscriber : removeSet) {
-                node.removeExactSubscriber(exactSubscriber.getSubscriber(), exactSubscriber.getSharedName());
-            }
-        } else {
-            final SubscriberWithQoS[] exactSubscribers = node.getExactSubscribers();
-            if (exactSubscribers != null) {
-                for (final SubscriberWithQoS exactSubscriber : exactSubscribers) {
-                    if (exactSubscriber != null && condition.check(exactSubscriber, topic + node.getTopicPart())) {
-                        node.removeExactSubscriber(exactSubscriber.getSubscriber(), exactSubscriber.getSharedName());
-                    }
-                }
-            }
-        }
-
-        if (node.wildcardSubscriberMap != null) {
-            final Set<SubscriberWithQoS> removeSet = new HashSet<>();
-            for (final SubscriberWithQoS wildcardSubscriber : node.wildcardSubscriberMap.values()) {
-                if (condition.check(wildcardSubscriber, topic + node.getTopicPart() + "/#")) {
-                    removeSet.add(wildcardSubscriber);
-                }
-            }
-            for (final SubscriberWithQoS wildcardSubscriber : removeSet) {
-                node.removeWildcardSubscriber(wildcardSubscriber.getSubscriber(), wildcardSubscriber.getSharedName());
-            }
-        } else {
-            final SubscriberWithQoS[] wildcardSubscribers = node.getWildcardSubscribers();
-            if (wildcardSubscribers != null) {
-                for (final SubscriberWithQoS wildcardSubscriber : wildcardSubscribers) {
-                    if (wildcardSubscriber != null && condition.check(wildcardSubscriber, topic + node.getTopicPart() + "/#")) {
-                        node.removeWildcardSubscriber(wildcardSubscriber.getSubscriber(), wildcardSubscriber.getSharedName());
-                    }
-                }
-            }
-        }
-
-        final Map<String, Node> childrenMap = node.getChildrenMap();
-        if (childrenMap != null) {
-            childrenMap.entrySet().removeIf(entry -> entry == null ||
-                    removeSubscriberFromAllSubnodes(entry.getValue(), condition, topic + node.getTopicPart() + "/"));
-        }
-
-        final Node[] children = node.getChildren();
-        if (children != null) {
-            //Since we don't have any topics
-            for (int i = 0; i < children.length; i++) {
-                final Node child = children[i];
-                if (child != null) {
-
-                    final boolean canGetRemoved = removeSubscriberFromAllSubnodes(child, condition, topic + node.getTopicPart() + "/");
-                    if (canGetRemoved) {
-                        children[i] = null;
-                    }
-                }
-            }
-        }
-
-        /* If there are no children available and no one subscribes (neither wildcard nor exact),
-           this makes a good candidate for deletion */
-        return isNodeDeletable(node);
     }
 
 
@@ -1069,46 +983,4 @@ public class TopicTreeImpl implements LocalTopicTree {
         return true;
     }
 
-    private interface IterateCallback {
-        /**
-         * @param subscriber the current subscriber
-         * @return true to continue the iteration, false to stop
-         */
-        boolean call(@NotNull final SubscriberWithQoS subscriber, @NotNull final String topic);
-    }
-
-
-    public interface Condition {
-
-        boolean check(@NotNull SubscriberWithQoS subscriber, @NotNull String topic);
-    }
-
-    public class SubscribersCondition implements Condition {
-
-        private final Collection<String> subscribers;
-
-        public SubscribersCondition(@NotNull final Collection<String> subscribers) {
-            this.subscribers = subscribers;
-        }
-
-        @Override
-        public boolean check(@NotNull final SubscriberWithQoS subscriber, @NotNull final String topic) {
-            return subscribers.contains(subscriber.getSubscriber());
-        }
-    }
-
-    public class FilterCondition implements Condition {
-
-        private final PersistenceFilter persistenceFilter;
-
-        public FilterCondition(@NotNull final PersistenceFilter persistenceFilter) {
-            this.persistenceFilter = persistenceFilter;
-        }
-
-        @Override
-        public boolean check(@NotNull final SubscriberWithQoS subscriber, @NotNull final String topic) {
-            final String segmentKey = SegmentKeyUtil.segmentKey(topic);
-            return persistenceFilter.match(segmentKey) && !SegmentKeyUtil.containsWildcard(segmentKey);
-        }
-    }
 }

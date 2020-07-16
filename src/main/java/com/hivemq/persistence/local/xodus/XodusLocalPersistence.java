@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,10 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.persistence.local.xodus;
 
-import com.hivemq.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.exceptions.UnrecoverableException;
 import com.hivemq.persistence.FilePersistence;
 import com.hivemq.persistence.LocalPersistence;
@@ -50,6 +49,7 @@ public abstract class XodusLocalPersistence implements LocalPersistence, FilePer
 
     protected @NotNull Bucket[] buckets;
     protected int bucketCount;
+    private final boolean enabled;
 
     private final int closeRetries;
     private final int closeRetryInterval;
@@ -58,13 +58,15 @@ public abstract class XodusLocalPersistence implements LocalPersistence, FilePer
             final @NotNull EnvironmentUtil environmentUtil,
             final @NotNull LocalPersistenceFileUtil localPersistenceFileUtil,
             final @NotNull PersistenceStartup persistenceStartup,
-            final int internalBucketCount) {
+            final int internalBucketCount,
+            final boolean enabled) {
 
         this.environmentUtil = environmentUtil;
         this.localPersistenceFileUtil = localPersistenceFileUtil;
         this.persistenceStartup = persistenceStartup;
         this.bucketCount = internalBucketCount;
         this.buckets = new Bucket[bucketCount];
+        this.enabled = enabled;
 
         this.closeRetries = PERSISTENCE_CLOSE_RETRIES.get();
         this.closeRetryInterval = PERSISTENCE_CLOSE_RETRY_INTERVAL.get();
@@ -76,7 +78,7 @@ public abstract class XodusLocalPersistence implements LocalPersistence, FilePer
     @NotNull
     protected abstract String getVersion();
 
-    protected int getBucketCount() {
+    public int getBucketCount() {
         return bucketCount;
     }
 
@@ -92,7 +94,41 @@ public abstract class XodusLocalPersistence implements LocalPersistence, FilePer
         if (constructed.getAndSet(true)) {
             return;
         }
-        persistenceStartup.submitPersistenceStart(this);
+        if(enabled) {
+            persistenceStartup.submitPersistenceStart(this);
+        } else {
+            startExternal();
+        }
+    }
+
+    @Override
+    public void startExternal() {
+
+        final String name = getName();
+        final String version = getVersion();
+        final int bucketCount = getBucketCount();
+        final StoreConfig storeConfig = getStoreConfig();
+        final Logger logger = getLogger();
+
+        try {
+            final EnvironmentConfig environmentConfig = environmentUtil.createEnvironmentConfig(name);
+            final File persistenceFolder = localPersistenceFileUtil.getVersionedLocalPersistenceFolder(name, version);
+
+            for (int i = 0; i < bucketCount; i++) {
+                final File persistenceFile = new File(persistenceFolder, name + "_" + i);
+                final Environment environment = Environments.newContextualInstance(persistenceFile, environmentConfig);
+                final Store store = environment.computeInTransaction(txn -> environment.openStore(name, storeConfig, txn));
+
+                buckets[i] = new Bucket(environment, store);
+            }
+
+        } catch (final ExodusException e) {
+            logger.error("An error occurred while opening the {} persistence. Is another HiveMQ instance running?", name);
+            logger.debug("Original Exception:", e);
+            throw new UnrecoverableException();
+        }
+
+        init();
     }
 
     @Override

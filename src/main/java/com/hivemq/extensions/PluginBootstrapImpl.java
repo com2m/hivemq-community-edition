@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,25 +13,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions;
 
 import com.google.common.collect.ImmutableList;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.hivemq.annotations.NotNull;
 import com.hivemq.common.shutdown.HiveMQShutdownHook;
 import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.configuration.info.SystemInformation;
 import com.hivemq.extension.sdk.api.ExtensionMain;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extensions.loader.PluginLifecycleHandler;
 import com.hivemq.extensions.loader.PluginLoader;
-import com.hivemq.persistence.util.FutureUtils;
+import com.hivemq.extensions.services.auth.Authenticators;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.concurrent.ExecutionException;
+import java.nio.file.Path;
 
 /**
  * @author Christoph Schäbel
@@ -41,28 +39,27 @@ public class PluginBootstrapImpl implements PluginBootstrap {
 
     private static final Logger log = LoggerFactory.getLogger(PluginBootstrapImpl.class);
 
-    @NotNull
-    private final PluginLoader pluginLoader;
-    @NotNull
-    private final SystemInformation systemInformation;
-    @NotNull
-    private final PluginLifecycleHandler lifecycleHandler;
-    @NotNull
-    private final HiveMQExtensions hiveMQExtensions;
-    @NotNull
-    private final ShutdownHooks shutdownHooks;
+    private final @NotNull PluginLoader pluginLoader;
+    private final @NotNull SystemInformation systemInformation;
+    private final @NotNull PluginLifecycleHandler lifecycleHandler;
+    private final @NotNull HiveMQExtensions hiveMQExtensions;
+    private final @NotNull ShutdownHooks shutdownHooks;
+    private final @NotNull Authenticators authenticators;
 
     @Inject
-    public PluginBootstrapImpl(@NotNull final PluginLoader pluginLoader,
-                               @NotNull final SystemInformation systemInformation,
-                               @NotNull final PluginLifecycleHandler lifecycleHandler,
-                               @NotNull final HiveMQExtensions hiveMQExtensions,
-                               @NotNull final ShutdownHooks shutdownHooks) {
+    public PluginBootstrapImpl(
+            final @NotNull PluginLoader pluginLoader,
+            final @NotNull SystemInformation systemInformation,
+            final @NotNull PluginLifecycleHandler lifecycleHandler,
+            final @NotNull HiveMQExtensions hiveMQExtensions,
+            final @NotNull ShutdownHooks shutdownHooks,
+            final @NotNull Authenticators authenticators) {
         this.pluginLoader = pluginLoader;
         this.systemInformation = systemInformation;
         this.lifecycleHandler = lifecycleHandler;
         this.hiveMQExtensions = hiveMQExtensions;
         this.shutdownHooks = shutdownHooks;
+        this.authenticators = authenticators;
     }
 
     @Override
@@ -71,25 +68,31 @@ public class PluginBootstrapImpl implements PluginBootstrap {
         log.info("Starting HiveMQ extension system.");
 
         shutdownHooks.add(new PluginSystemShutdownHook(this));
+        final Path extensionFolder = systemInformation.getExtensionsFolder().toPath();
 
         //load already installed extensions
-        final ImmutableList<HiveMQPluginEvent> hiveMQPluginEvents = pluginLoader.loadPlugins(systemInformation.getExtensionsFolder().toPath(), ExtensionMain.class);
+        final ImmutableList<HiveMQPluginEvent> hiveMQPluginEvents = pluginLoader.loadPlugins(
+                extensionFolder, systemInformation.isEmbedded(), ExtensionMain.class);
 
         //start them if needed
-        lifecycleHandler.handlePluginEvents(hiveMQPluginEvents);
+        lifecycleHandler.handlePluginEvents(hiveMQPluginEvents)
+                .thenAccept(((v) -> authenticators.checkAuthenticationSafetyAndLifeness()));
     }
 
     @NotNull
     @Override
-    public ListenableFuture<Void> stopPluginSystem() {
+    public void stopPluginSystem() {
 
-        final ImmutableList.Builder<ListenableFuture<Void>> futures = ImmutableList.builder();
+        final ImmutableList<HiveMQPluginEvent> events = hiveMQExtensions.getEnabledHiveMQExtensions()
+                .values().stream()
+                .map(extension -> new HiveMQPluginEvent(
+                        HiveMQPluginEvent.Change.DISABLE, extension.getId(), extension.getStartPriority(),
+                        extension.getPluginFolderPath()))
+                .collect(ImmutableList.toImmutableList());
 
-        for (final String pluginId : hiveMQExtensions.getEnabledHiveMQExtensions().keySet()) {
-            futures.add(lifecycleHandler.pluginStop(pluginId));
-        }
-
-        return FutureUtils.voidFutureFromList(futures.build());
+        //stop extensions
+        lifecycleHandler.handlePluginEvents(events).join();
+        // not checking for authenticator safety
     }
 
     private static class PluginSystemShutdownHook extends HiveMQShutdownHook {
@@ -124,14 +127,9 @@ public class PluginBootstrapImpl implements PluginBootstrap {
         public void run() {
             log.info("Shutting down extension system");
 
-            final ListenableFuture<Void> future = pluginBootstrap.stopPluginSystem();
-
             try {
-                //block the shutdown here to wait until all extensions are shut down
-                future.get();
-            } catch (final InterruptedException e) {
-                log.trace("Extension system shutdown was interrupted, continuing shutdown");
-            } catch (final ExecutionException e) {
+                pluginBootstrap.stopPluginSystem();
+            } catch (final Exception e) {
                 log.error("Exception at Extension system shutdown", e);
             }
         }

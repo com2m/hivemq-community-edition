@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,11 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.codec.decoder;
 
 import com.google.inject.Inject;
-import com.hivemq.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.bootstrap.ioc.lazysingleton.LazySingleton;
 import com.hivemq.logging.EventLog;
 import com.hivemq.mqtt.message.PINGREQ;
@@ -38,11 +37,10 @@ public class MqttPingreqDecoder extends MqttDecoder<PINGREQ> {
 
     private static final Logger log = LoggerFactory.getLogger(MqttPingreqDecoder.class);
 
-    private static final PINGREQ PINGREQ = new PINGREQ();
-    private final EventLog eventLog;
+    private final @NotNull EventLog eventLog;
 
     @Inject
-    public MqttPingreqDecoder(final EventLog eventLog) {
+    public MqttPingreqDecoder(final @NotNull EventLog eventLog) {
         this.eventLog = eventLog;
     }
 
@@ -64,6 +62,6 @@ public class MqttPingreqDecoder extends MqttDecoder<PINGREQ> {
             }
         }
 
-        return PINGREQ;
+        return PINGREQ.INSTANCE;
     }
 }

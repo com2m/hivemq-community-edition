@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.persistence.clientsession;
 
 import com.google.common.collect.ImmutableSet;
@@ -41,7 +40,12 @@ import java.util.concurrent.ExecutionException;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
-import static org.mockito.Matchers.*;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyByte;
+import static org.mockito.Matchers.anyInt;
+import static org.mockito.Matchers.anyLong;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.*;
 
 /**
@@ -79,9 +83,7 @@ public class ClientSessionSubscriptionPersistenceImplTest {
     @Before
     public void setUp() throws Exception {
         MockitoAnnotations.initMocks(this);
-
         when(topicTree.addTopic(anyString(), any(Topic.class), anyByte(), anyString())).thenReturn(true);
-
         persistence = new ClientSessionSubscriptionPersistenceImpl(localPersistence, topicTree, sharedSubscriptionService, TestSingleWriterFactory.defaultSingleWriter(), channelPersistence, eventLog, clientSessionLocalPersistence, publishPollService);
     }
 
@@ -93,8 +95,8 @@ public class ClientSessionSubscriptionPersistenceImplTest {
         final Topic topic1 = new Topic("topic1", QoS.AT_MOST_ONCE);
         final Topic topic2 = new Topic("topic2", QoS.AT_MOST_ONCE);
         persistence.addSubscriptions("client", ImmutableSet.of(topic1, topic2)).get();
-        verify(topicTree, times(2)).addTopic(eq("client"), any(Topic.class), anyByte(), anyString());
-        verify(localPersistence).addSubscriptions(eq("client"), anySet(), anyLong(), anyInt());
+        verify(topicTree, times(2)).addTopic(eq("client"), any(Topic.class), anyByte(), any());
+        verify(localPersistence).addSubscriptions(eq("client"), any(ImmutableSet.class), anyLong(), anyInt());
     }
 
     @Test(timeout = 60000)
@@ -105,7 +107,7 @@ public class ClientSessionSubscriptionPersistenceImplTest {
         final Topic topic2 = new Topic("topic2", QoS.AT_MOST_ONCE);
         persistence.addSubscriptions("client", ImmutableSet.of(topic1, topic2)).get();
         verify(topicTree, never()).addTopic(anyString(), any(Topic.class), anyByte(), anyString());
-        verify(localPersistence, never()).addSubscriptions(eq("client"), anySet(), anyLong(), anyInt());
+        verify(localPersistence, never()).addSubscriptions(eq("client"), any(ImmutableSet.class), anyLong(), anyInt());
     }
 
     @Test(timeout = 60000)
@@ -118,7 +120,7 @@ public class ClientSessionSubscriptionPersistenceImplTest {
         when(sharedSubscriptionService.checkForSharedSubscription("topic2")).thenReturn(new SharedSubscriptionServiceImpl.SharedSubscription("topic2", "group"));
         persistence.addSubscriptions("client", ImmutableSet.of(topic1, topic2)).get();
         verify(topicTree, times(2)).addTopic(eq("client"), any(Topic.class), anyByte(), anyString());
-        verify(localPersistence).addSubscriptions(eq("client"), anySet(), anyLong(), anyInt());
+        verify(localPersistence).addSubscriptions(eq("client"), any(ImmutableSet.class), anyLong(), anyInt());
 
     }
 
@@ -167,7 +169,7 @@ public class ClientSessionSubscriptionPersistenceImplTest {
         when(channelPersistence.get("client")).thenReturn(embeddedChannel);
         persistence.invalidateSharedSubscriptionCacheAndPoll("client", ImmutableSet.of(new Subscription(new Topic("topic", QoS.AT_LEAST_ONCE), (byte) 2, "group")));
 
-        verify(publishPollService).pollSharedPublishesForClient(anyString(), anyString(), anyInt(), anyInt(), any(Channel.class));
+        verify(publishPollService).pollSharedPublishesForClient(anyString(), anyString(), anyInt(), any(), any(Channel.class));
         verify(sharedSubscriptionService).invalidateSharedSubscriberCache("group/topic");
         verify(sharedSubscriptionService).invalidateSharedSubscriptionCache("client");
 
@@ -179,7 +181,7 @@ public class ClientSessionSubscriptionPersistenceImplTest {
     public void test_remove_subscriptions_responsible() throws ExecutionException, InterruptedException {
 
         persistence.removeSubscriptions("client", ImmutableSet.of("topic1", "topic2")).get();
-        verify(topicTree, times(2)).removeSubscriber(eq("client"), anyString(), anyString());
+        verify(topicTree, times(2)).removeSubscriber(eq("client"), anyString(), any());
     }
 
     @Test(timeout = 60000)

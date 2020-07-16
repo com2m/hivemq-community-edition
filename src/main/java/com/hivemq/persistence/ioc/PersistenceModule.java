@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,17 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.persistence.ioc;
 
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.ListeningScheduledExecutorService;
 import com.google.inject.Injector;
 import com.google.inject.Key;
-import com.hivemq.annotations.NotNull;
 import com.hivemq.bootstrap.ioc.SingletonModule;
 import com.hivemq.bootstrap.ioc.lazysingleton.LazySingleton;
 import com.hivemq.common.shutdown.ShutdownHooks;
+import com.hivemq.configuration.service.PersistenceConfigurationService;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.topic.tree.TopicTreeStartup;
 import com.hivemq.persistence.CleanUpService;
 import com.hivemq.persistence.PersistenceShutdownHookInstaller;
@@ -45,29 +45,41 @@ import java.util.concurrent.ScheduledExecutorService;
 public class PersistenceModule extends SingletonModule<Class<PersistenceModule>> {
 
     private final @NotNull Injector persistenceInjector;
+    private final PersistenceConfigurationService persistenceConfigurationService;
 
-    public PersistenceModule(final @NotNull Injector persistenceInjector) {
+    public PersistenceModule(
+            final @NotNull Injector persistenceInjector,
+            final PersistenceConfigurationService persistenceConfigurationService) {
         super(PersistenceModule.class);
         this.persistenceInjector = persistenceInjector;
+        this.persistenceConfigurationService = persistenceConfigurationService;
     }
 
     @Override
     protected void configure() {
 
-        install(new LocalPersistenceModule(persistenceInjector));
+        install(new LocalPersistenceModule(persistenceInjector, persistenceConfigurationService));
 
         bind(ShutdownHooks.class).toInstance(persistenceInjector.getInstance(ShutdownHooks.class));
 
         bind(PersistenceShutdownHookInstaller.class).asEagerSingleton();
 
-        bind(ExecutorService.class).annotatedWith(Persistence.class).toProvider(PersistenceExecutorProvider.class).in(LazySingleton.class);
-        bind(ListeningExecutorService.class).annotatedWith(Persistence.class).toProvider(PersistenceExecutorProvider.class).in(LazySingleton.class);
+        bind(ExecutorService.class).annotatedWith(Persistence.class)
+                .toProvider(PersistenceExecutorProvider.class)
+                .in(LazySingleton.class);
+        bind(ListeningExecutorService.class).annotatedWith(Persistence.class)
+                .toProvider(PersistenceExecutorProvider.class)
+                .in(LazySingleton.class);
 
-        bind(ScheduledExecutorService.class).annotatedWith(Persistence.class).toProvider(PersistenceScheduledExecutorProvider.class).in(LazySingleton.class);
-        bind(ListeningScheduledExecutorService.class).annotatedWith(Persistence.class).toProvider(PersistenceScheduledExecutorProvider.class).in(LazySingleton.class);
+        bind(ScheduledExecutorService.class).annotatedWith(Persistence.class)
+                .toProvider(PersistenceScheduledExecutorProvider.class)
+                .in(LazySingleton.class);
+        bind(ListeningScheduledExecutorService.class).annotatedWith(Persistence.class)
+                .toProvider(PersistenceScheduledExecutorProvider.class)
+                .in(LazySingleton.class);
 
-        bindIfAbsent(
-                ListeningScheduledExecutorService.class, PayloadPersistenceScheduledExecutorProvider.class,
+        bindIfAbsent(ListeningScheduledExecutorService.class,
+                PayloadPersistenceScheduledExecutorProvider.class,
                 PayloadPersistence.class);
 
         bind(TopicTreeStartup.class).asEagerSingleton();

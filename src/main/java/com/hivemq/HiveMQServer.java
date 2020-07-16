@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,13 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq;
 
 import com.codahale.metrics.MetricRegistry;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.inject.Injector;
-import com.hivemq.annotations.NotNull;
 import com.hivemq.bootstrap.*;
 import com.hivemq.bootstrap.ioc.GuiceBootstrap;
 import com.hivemq.common.shutdown.ShutdownHooks;
@@ -28,20 +26,28 @@ import com.hivemq.configuration.HivemqId;
 import com.hivemq.configuration.info.SystemInformationImpl;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.configuration.service.InternalConfigurations;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.services.admin.AdminService;
 import com.hivemq.extensions.PluginBootstrap;
 import com.hivemq.extensions.services.admin.AdminServiceImpl;
 import com.hivemq.metrics.MetricRegistryLogger;
+import com.hivemq.migration.MigrationUnit;
+import com.hivemq.migration.Migrations;
+import com.hivemq.migration.meta.PersistenceType;
 import com.hivemq.persistence.PersistenceStartup;
 import com.hivemq.persistence.payload.PublishPayloadPersistence;
 import com.hivemq.statistics.UsageStatistics;
 import com.hivemq.util.TemporaryFileUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
+
+import static com.hivemq.configuration.service.PersistenceConfigurationService.PersistenceMode;
 
 /**
  * @author Dominik Obermaier
@@ -57,10 +63,11 @@ public class HiveMQServer {
     private final @NotNull AdminService adminService;
 
     @Inject
-    HiveMQServer(final @NotNull HiveMQNettyBootstrap nettyBootstrap,
-                 final @NotNull PublishPayloadPersistence payloadPersistence,
-                 final @NotNull PluginBootstrap pluginBootstrap,
-                 final @NotNull AdminService adminService) {
+    HiveMQServer(
+            final @NotNull HiveMQNettyBootstrap nettyBootstrap,
+            final @NotNull PublishPayloadPersistence payloadPersistence,
+            final @NotNull PluginBootstrap pluginBootstrap,
+            final @NotNull AdminService adminService) {
 
         this.nettyBootstrap = nettyBootstrap;
         this.payloadPersistence = payloadPersistence;
@@ -115,7 +122,11 @@ public class HiveMQServer {
         log.trace("Cleaning up temporary folders");
         TemporaryFileUtils.deleteTmpFolder(systemInformation.getDataFolder());
 
-        log.trace("Initializing file persistences");
+        //must happen before persistence injector bootstrap as it creates the persistence folder.
+        log.trace("Checking for migrations");
+        final Map<MigrationUnit, PersistenceType> migrations = Migrations.checkForTypeMigration(systemInformation);
+
+        log.trace("Initializing persistences");
         final Injector persistenceInjector =
                 GuiceBootstrap.persistenceInjector(systemInformation, metricRegistry, hiveMQId, configService);
         //blocks until all persistences started
@@ -124,11 +135,27 @@ public class HiveMQServer {
         if (ShutdownHooks.SHUTTING_DOWN.get()) {
             return;
         }
+        if (configService.persistenceConfigurationService().getMode() != PersistenceMode.IN_MEMORY) {
+            log.info("Starting with file persistences");
+            if (migrations.size() > 0) {
+                log.info("Persistence types has been changed, migrating persistent data.");
+                for (final MigrationUnit migrationUnit : migrations.keySet()) {
+                    log.debug("{} needs to be migrated.", StringUtils.capitalize(migrationUnit.toString()));
+                }
+                Migrations.migrate(persistenceInjector, migrations);
+            }
+
+            Migrations.afterMigration(systemInformation);
+        } else {
+            log.info("Starting with in memory persistences");
+        }
 
         log.trace("Initializing Guice");
-        final Injector injector =
-                GuiceBootstrap.bootstrapInjector(systemInformation, metricRegistry, hiveMQId, configService,
-                        persistenceInjector);
+        final Injector injector = GuiceBootstrap.bootstrapInjector(systemInformation,
+                metricRegistry,
+                hiveMQId,
+                configService,
+                persistenceInjector);
         if (injector == null) {
             return;
         }

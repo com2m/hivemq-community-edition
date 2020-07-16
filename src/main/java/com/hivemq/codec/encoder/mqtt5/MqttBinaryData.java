@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,16 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.codec.encoder.mqtt5;
 
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.util.Utf8Utils;
 import io.netty.buffer.ByteBuf;
-import kotlin.text.Charsets;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Utility for decoding, encoding and checking binary data.
@@ -58,13 +57,13 @@ public class MqttBinaryData {
     @Nullable
     public static String decodeString(@NotNull final ByteBuf byteBuf, final boolean validateUTF8) {
         final byte[] binary = decode(byteBuf);
-        if(binary != null && Utf8Utils.containsMustNotCharacters(binary)){
+        if (binary != null && Utf8Utils.containsMustNotCharacters(binary)) {
             return null;
         }
         if (binary != null && validateUTF8 && Utf8Utils.hasControlOrNonCharacter(binary)) {
             return null;
         }
-        return (binary == null) ? null : new String(binary, Charsets.UTF_8);
+        return (binary == null) ? null : new String(binary, StandardCharsets.UTF_8);
     }
 
     /**
@@ -103,7 +102,7 @@ public class MqttBinaryData {
     }
 
     public static void encode(@NotNull final String string, @NotNull final ByteBuf byteBuf) {
-        final byte[] binary = string.getBytes(Charsets.UTF_8);
+        final byte[] binary = string.getBytes(StandardCharsets.UTF_8);
         encode(binary, byteBuf);
     }
 
@@ -162,7 +161,7 @@ public class MqttBinaryData {
     }
 
     public static int encodedLength(@NotNull final String string) {
-        return encodedLength(string.getBytes(Charsets.UTF_8));
+        return encodedLength(string.getBytes(StandardCharsets.UTF_8));
     }
 
     /**

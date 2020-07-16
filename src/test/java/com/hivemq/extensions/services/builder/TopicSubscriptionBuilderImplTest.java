@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions.services.builder;
 
 import com.hivemq.configuration.service.FullConfigurationService;
@@ -25,6 +24,9 @@ import com.hivemq.extension.sdk.api.services.builder.TopicSubscriptionBuilder;
 import com.hivemq.extension.sdk.api.services.exception.DoNotImplementException;
 import com.hivemq.extension.sdk.api.services.subscription.TopicSubscription;
 import com.hivemq.extensions.packets.subscribe.SubscriptionImpl;
+import com.hivemq.mqtt.message.QoS;
+import com.hivemq.mqtt.message.mqtt5.Mqtt5RetainHandling;
+import com.hivemq.mqtt.message.subscribe.Topic;
 import com.hivemq.persistence.clientsession.SharedSubscriptionService;
 import com.hivemq.persistence.clientsession.SharedSubscriptionServiceImpl.SharedSubscription;
 import org.apache.commons.lang3.RandomStringUtils;
@@ -63,7 +65,8 @@ public class TopicSubscriptionBuilderImplTest {
     @Test
     public void test_from_subscription() {
 
-        final SubscriptionImpl subscription = new SubscriptionImpl("topic", Qos.AT_LEAST_ONCE, RetainHandling.DO_NOT_SEND, true, false);
+        final SubscriptionImpl subscription = new SubscriptionImpl(
+                new Topic("topic", QoS.AT_LEAST_ONCE, false, true, Mqtt5RetainHandling.DO_NOT_SEND, null));
 
         final TopicSubscription topic = topicSubscriptionBuilder.fromSubscription(subscription)
                 .subscriptionIdentifier(1)

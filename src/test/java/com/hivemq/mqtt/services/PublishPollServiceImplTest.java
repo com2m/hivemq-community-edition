@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.mqtt.services;
 
 import com.google.common.collect.ImmutableList;
@@ -58,7 +57,11 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
-import static org.mockito.Matchers.*;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyInt;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Matchers.isNull;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.*;
 
@@ -249,11 +252,11 @@ public class PublishPollServiceImplTest {
         final List<PUBLISH> values = captor.getAllValues();
         assertEquals(2, values.get(0).getPacketIdentifier());
         assertEquals(QoS.AT_LEAST_ONCE, values.get(0).getQoS());
-        assertEquals(1, values.get(0).getSubscriptionIdentifiers().get(0).intValue());
+        assertEquals(1, values.get(0).getSubscriptionIdentifiers().get(0));
 
         assertEquals(3, values.get(1).getPacketIdentifier());
         assertEquals(QoS.AT_LEAST_ONCE, values.get(1).getQoS());
-        assertEquals(1, values.get(1).getSubscriptionIdentifiers().get(0).intValue());
+        assertEquals(1, values.get(1).getSubscriptionIdentifiers().get(0));
         assertEquals(3, inFlightCount.get());
     }
 

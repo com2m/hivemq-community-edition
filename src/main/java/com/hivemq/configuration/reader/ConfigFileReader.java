@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,11 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.configuration.reader;
 
 import com.google.common.collect.ImmutableList;
-import com.hivemq.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.configuration.entity.HiveMQConfigEntity;
 import com.hivemq.configuration.entity.listener.TCPListenerEntity;
 import com.hivemq.configuration.entity.listener.TlsTCPListenerEntity;
@@ -52,6 +51,7 @@ public class ConfigFileReader {
     private final @NotNull RestrictionConfigurator restrictionConfigurator;
     private final @NotNull SecurityConfigurator securityConfigurator;
     private final @NotNull UsageStatisticsConfigurator usageStatisticsConfigurator;
+    private final @NotNull PersistenceConfigurator persistenceConfigurator;
 
     public ConfigFileReader(
             @NotNull final ConfigurationFile configurationFile,
@@ -60,7 +60,8 @@ public class ConfigFileReader {
             @NotNull final EnvVarUtil envVarUtil,
             @NotNull final UsageStatisticsConfigurator usageStatisticsConfigurator,
             @NotNull final MqttConfigurator mqttConfigurator,
-            @NotNull final ListenerConfigurator listenerConfigurator) {
+            @NotNull final ListenerConfigurator listenerConfigurator,
+            @NotNull final PersistenceConfigurator persistenceConfigurator) {
 
         this.configurationFile = configurationFile;
         this.envVarUtil = envVarUtil;
@@ -69,6 +70,7 @@ public class ConfigFileReader {
         this.restrictionConfigurator = restrictionConfigurator;
         this.securityConfigurator = securityConfigurator;
         this.usageStatisticsConfigurator = usageStatisticsConfigurator;
+        this.persistenceConfigurator = persistenceConfigurator;
     }
 
     public void applyConfig() {
@@ -136,6 +138,7 @@ public class ConfigFileReader {
         restrictionConfigurator.setRestrictionsConfig(config.getRestrictionsConfig());
         securityConfigurator.setSecurityConfig(config.getSecurityConfig());
         usageStatisticsConfigurator.setUsageStatisticsConfig(config.getUsageStatisticsConfig());
+        persistenceConfigurator.setPersistenceConfig(config.getPersistenceConfig());
     }
 
 }

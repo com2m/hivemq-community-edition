@@ -1,11 +1,11 @@
 #!/bin/bash
-# Copyright 2019 dc-square GmbH
+# Copyright 2019-present HiveMQ GmbH
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#       http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,21 +23,22 @@ echo '                 |_|  |_||_|  \_/  \___||_|  |_| \___\_\'
 echo
 echo "-------------------------------------------------------------------------"
 echo ""
-echo "  HiveMQ Start Script for Linux/Unix v1.10"
+echo "  HiveMQ Start Script for Linux/Unix v1.11"
 echo ""
+
+echoerr() { printf "%s\n" "$*" >&2; }
 
 if hash java 2>/dev/null; then
 
     java_version=$(java -version 2>&1 | awk -F '"' '/version/ {print $2}' | sed 's/\..*//')
 
     if [[ "$((java_version))" -lt 11 ]]; then
-        echo "HiveMQ 4 requires at least Java version 11"
+        echoerr "HiveMQ 4 requires at least Java version 11"
         exit 1
     fi
 
     ############## VARIABLES
     JAVA_OPTS="$JAVA_OPTS -Djava.net.preferIPv4Stack=true"
-    JAVA_OPTS="$JAVA_OPTS -noverify"
 
     JAVA_OPTS="$JAVA_OPTS --add-opens java.base/java.lang=ALL-UNNAMED"
     JAVA_OPTS="$JAVA_OPTS --add-opens java.base/java.nio=ALL-UNNAMED"
@@ -60,25 +61,25 @@ if hash java 2>/dev/null; then
         HIVEMQ_FOLDER="$( cd "$( dirname "${BASH_SOURCE[0]}" )/../" && pwd )"
         HOME_OPT="-Dhivemq.home=$HIVEMQ_FOLDER"
     else
-        HIVEMQ_FOLDER=$HIVEMQ_HOME
-        HOME_OPT=""
+        HIVEMQ_FOLDER="$HIVEMQ_HOME"
+        HOME_OPT="-Dhivemq.home=$HIVEMQ_FOLDER"
     fi
 
     if [ ! -d "$HIVEMQ_FOLDER" ]; then
-        echo ERROR! HiveMQ Home Folder not found.
+        echoerr "ERROR! HiveMQ Home Folder not found."
     else
 
         if [ ! -w "$HIVEMQ_FOLDER" ]; then
-            echo ERROR! HiveMQ Home Folder Permissions not correct.
+            echoerr "ERROR! HiveMQ Home Folder Permissions not correct."
         else
 
             if [ ! -f "$HIVEMQ_FOLDER/bin/hivemq.jar" ]; then
-                echo ERROR! HiveMQ JAR not found.
-                echo $HIVEMQ_FOLDER;
+                echoerr "ERROR! HiveMQ JAR not found."
+                echoerr "$HIVEMQ_FOLDER";
             else
-                HIVEMQ_FOLDER=$(echo "$HIVEMQ_FOLDER" | sed 's/ /\\ /g')
                 JAVA_OPTS="$JAVA_OPTS -XX:+CrashOnOutOfMemoryError"
-                JAVA_OPTS="$JAVA_OPTS -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=$HIVEMQ_FOLDER/heap-dump.hprof"
+                JAVA_OPTS="$JAVA_OPTS -XX:+HeapDumpOnOutOfMemoryError"
+                HEAPDUMP_PATH_OPT="-XX:HeapDumpPath=\"$HIVEMQ_FOLDER/heap-dump.hprof\""
 
                 echo "-------------------------------------------------------------------------"
                 echo ""
@@ -92,12 +93,12 @@ if hash java 2>/dev/null; then
                 echo ""
                 # Run HiveMQ
                 JAR_PATH="$HIVEMQ_FOLDER/bin/hivemq.jar"
-                exec "java" ${HOME_OPT} ${JAVA_OPTS} -jar ${JAR_PATH}
+                exec "java" "${HOME_OPT}" "${HEAPDUMP_PATH_OPT}" ${JAVA_OPTS} -jar "${JAR_PATH}"
             fi
         fi
     fi
 
 else
-    echo You do not have the Java Runtime Environment installed, please install Java JRE from https://adoptopenjdk.net/?variant=openjdk11 and try again.
+    echoerr "ERROR! You do not have the Java Runtime Environment installed, please install Java JRE from https://adoptopenjdk.net/?variant=openjdk11 and try again."
     exit 1
 fi

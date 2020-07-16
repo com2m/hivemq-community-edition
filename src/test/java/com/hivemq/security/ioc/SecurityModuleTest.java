@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.security.ioc;
 
 import com.google.inject.AbstractModule;
@@ -22,12 +21,13 @@ import com.google.inject.Injector;
 import com.google.inject.Stage;
 import com.hivemq.bootstrap.ioc.lazysingleton.LazySingleton;
 import com.hivemq.bootstrap.ioc.lazysingleton.LazySingletonScope;
+import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.security.ssl.SslFactory;
 import io.netty.util.concurrent.EventExecutorGroup;
 import org.junit.Test;
-import org.mockito.Mockito;
 
 import static org.junit.Assert.assertSame;
+import static org.mockito.Mockito.mock;
 
 /**
  * @author Florian Limpöck
@@ -38,15 +38,14 @@ public class SecurityModuleTest {
     @Test
     public void test_ssl_factory_same() {
 
-        final Injector injector = Guice.createInjector(Stage.PRODUCTION,
-                new SecurityModule(),
-                new AbstractModule() {
-                    @Override
-                    protected void configure() {
-                        bind(EventExecutorGroup.class).toInstance(Mockito.mock(EventExecutorGroup.class));
-                        bindScope(LazySingleton.class, LazySingletonScope.get());
-                    }
-                });
+        final Injector injector = Guice.createInjector(Stage.PRODUCTION, new SecurityModule(), new AbstractModule() {
+            @Override
+            protected void configure() {
+                bind(EventExecutorGroup.class).toInstance(mock(EventExecutorGroup.class));
+                bind(ShutdownHooks.class).toInstance(mock(ShutdownHooks.class));
+                bindScope(LazySingleton.class, LazySingletonScope.get());
+            }
+        });
 
         final SslFactory instance1 = injector.getInstance(SslFactory.class);
         final SslFactory instance2 = injector.getInstance(SslFactory.class);
@@ -54,6 +53,5 @@ public class SecurityModuleTest {
         assertSame(instance1, instance2);
 
     }
-
 
 }

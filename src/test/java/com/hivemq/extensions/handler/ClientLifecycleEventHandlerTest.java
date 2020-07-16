@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions.handler;
 
 import com.google.common.collect.Maps;
+import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.extension.sdk.api.events.client.ClientLifecycleEventListener;
@@ -59,6 +59,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.Assert.*;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
@@ -105,7 +106,7 @@ public class ClientLifecycleEventHandlerTest {
         when(channelHandlerContext.channel()).thenReturn(embeddedChannel);
         when(channelHandlerContext.executor()).thenReturn(ImmediateEventExecutor.INSTANCE);
 
-        pluginTaskExecutorService = new PluginTaskExecutorServiceImpl(() -> executor1);
+        pluginTaskExecutorService = new PluginTaskExecutorServiceImpl(() -> executor1, mock(ShutdownHooks.class));
         clientLifecycleEventHandler =
                 new ClientLifecycleEventHandler(lifecycleEventListeners, pluginTaskExecutorService, hiveMQExtensions);
 
@@ -133,7 +134,7 @@ public class ClientLifecycleEventHandlerTest {
 
         final CONNECT connect = TestMessageUtil.createFullMqtt5Connect();
 
-        final Map<String, ClientLifecycleEventListenerProvider> map = Maps.newHashMap();
+        Map<String, ClientLifecycleEventListenerProvider> map = Maps.newHashMap();
         map.put("extension", new TestBadProvider());
 
         when(lifecycleEventListeners.getClientLifecycleEventListenerProviderMap()).thenReturn(map);
@@ -149,7 +150,7 @@ public class ClientLifecycleEventHandlerTest {
 
         final CONNECT connect = TestMessageUtil.createFullMqtt5Connect();
 
-        final Map<String, ClientLifecycleEventListenerProvider> map = Maps.newHashMap();
+        Map<String, ClientLifecycleEventListenerProvider> map = Maps.newHashMap();
         map.put("extension", new TestBadListenerProvider());
 
         when(lifecycleEventListeners.getClientLifecycleEventListenerProviderMap()).thenReturn(map);
@@ -232,7 +233,7 @@ public class ClientLifecycleEventHandlerTest {
 
         when(lifecycleEventListeners.getClientLifecycleEventListenerProviderMap()).thenReturn(createMap(latch1, latch2));
 
-        clientLifecycleEventHandler.userEventTriggered(channelHandlerContext, new OnServerDisconnectEvent());
+        clientLifecycleEventHandler.userEventTriggered(channelHandlerContext, new OnServerDisconnectEvent(null, null, null));
 
 
         assertTrue(latch1.await(3, TimeUnit.SECONDS));
@@ -330,7 +331,7 @@ public class ClientLifecycleEventHandlerTest {
 
         when(lifecycleEventListeners.getClientLifecycleEventListenerProviderMap()).thenReturn(createMap(latch1, latch2));
 
-        clientLifecycleEventHandler.userEventTriggered(channelHandlerContext, new OnServerDisconnectEvent());
+        clientLifecycleEventHandler.userEventTriggered(channelHandlerContext, new OnServerDisconnectEvent(null, null, null));
 
         assertEquals(null, clientLifecycleEventHandler.providerInput);
 
@@ -363,7 +364,7 @@ public class ClientLifecycleEventHandlerTest {
     private class TestBadProvider implements ClientLifecycleEventListenerProvider {
 
         @Override
-        public @Nullable ClientLifecycleEventListener getClientLifecycleEventListener(@NotNull final ClientLifecycleEventListenerProviderInput input) {
+        public @Nullable ClientLifecycleEventListener getClientLifecycleEventListener(@NotNull ClientLifecycleEventListenerProviderInput input) {
             throw new NullPointerException();
         }
     }
@@ -371,20 +372,20 @@ public class ClientLifecycleEventHandlerTest {
     private class TestBadListenerProvider implements ClientLifecycleEventListenerProvider {
 
         @Override
-        public @Nullable ClientLifecycleEventListener getClientLifecycleEventListener(@NotNull final ClientLifecycleEventListenerProviderInput input) {
+        public @Nullable ClientLifecycleEventListener getClientLifecycleEventListener(@NotNull ClientLifecycleEventListenerProviderInput input) {
             return new ClientLifecycleEventListener() {
                 @Override
-                public void onMqttConnectionStart(@NotNull final ConnectionStartInput input) {
+                public void onMqttConnectionStart(@NotNull ConnectionStartInput input) {
                     throw new NullPointerException();
                 }
 
                 @Override
-                public void onAuthenticationSuccessful(@NotNull final AuthenticationSuccessfulInput input) {
+                public void onAuthenticationSuccessful(@NotNull AuthenticationSuccessfulInput input) {
                     throw new NullPointerException();
                 }
 
                 @Override
-                public void onDisconnect(@NotNull final DisconnectEventInput input) {
+                public void onDisconnect(@NotNull DisconnectEventInput input) {
                     throw new NullPointerException();
                 }
             };
@@ -394,8 +395,8 @@ public class ClientLifecycleEventHandlerTest {
     private ClientLifecycleEventListenerProvider getTestProvider(CountDownLatch countDownLatch) throws Exception {
 
         final JavaArchive javaArchive = ShrinkWrap.create(JavaArchive.class)
-                .addClass("com.hivemq.extensions.handler.ClientLifecycleEventHandlerTest$TestProvider")
-                .addClass("com.hivemq.extensions.handler.ClientLifecycleEventHandlerTest$TestProvider$1");
+                .addClass("com.hivemq.extensions.handler.testextensions.TestProvider")
+                .addClass("com.hivemq.extensions.handler.testextensions.TestProvider$1");
 
         final File jarFile = temporaryFolder.newFile();
         javaArchive.as(ZipExporter.class).exportTo(jarFile, true);
@@ -403,78 +404,9 @@ public class ClientLifecycleEventHandlerTest {
         //This classloader contains the classes from the jar file
         final IsolatedPluginClassloader cl = new IsolatedPluginClassloader(new URL[]{jarFile.toURI().toURL()}, this.getClass().getClassLoader());
 
-        final Class<?> providerClass = cl.loadClass("com.hivemq.extensions.handler.ClientLifecycleEventHandlerTest$TestProvider");
+        final Class<?> providerClass = cl.loadClass("com.hivemq.extensions.handler.testextensions.TestProvider");
 
         ClientLifecycleEventListenerProvider testProvider = (ClientLifecycleEventListenerProvider) providerClass.getDeclaredConstructor(CountDownLatch.class).newInstance(countDownLatch);
         return testProvider;
-    }
-
-    public static class TestProvider implements ClientLifecycleEventListenerProvider {
-
-        private final CountDownLatch onMqttConnectionStartLatch;
-        private final CountDownLatch onAuthenticationFailedDisconnectLatch;
-        private final CountDownLatch onConnectionLostLatch;
-        private final CountDownLatch onClientInitiatedDisconnectLatch;
-        private final CountDownLatch onServerInitiatedDisconnectLatch;
-        private final CountDownLatch onAuthenticationSuccessfulLatch;
-        private final CountDownLatch onDisconnectLatch;
-
-        public TestProvider(final CountDownLatch countDownLatch) {
-            this.onMqttConnectionStartLatch = countDownLatch;
-            this.onAuthenticationFailedDisconnectLatch = countDownLatch;
-            this.onConnectionLostLatch = countDownLatch;
-            this.onClientInitiatedDisconnectLatch = countDownLatch;
-            this.onServerInitiatedDisconnectLatch = countDownLatch;
-            this.onAuthenticationSuccessfulLatch = countDownLatch;
-            this.onDisconnectLatch = countDownLatch;
-        }
-
-        @Override
-        public @Nullable ClientLifecycleEventListener getClientLifecycleEventListener(@NotNull final ClientLifecycleEventListenerProviderInput input) {
-
-            return new ClientLifecycleEventListener() {
-                @Override
-                public void onMqttConnectionStart(@NotNull final ConnectionStartInput input) {
-                    onMqttConnectionStartLatch.countDown();
-                    System.out.println("connect");
-                }
-
-                @Override
-                public void onAuthenticationFailedDisconnect(@NotNull final AuthenticationFailedInput input) {
-                    onAuthenticationFailedDisconnectLatch.countDown();
-                    System.out.println("auth failed");
-                }
-
-                @Override
-                public void onConnectionLost(@NotNull final ConnectionLostInput input) {
-                    onConnectionLostLatch.countDown();
-                    System.out.println("connection lost");
-                }
-
-                @Override
-                public void onClientInitiatedDisconnect(@NotNull final ClientInitiatedDisconnectInput input) {
-                    onClientInitiatedDisconnectLatch.countDown();
-                    System.out.println("client disconnect");
-                }
-
-                @Override
-                public void onServerInitiatedDisconnect(@NotNull final ServerInitiatedDisconnectInput input) {
-                    onServerInitiatedDisconnectLatch.countDown();
-                    System.out.println("server disconnect");
-                }
-
-                @Override
-                public void onAuthenticationSuccessful(@NotNull final AuthenticationSuccessfulInput input) {
-                    onAuthenticationSuccessfulLatch.countDown();
-                    System.out.println("auth success");
-                }
-
-                @Override
-                public void onDisconnect(@NotNull final DisconnectEventInput input) {
-                    onDisconnectLatch.countDown();
-                    System.out.println("disconnect");
-                }
-            };
-        }
     }
 }

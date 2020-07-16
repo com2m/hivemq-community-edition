@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,11 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.codec.decoder;
 
 import com.hivemq.configuration.HivemqId;
-import com.hivemq.configuration.service.MqttConfigurationService;
 import com.hivemq.logging.EventLog;
 import com.hivemq.mqtt.handler.connack.MqttConnackSendUtil;
 import com.hivemq.mqtt.handler.connack.MqttConnacker;
@@ -49,9 +47,6 @@ public class MqttConnectDecoderTest {
     EventLog eventLog;
 
     @Mock
-    MqttConfigurationService mqttConfigurationService;
-
-    @Mock
     Attribute<ProtocolVersion> protocolVersionAttribute;
 
     private MqttConnectDecoder decoder;
@@ -65,7 +60,7 @@ public class MqttConnectDecoderTest {
         final HivemqId hiveMQId = new HivemqId();
 
         final MqttDisconnectUtil mqttDisconnectUtil = new MqttDisconnectUtil(eventLog);
-        final MqttConnackSendUtil mqttConnackSendUtil = new MqttConnackSendUtil(eventLog, mqttConfigurationService);
+        final MqttConnackSendUtil mqttConnackSendUtil = new MqttConnackSendUtil(eventLog);
         final Mqtt5ServerDisconnector mqtt5ServerDisconnector = new Mqtt5ServerDisconnector(mqttDisconnectUtil);
         final Mqtt3ServerDisconnector mqtt3ServerDisconnector = new Mqtt3ServerDisconnector(mqttDisconnectUtil);
         final MqttConnacker mqttConnacker = new MqttConnacker(mqttConnackSendUtil);

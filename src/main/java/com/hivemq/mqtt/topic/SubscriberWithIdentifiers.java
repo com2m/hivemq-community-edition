@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,12 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.mqtt.topic;
 
 import com.google.common.collect.ImmutableList;
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
+import com.google.common.primitives.ImmutableIntArray;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.util.Bytes;
 
 import java.util.Objects;
@@ -35,7 +35,7 @@ public class SubscriberWithIdentifiers implements Comparable<SubscriberWithIdent
     private final byte flags;
     @Nullable
     private final String sharedName;
-    private @NotNull ImmutableList<Integer> subscriptionIdentifier;
+    private @NotNull ImmutableIntArray subscriptionIdentifier;
     // The topic filter is only present for shared subscription
     private final @Nullable String topicFilter;
 
@@ -45,7 +45,7 @@ public class SubscriberWithIdentifiers implements Comparable<SubscriberWithIdent
         this.qos = qos;
         this.flags = flags;
         this.sharedName = sharedName;
-        this.subscriptionIdentifier = ImmutableList.of();
+        this.subscriptionIdentifier = ImmutableIntArray.of();
         this.topicFilter = null;
     }
 
@@ -56,7 +56,7 @@ public class SubscriberWithIdentifiers implements Comparable<SubscriberWithIdent
         this.qos = qos;
         this.flags = flags;
         this.sharedName = sharedName;
-        this.subscriptionIdentifier = subscriptionIdentifier;
+        this.subscriptionIdentifier = ImmutableIntArray.of();
         this.topicFilter = topicFilter;
     }
 
@@ -68,7 +68,7 @@ public class SubscriberWithIdentifiers implements Comparable<SubscriberWithIdent
         this.sharedName = subscriberWithQoS.getSharedName();
         final Integer subscriptionIdentifier = subscriberWithQoS.getSubscriptionIdentifier();
         this.subscriptionIdentifier =
-                (subscriptionIdentifier == null) ? ImmutableList.of() : ImmutableList.of(subscriptionIdentifier);
+                (subscriptionIdentifier == null) ? ImmutableIntArray.of() : ImmutableIntArray.of(subscriptionIdentifier);
         this.topicFilter = subscriberWithQoS.getTopicFilter();
     }
 
@@ -97,11 +97,11 @@ public class SubscriberWithIdentifiers implements Comparable<SubscriberWithIdent
         return sharedName;
     }
 
-    public @NotNull ImmutableList<Integer> getSubscriptionIdentifier() {
+    public @NotNull ImmutableIntArray getSubscriptionIdentifier() {
         return subscriptionIdentifier;
     }
 
-    public void setSubscriptionIdentifiers(final @NotNull ImmutableList<Integer> subscriptionIdentifiers) {
+    public void setSubscriptionIdentifiers(final @NotNull ImmutableIntArray subscriptionIdentifiers) {
         this.subscriptionIdentifier = subscriptionIdentifiers;
     }
 

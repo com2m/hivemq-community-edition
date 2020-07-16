@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,31 +13,34 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.mqtt.message.connect;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
 import com.hivemq.codec.encoder.mqtt5.Mqtt5PayloadFormatIndicator;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.extension.sdk.api.packets.connect.WillPublishPacket;
 import com.hivemq.extension.sdk.api.packets.general.UserProperty;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.mqtt5.Mqtt5UserProperties;
 import com.hivemq.mqtt.message.mqtt5.MqttUserProperty;
 import com.hivemq.mqtt.message.publish.PUBLISH;
+import com.hivemq.persistence.Sizable;
 import com.hivemq.util.Bytes;
+import com.hivemq.util.ObjectMemoryEstimation;
 
 /**
  * @author Silvio Giebl
  * @author Florian Limpöck
  */
-public class MqttWillPublish {
+public class MqttWillPublish implements Sizable {
 
     public static final long WILL_DELAY_INTERVAL_NOT_SET = Long.MAX_VALUE;
     public static final long WILL_DELAY_INTERVAL_DEFAULT = 0;
 
+    private int sizeInMemory = SIZE_NOT_CALCULATED;
+    
     //MQTT 5 and 3
     private final String topic;
     private byte[] payload;
@@ -54,13 +57,19 @@ public class MqttWillPublish {
     private final Mqtt5UserProperties userProperties;
     private long delayInterval;
 
-    protected MqttWillPublish(@NotNull final String hivemqId,
-                              @NotNull final String topic, @Nullable final byte[] payload, @NotNull final QoS qos,
-                              final boolean retain, final long messageExpiryInterval,
-                              @Nullable final Mqtt5PayloadFormatIndicator payloadFormatIndicator,
-                              @Nullable final String contentType, @Nullable final String responseTopic,
-                              @Nullable final byte[] correlationData, @NotNull final Mqtt5UserProperties userProperties,
-                              final long delayInterval) {
+    protected MqttWillPublish(
+            @NotNull final String hivemqId,
+            @NotNull final String topic,
+            @Nullable final byte[] payload,
+            @NotNull final QoS qos,
+            final boolean retain,
+            final long messageExpiryInterval,
+            @Nullable final Mqtt5PayloadFormatIndicator payloadFormatIndicator,
+            @Nullable final String contentType,
+            @Nullable final String responseTopic,
+            @Nullable final byte[] correlationData,
+            @NotNull final Mqtt5UserProperties userProperties,
+            final long delayInterval) {
 
         Preconditions.checkNotNull(topic, "A topic must never be null");
         Preconditions.checkNotNull(qos, "Quality of service must never be null");
@@ -80,8 +89,12 @@ public class MqttWillPublish {
         this.delayInterval = delayInterval;
     }
 
-    protected MqttWillPublish(@NotNull final String topic, @Nullable final byte[] payload, @NotNull final QoS qos,
-                              final boolean retain, @NotNull final String hivemqId) {
+    protected MqttWillPublish(
+            @NotNull final String topic,
+            @Nullable final byte[] payload,
+            @NotNull final QoS qos,
+            final boolean retain,
+            @NotNull final String hivemqId) {
 
         Preconditions.checkNotNull(topic, "A topic must never be null");
         Preconditions.checkNotNull(qos, "Quality of service must never be null");
@@ -103,7 +116,8 @@ public class MqttWillPublish {
     }
 
     @Nullable
-    public static MqttWillPublish fromWillPacket(@NotNull final String hivemqId, @Nullable final WillPublishPacket packet) {
+    public static MqttWillPublish fromWillPacket(
+            @NotNull final String hivemqId, @Nullable final WillPublishPacket packet) {
         if (packet == null) {
             return null;
         }
@@ -115,7 +129,9 @@ public class MqttWillPublish {
         for (final UserProperty userProperty : packet.getUserProperties().asList()) {
             userProperties.add(new MqttUserProperty(userProperty.getName(), userProperty.getValue()));
         }
-        return new MqttWillPublish(hivemqId, packet.getTopic(),
+        return new MqttWillPublish(
+                hivemqId,
+                packet.getTopic(),
                 Bytes.getBytesFromReadOnlyBuffer(packet.getPayload()),
                 QoS.valueOf(packet.getQos().getQosNumber()),
                 packet.getRetain(),
@@ -188,6 +204,52 @@ public class MqttWillPublish {
         this.delayInterval = delayInterval;
     }
 
+    public  @NotNull MqttWillPublish deepCopyWithoutPayload() {
+        return new MqttWillPublish(
+                this.hivemqId,
+                this.topic,
+                this.payload,
+                this.qos,
+                this.retain,
+                this.messageExpiryInterval,
+                this.payloadFormatIndicator,
+                this.contentType,
+                this.responseTopic,
+                this.correlationData,
+                this.userProperties,
+                this.delayInterval);
+    }
+
+    @Override
+    public int getEstimatedSize() {
+        if (sizeInMemory != SIZE_NOT_CALCULATED) {
+            return sizeInMemory;
+        }
+        int size = 0;
+        size += ObjectMemoryEstimation.objectShellSize(); // the will himself
+        size += ObjectMemoryEstimation.intSize(); // sizeInMemory
+        size += ObjectMemoryEstimation.stringSize(topic);
+        size += ObjectMemoryEstimation.byteArraySize(payload);
+        size += ObjectMemoryEstimation.byteArraySize(correlationData);
+        size += ObjectMemoryEstimation.stringSize(responseTopic);
+        size += ObjectMemoryEstimation.stringSize(hivemqId);
+        size += ObjectMemoryEstimation.stringSize(contentType);
+
+        size += 24; //User Properties Overhead
+        for (final MqttUserProperty userProperty : getUserProperties().asList()) {
+            size += 24; //UserProperty Object Overhead
+            size += ObjectMemoryEstimation.stringSize(userProperty.getName());
+            size += ObjectMemoryEstimation.stringSize(userProperty.getValue());
+        }
+        size += ObjectMemoryEstimation.longSize(); // messageExpiryInterval
+        size += ObjectMemoryEstimation.enumSize(); // QoS
+        size += ObjectMemoryEstimation.enumSize(); // payloadFormatIndicator
+        size += ObjectMemoryEstimation.longSize(); // will delay interval
+
+        sizeInMemory = size;
+        return sizeInMemory;
+    }
+
     public static class Mqtt3Builder {
 
         private String topic;
@@ -243,7 +305,8 @@ public class MqttWillPublish {
 
         public MqttWillPublish build() {
 
-            return new MqttWillPublish(hivemqId,
+            return new MqttWillPublish(
+                    hivemqId,
                     topic,
                     payload,
                     qos,

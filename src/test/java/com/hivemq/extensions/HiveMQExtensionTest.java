@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,10 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions;
 
-import com.hivemq.configuration.info.SystemInformationImpl;
 import com.hivemq.extension.sdk.api.ExtensionMain;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.client.parameter.ServerInformation;
@@ -24,16 +22,16 @@ import com.hivemq.extension.sdk.api.parameter.ExtensionStartInput;
 import com.hivemq.extension.sdk.api.parameter.ExtensionStartOutput;
 import com.hivemq.extension.sdk.api.parameter.ExtensionStopInput;
 import com.hivemq.extension.sdk.api.parameter.ExtensionStopOutput;
-import com.hivemq.extensions.client.parameter.ServerInformationImpl;
 import com.hivemq.extensions.config.HiveMQPluginXMLReader;
-import com.hivemq.extensions.parameters.start.ExtensionStartOutputImpl;
-import com.hivemq.extensions.parameters.start.ExtensionStartStopInputImpl;
-import com.hivemq.extensions.parameters.stop.ExtensionStopOutputImpl;
+import com.hivemq.extensions.parameter.ExtensionStartOutputImpl;
+import com.hivemq.extensions.parameter.ExtensionStartStopInputImpl;
+import com.hivemq.extensions.parameter.ExtensionStopOutputImpl;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.mockito.Mock;
+import util.TestExtensionUtil;
 
 import java.io.File;
 import java.util.Collections;
@@ -66,15 +64,17 @@ public class HiveMQExtensionTest extends PluginAbstractTest {
     @Before
     public void setUp() throws Exception {
 
-        validPluginFolder = createValidPlugin(tmpFolder, "extension", "id");
+        validPluginFolder = TestExtensionUtil.createValidExtension(tmpFolder.newFolder("extension"), "id");
         pluginEntityFromXML = HiveMQPluginXMLReader.getPluginEntityFromXML(validPluginFolder.toPath(), true).get();
 
         enabledStartPlugin =
-                new HiveMQExtensionImpl(pluginEntityFromXML, validPluginFolder.toPath(), new StartTestExtension(), true);
+                new HiveMQExtensionImpl(
+                        pluginEntityFromXML, validPluginFolder.toPath(), new StartTestExtension(), true);
         enabledStopPlugin =
                 new HiveMQExtensionImpl(pluginEntityFromXML, validPluginFolder.toPath(), new StopTestExtension(), true);
         enabledReasonPlugin =
-                new HiveMQExtensionImpl(pluginEntityFromXML, validPluginFolder.toPath(), new ReasonTestExtension(), true);
+                new HiveMQExtensionImpl(
+                        pluginEntityFromXML, validPluginFolder.toPath(), new ReasonTestExtension(), true);
 
 
         enabledPlugins = Collections.singletonMap(enabledStartPlugin.getId(), enabledStartPlugin);
@@ -111,7 +111,8 @@ public class HiveMQExtensionTest extends PluginAbstractTest {
         private static boolean start = false;
 
         @Override
-        public void extensionStart(final @NotNull ExtensionStartInput input, final @NotNull ExtensionStartOutput output) {
+        public void extensionStart(
+                final @NotNull ExtensionStartInput input, final @NotNull ExtensionStartOutput output) {
             start = true;
         }
 
@@ -125,7 +126,8 @@ public class HiveMQExtensionTest extends PluginAbstractTest {
         private static boolean stop = false;
 
         @Override
-        public void extensionStart(final @NotNull ExtensionStartInput input, final @NotNull ExtensionStartOutput output) {
+        public void extensionStart(
+                final @NotNull ExtensionStartInput input, final @NotNull ExtensionStartOutput output) {
         }
 
         @Override
@@ -139,7 +141,8 @@ public class HiveMQExtensionTest extends PluginAbstractTest {
         private static final String reason = "REASON";
 
         @Override
-        public void extensionStart(final @NotNull ExtensionStartInput input, final @NotNull ExtensionStartOutput output) {
+        public void extensionStart(
+                final @NotNull ExtensionStartInput input, final @NotNull ExtensionStartOutput output) {
             output.preventExtensionStartup(reason);
         }
 

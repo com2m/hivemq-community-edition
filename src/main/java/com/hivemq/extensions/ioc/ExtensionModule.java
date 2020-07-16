@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,12 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions.ioc;
 
-import com.hivemq.annotations.NotNull;
 import com.hivemq.bootstrap.ioc.SingletonModule;
 import com.hivemq.bootstrap.ioc.lazysingleton.LazySingleton;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.client.parameter.ServerInformation;
 import com.hivemq.extension.sdk.api.events.EventRegistry;
 import com.hivemq.extension.sdk.api.services.admin.AdminService;
@@ -41,6 +40,8 @@ import com.hivemq.extensions.executor.PluginOutPutAsyncer;
 import com.hivemq.extensions.executor.PluginOutputAsyncerImpl;
 import com.hivemq.extensions.executor.PluginTaskExecutorService;
 import com.hivemq.extensions.executor.PluginTaskExecutorServiceImpl;
+import com.hivemq.extensions.handler.PluginAuthenticatorService;
+import com.hivemq.extensions.handler.PluginAuthenticatorServiceImpl;
 import com.hivemq.extensions.handler.PluginAuthorizerService;
 import com.hivemq.extensions.handler.PluginAuthorizerServiceImpl;
 import com.hivemq.extensions.ioc.annotation.PluginStartStop;
@@ -90,7 +91,9 @@ public class ExtensionModule extends SingletonModule<Class<ExtensionModule>> {
         bind(Authorizers.class).to(AuthorizersImpl.class);
         bind(SecurityRegistry.class).to(SecurityRegistryImpl.class);
 
-        bind(ExecutorService.class).annotatedWith(PluginStartStop.class).toInstance(getPluginStartStopExecutor());
+        bind(ExecutorService.class).annotatedWith(PluginStartStop.class)
+                .toProvider(ExtensionStartStopExecutorProvider.class)
+                .in(LazySingleton.class);
 
         bind(PluginTaskExecutorService.class).to(PluginTaskExecutorServiceImpl.class);
         bind(PluginOutPutAsyncer.class).to(PluginOutputAsyncerImpl.class);
@@ -122,14 +125,10 @@ public class ExtensionModule extends SingletonModule<Class<ExtensionModule>> {
         bind(ClusterService.class).to(ClusterServiceNoopImpl.class).in(LazySingleton.class);
 
         bind(PluginAuthorizerService.class).to(PluginAuthorizerServiceImpl.class);
+        bind(PluginAuthenticatorService.class).to(PluginAuthenticatorServiceImpl.class);
 
         bind(GlobalInterceptorRegistry.class).to(GlobalInterceptorRegistryImpl.class).in(LazySingleton.class);
         bind(Interceptors.class).to(InterceptorsImpl.class).in(LazySingleton.class);
         bind(AdminService.class).to(AdminServiceImpl.class).in(LazySingleton.class);
-    }
-
-    private @NotNull ExecutorService getPluginStartStopExecutor() {
-        final ThreadFactory threadFactory = ThreadFactoryUtil.create("extension-start-stop-executor");
-        return Executors.newSingleThreadExecutor(threadFactory);
     }
 }

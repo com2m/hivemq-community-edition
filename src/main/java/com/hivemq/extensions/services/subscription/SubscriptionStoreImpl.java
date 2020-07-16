@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions.services.subscription;
 
 import com.google.common.base.Preconditions;
@@ -21,9 +20,9 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.*;
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
 import com.hivemq.bootstrap.ioc.lazysingleton.LazySingleton;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.extension.sdk.api.services.exception.DoNotImplementException;
 import com.hivemq.extension.sdk.api.services.exception.InvalidTopicException;
 import com.hivemq.extension.sdk.api.services.exception.NoSuchClientIdException;
@@ -113,9 +112,9 @@ public class SubscriptionStoreImpl implements SubscriptionStore {
             public void onFailure(final @NotNull Throwable t) {
                 settableFuture.setException(t);
             }
-        }, MoreExecutors.directExecutor());
+        }, managedExtensionExecutorService);
 
-        return ListenableFutureConverter.toCompletable(settableFuture);
+        return ListenableFutureConverter.toCompletable(settableFuture, managedExtensionExecutorService);
     }
 
     @Override
@@ -164,9 +163,9 @@ public class SubscriptionStoreImpl implements SubscriptionStore {
             public void onFailure(final @NotNull Throwable t) {
                 settableFuture.setException(t);
             }
-        }, MoreExecutors.directExecutor());
+        }, managedExtensionExecutorService);
 
-        return ListenableFutureConverter.toCompletable(settableFuture);
+        return ListenableFutureConverter.toCompletable(settableFuture, managedExtensionExecutorService);
     }
 
     @Override
@@ -181,7 +180,7 @@ public class SubscriptionStoreImpl implements SubscriptionStore {
         if (!Topics.isValidToSubscribe(topicFilter)) {
             return CompletableFuture.failedFuture(new InvalidTopicException(topicFilter));
         }
-        return ListenableFutureConverter.toCompletable(subscriptionPersistence.remove(clientID, topicFilter));
+        return ListenableFutureConverter.toCompletable(subscriptionPersistence.remove(clientID, topicFilter), managedExtensionExecutorService);
     }
 
     @Override
@@ -205,7 +204,7 @@ public class SubscriptionStoreImpl implements SubscriptionStore {
         }
 
         if (failedTopics.isEmpty()) {
-            return ListenableFutureConverter.toVoidCompletable(subscriptionPersistence.removeSubscriptions(clientID, ImmutableSet.copyOf(topicFilters)));
+            return ListenableFutureConverter.toVoidCompletable(subscriptionPersistence.removeSubscriptions(clientID, ImmutableSet.copyOf(topicFilters)), managedExtensionExecutorService);
         } else {
             return CompletableFuture.failedFuture(new InvalidTopicException("Topics not valid: " + failedTopics));
         }
@@ -261,7 +260,7 @@ public class SubscriptionStoreImpl implements SubscriptionStore {
 
         final ImmutableSet<String> subscribers = topicTree.getSubscribersForTopic(topic, new SubscriptionTypeItemFilter(subscriptionType), false);
 
-        final CompletableFuture<Void> iterationFinishedFuture = new CompletableFuture<>();
+        final SettableFuture<Void> iterationFinishedFuture = SettableFuture.create();
 
         callbackExecutor.execute(() -> {
 
@@ -274,22 +273,22 @@ public class SubscriptionStoreImpl implements SubscriptionStore {
                     try {
                         callback.iterate(iterationContext, new SubscriberForTopicResultImpl(subscriber));
                         if (iterationContext.isAborted()) {
-                            iterationFinishedFuture.complete(null);
+                            iterationFinishedFuture.set(null);
                             return;
                         }
 
                     } catch (final Exception e) {
-                        iterationFinishedFuture.completeExceptionally(e);
+                        iterationFinishedFuture.setException(e);
                         return;
                     }
                 }
-                iterationFinishedFuture.complete(null);
+                iterationFinishedFuture.set(null);
             } finally {
                 Thread.currentThread().setContextClassLoader(previousClassLoader);
             }
         });
 
-        return iterationFinishedFuture;
+        return ListenableFutureConverter.toCompletable(iterationFinishedFuture, managedExtensionExecutorService);
     }
 
     @Override
@@ -332,7 +331,7 @@ public class SubscriptionStoreImpl implements SubscriptionStore {
         final ImmutableSet<String> subscribers =
                 topicTree.getSubscribersWithFilter(topicFilter, new SubscriptionTypeItemFilter(subscriptionType));
 
-        final CompletableFuture<Void> iterationFinishedFuture = new CompletableFuture<>();
+        final SettableFuture<Void> iterationFinishedFuture = SettableFuture.create();
         callbackExecutor.execute(() -> {
 
             final ClassLoader previousClassLoader = Thread.currentThread().getContextClassLoader();
@@ -344,22 +343,22 @@ public class SubscriptionStoreImpl implements SubscriptionStore {
                     try {
                         callback.iterate(iterationContext, new SubscriberWithFilterResultImpl(subscriber));
                         if (iterationContext.isAborted()) {
-                            iterationFinishedFuture.complete(null);
+                            iterationFinishedFuture.set(null);
                             return;
                         }
 
                     } catch (final Exception e) {
-                        iterationFinishedFuture.completeExceptionally(e);
+                        iterationFinishedFuture.setException(e);
                         return;
                     }
                 }
-                iterationFinishedFuture.complete(null);
+                iterationFinishedFuture.set(null);
             } finally {
                 Thread.currentThread().setContextClassLoader(previousClassLoader);
             }
         });
 
-        return iterationFinishedFuture;
+        return ListenableFutureConverter.toCompletable(iterationFinishedFuture, managedExtensionExecutorService);
     }
 
     @Override
@@ -383,7 +382,17 @@ public class SubscriptionStoreImpl implements SubscriptionStore {
 
         asyncIterator.fetchAndIterate();
 
-        return asyncIterator.getFinishedFuture();
+        final SettableFuture<Void> iterationFinishedFuture = SettableFuture.create();
+
+        asyncIterator.getFinishedFuture().whenComplete((aVoid, throwable) -> {
+            if (throwable != null) {
+                iterationFinishedFuture.setException(throwable);
+            } else {
+                iterationFinishedFuture.set(null);
+            }
+        });
+
+        return ListenableFutureConverter.toCompletable(iterationFinishedFuture, managedExtensionExecutorService);
     }
 
     private static class ClientSubscriptionsToTopicSubscriptions implements Function<ImmutableSet<Topic>, Set<TopicSubscription>> {
@@ -455,7 +464,7 @@ public class SubscriptionStoreImpl implements SubscriptionStore {
         @Override
         public @NotNull ListenableFuture<ChunkResult<ChunkCursor, SubscriptionsForClientResult>> fetchNextResults(@Nullable final ChunkCursor cursor) {
 
-            final ListenableFuture<MultipleChunkResult<Map<String, Set<Topic>>>> persistenceFuture =
+            final ListenableFuture<MultipleChunkResult<Map<String, ImmutableSet<Topic>>>> persistenceFuture =
                     subscriptionPersistence.getAllLocalSubscribersChunk(cursor != null ? cursor : new ChunkCursor());
 
             return Futures.transform(persistenceFuture, input -> {
@@ -465,14 +474,14 @@ public class SubscriptionStoreImpl implements SubscriptionStore {
         }
 
         @NotNull
-        ChunkResult<ChunkCursor, SubscriptionsForClientResult> convertToChunkResult(@NotNull final MultipleChunkResult<Map<String, Set<Topic>>> input) {
+        ChunkResult<ChunkCursor, SubscriptionsForClientResult> convertToChunkResult(@NotNull final MultipleChunkResult<Map<String, ImmutableSet<Topic>>> input) {
             final ImmutableList.Builder<SubscriptionsForClientResult> results = ImmutableList.builder();
             final ImmutableMap.Builder<Integer, String> lastKeys = ImmutableMap.builder();
             final ImmutableSet.Builder<Integer> finishedBuckets = ImmutableSet.builder();
 
             boolean finished = true;
-            for (final Map.Entry<Integer, BucketChunkResult<Map<String, Set<Topic>>>> bucketResult : input.getValues().entrySet()) {
-                final BucketChunkResult<Map<String, Set<Topic>>> bucketChunkResult = bucketResult.getValue();
+            for (final Map.Entry<Integer, BucketChunkResult<Map<String, ImmutableSet<Topic>>>> bucketResult : input.getValues().entrySet()) {
+                final BucketChunkResult<Map<String, ImmutableSet<Topic>>> bucketChunkResult = bucketResult.getValue();
 
                 if (bucketChunkResult.isFinished()) {
                     finishedBuckets.add(bucketChunkResult.getBucketIndex());
@@ -484,7 +493,7 @@ public class SubscriptionStoreImpl implements SubscriptionStore {
                     lastKeys.put(bucketChunkResult.getBucketIndex(), bucketChunkResult.getLastKey());
                 }
 
-                for (final Map.Entry<String, Set<Topic>> entry : bucketChunkResult.getValue().entrySet()) {
+                for (final Map.Entry<String, ImmutableSet<Topic>> entry : bucketChunkResult.getValue().entrySet()) {
                     results.add(new SubscriptionsForClientResultImpl(entry.getKey(),
                             entry.getValue().stream().map(topic -> new TopicSubscriptionImpl(topic)).collect(Collectors.toSet())));
                 }

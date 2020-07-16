@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,13 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.mqtt.message.unsubscribe;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-import com.hivemq.annotations.Immutable;
-import com.hivemq.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Immutable;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extensions.packets.unsubscribe.UnsubscribePacketImpl;
 import com.hivemq.mqtt.message.MessageType;
 import com.hivemq.mqtt.message.mqtt5.Mqtt5UserProperties;
 import com.hivemq.mqtt.message.mqtt5.MqttMessageWithUserProperties;
@@ -31,7 +31,6 @@ import java.util.List;
  *
  * @author Dominik Obermaier
  * @author Florian Limpöck
- *
  * @since 1.4
  */
 @Immutable
@@ -55,7 +54,9 @@ public class UNSUBSCRIBE extends MqttMessageWithUserProperties implements Mqtt3U
     }
 
     //MQTT 5
-    public UNSUBSCRIBE(@NotNull final ImmutableList<String> topicFilters, final int packetIdentifier, final Mqtt5UserProperties userProperties) {
+    public UNSUBSCRIBE(
+            @NotNull final ImmutableList<String> topicFilters, final int packetIdentifier,
+            final Mqtt5UserProperties userProperties) {
         super(userProperties);
 
         Preconditions.checkNotNull(topicFilters);
@@ -63,6 +64,13 @@ public class UNSUBSCRIBE extends MqttMessageWithUserProperties implements Mqtt3U
 
         this.topics = topicFilters;
         setPacketIdentifier(packetIdentifier);
+    }
+
+    public static @NotNull UNSUBSCRIBE from(final @NotNull UnsubscribePacketImpl packet) {
+        return new UNSUBSCRIBE(
+                packet.getTopicFilters(),
+                packet.getPacketIdentifier(),
+                Mqtt5UserProperties.of(packet.getUserProperties().asInternalList()));
     }
 
     /**

@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.codec.encoder.mqtt5;
 
-import com.hivemq.annotations.NotNull;
+import com.google.common.primitives.ImmutableIntArray;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.codec.encoder.MqttEncoder;
 import com.hivemq.configuration.service.SecurityConfigurationService;
 import com.hivemq.mqtt.message.MessageType;
@@ -85,13 +85,12 @@ public class Mqtt5PublishEncoder extends Mqtt5MessageWithUserPropertiesEncoder<P
 
         propertyLength += publish.getUserProperties().encodedLength();
 
-        final List<Integer> subscriptionIdentifiers = publish.getSubscriptionIdentifiers();
+        final ImmutableIntArray subscriptionIdentifiers = publish.getSubscriptionIdentifiers();
         if (subscriptionIdentifiers != null) {
-            for (final Integer subscriptionIdentifier : subscriptionIdentifiers) {
-                propertyLength += variableByteIntegerPropertyEncodedLength(subscriptionIdentifier);
+            for (int i = 0; i < subscriptionIdentifiers.length(); i++) {
+                propertyLength += variableByteIntegerPropertyEncodedLength(subscriptionIdentifiers.get(i));
             }
         }
-
         return propertyLength;
     }
 
@@ -149,10 +148,10 @@ public class Mqtt5PublishEncoder extends Mqtt5MessageWithUserPropertiesEncoder<P
         encodeFixedProperties(publish, out);
         encodeOmissibleProperties(publish, out);
 
-        final List<Integer> subscriptionIdentifiers = publish.getSubscriptionIdentifiers();
+        final ImmutableIntArray subscriptionIdentifiers = publish.getSubscriptionIdentifiers();
         if (subscriptionIdentifiers != null) {
-            for (final Integer subscriptionIdentifier : subscriptionIdentifiers) {
-                encodeVariableByteIntegerProperty(SUBSCRIPTION_IDENTIFIER, subscriptionIdentifier, out);
+            for (int i = 0; i < subscriptionIdentifiers.length(); i++) {
+                encodeVariableByteIntegerProperty(SUBSCRIPTION_IDENTIFIER, subscriptionIdentifiers.get(i), out);
             }
         }
     }

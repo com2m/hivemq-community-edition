@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,10 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions.executor;
 
-import com.hivemq.annotations.NotNull;
+import com.hivemq.common.shutdown.HiveMQShutdownHook;
+import com.hivemq.common.shutdown.ShutdownHooks;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extensions.executor.task.*;
 import com.hivemq.persistence.local.xodus.bucket.BucketUtils;
 
@@ -34,13 +35,14 @@ import static com.hivemq.configuration.service.InternalConfigurations.PLUGIN_TAS
 @Singleton
 public class PluginTaskExecutorServiceImpl implements PluginTaskExecutorService {
 
-    @NotNull
-    private final PluginTaskExecutor[] taskExecutors;
+    private final @NotNull PluginTaskExecutor[] taskExecutors;
 
     private final int taskExecutorCount;
 
     @Inject
-    public PluginTaskExecutorServiceImpl(@NotNull final Provider<PluginTaskExecutor> taskExecutorProvider) {
+    public PluginTaskExecutorServiceImpl(
+            final @NotNull Provider<PluginTaskExecutor> taskExecutorProvider,
+            final @NotNull ShutdownHooks shutdownHooks) {
 
         taskExecutorCount = PLUGIN_TASK_QUEUE_EXECUTOR_COUNT.get();
 
@@ -50,12 +52,14 @@ public class PluginTaskExecutorServiceImpl implements PluginTaskExecutorService 
             taskExecutors[i] = taskExecutorProvider.get();
         }
 
+        shutdownHooks.add(new PluginTaskExecutorServiceShutdownHook(taskExecutors));
     }
 
     @Override
-    public <I extends PluginTaskInput> void handlePluginInTaskExecution(@NotNull final PluginInTaskContext pluginInTaskContext,
-                                                                           @NotNull final Supplier<I> pluginInputSupplier,
-                                                                           @NotNull final PluginInTask<I> pluginTask) {
+    public <I extends PluginTaskInput> void handlePluginInTaskExecution(
+            @NotNull final PluginInTaskContext pluginInTaskContext,
+            @NotNull final Supplier<I> pluginInputSupplier,
+            @NotNull final PluginInTask<I> pluginTask) {
         final PluginTaskExecutor taskExecutor = getPluginTaskExecutor(pluginInTaskContext);
 
         checkNotNull(pluginInTaskContext, "Extension context cannot be null");
@@ -68,9 +72,10 @@ public class PluginTaskExecutorServiceImpl implements PluginTaskExecutorService 
     }
 
     @Override
-    public <O extends PluginTaskOutput> void handlePluginOutTaskExecution(@NotNull final PluginOutTaskContext<O> pluginOutTaskContext,
-                                                                             @NotNull final Supplier<O> pluginOutputSupplier,
-                                                                             @NotNull final PluginOutTask<O> pluginTask) {
+    public <O extends PluginTaskOutput> void handlePluginOutTaskExecution(
+            @NotNull final PluginOutTaskContext<O> pluginOutTaskContext,
+            @NotNull final Supplier<O> pluginOutputSupplier,
+            @NotNull final PluginOutTask<O> pluginTask) {
 
         checkNotNull(pluginOutTaskContext, "Extension context cannot be null");
         checkNotNull(pluginOutputSupplier, "Output supplier cannot be null");
@@ -102,4 +107,34 @@ public class PluginTaskExecutorServiceImpl implements PluginTaskExecutorService 
         return taskExecutors[bucket];
     }
 
+    private static class PluginTaskExecutorServiceShutdownHook extends HiveMQShutdownHook {
+
+        private final @NotNull PluginTaskExecutor[] taskExecutors;
+
+        public PluginTaskExecutorServiceShutdownHook(final @NotNull PluginTaskExecutor[] taskExecutors) {
+            this.taskExecutors = taskExecutors;
+        }
+
+        @Override
+        public @NotNull String name() {
+            return "Plugin Task Executor Service Shutdown Hook";
+        }
+
+        @Override
+        public @NotNull Priority priority() {
+            return Priority.DOES_NOT_MATTER;
+        }
+
+        @Override
+        public boolean isAsynchronous() {
+            return false;
+        }
+
+        @Override
+        public void run() {
+            for (final PluginTaskExecutor taskExecutor : taskExecutors) {
+                taskExecutor.stop();
+            }
+        }
+    }
 }

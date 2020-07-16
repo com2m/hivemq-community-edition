@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions.handler.tasks;
 
 import com.hivemq.common.shutdown.ShutdownHooks;
@@ -89,7 +88,7 @@ public class PublishAuthorizationProcessedTaskTest {
         task.onSuccess(output);
 
         verify(mqtt5ServerDisconnector).disconnect(any(), anyString(), anyString(),
-                eq(Mqtt5DisconnectReasonCode.NOT_AUTHORIZED), anyString());
+                eq(Mqtt5DisconnectReasonCode.NOT_AUTHORIZED), eq(null));
     }
 
     @Test
@@ -101,7 +100,7 @@ public class PublishAuthorizationProcessedTaskTest {
         task.onSuccess(output);
 
         verify(mqtt5ServerDisconnector).disconnect(any(), anyString(), anyString(),
-                eq(Mqtt5DisconnectReasonCode.QUOTA_EXCEEDED), anyString());
+                eq(Mqtt5DisconnectReasonCode.QUOTA_EXCEEDED), eq(null));
     }
 
     @Test
@@ -124,7 +123,7 @@ public class PublishAuthorizationProcessedTaskTest {
         output.disconnectClient();
         task.onSuccess(output);
 
-        verify(mqtt3ServerDisconnector).disconnect(any(), anyString(), anyString(), any(), anyString());
+        verify(mqtt3ServerDisconnector).disconnect(any(), anyString(), anyString(), eq(null), eq(null));
     }
 
     @Test
@@ -135,7 +134,7 @@ public class PublishAuthorizationProcessedTaskTest {
         output.disconnectClient();
         task.onSuccess(output);
 
-        verify(mqtt3ServerDisconnector).disconnect(any(), anyString(), anyString(), any(), anyString());
+        verify(mqtt3ServerDisconnector).disconnect(any(), anyString(), anyString(), eq(null), eq(null));
     }
 
     @Test
@@ -305,6 +304,6 @@ public class PublishAuthorizationProcessedTaskTest {
         task.onFailure(new RuntimeException("test"));
 
         verify(mqtt5ServerDisconnector).disconnect(any(), anyString(), anyString(),
-                eq(Mqtt5DisconnectReasonCode.NOT_AUTHORIZED), anyString());
+                eq(Mqtt5DisconnectReasonCode.NOT_AUTHORIZED), eq(null));
     }
 }

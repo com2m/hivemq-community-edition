@@ -1,10 +1,10 @@
-rem  Copyright 2019 dc-square GmbH
+rem  Copyright 2019-present HiveMQ GmbH
 rem
 rem  Licensed under the Apache License, Version 2.0 (the "License");
 rem  you may not use this file except in compliance with the License.
 rem  You may obtain a copy of the License at
 rem
-rem        http://www.apache.org/licenses/LICENSE-2.0
+rem      http://www.apache.org/licenses/LICENSE-2.0
 rem
 rem  Unless required by applicable law or agreed to in writing, software
 rem  distributed under the License is distributed on an "AS IS" BASIS,
@@ -54,7 +54,7 @@ rem  limitations under the License.
   )
 
   rem ########### VARIABLES
-  set "JAVA_OPTS=-Djava.net.preferIPv4Stack=true -noverify %JAVA_OPTS%"
+  set "JAVA_OPTS=-Djava.net.preferIPv4Stack=true %JAVA_OPTS%"
 
   if %java_version_start% LEQ 10 (
     echo ERROR! HiveMQ requires at least Java 11

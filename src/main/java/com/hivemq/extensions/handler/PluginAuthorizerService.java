@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,10 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions.handler;
 
-import com.hivemq.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.message.connect.CONNECT;
 import com.hivemq.mqtt.message.publish.PUBLISH;
 import com.hivemq.mqtt.message.subscribe.SUBSCRIBE;
@@ -34,7 +33,7 @@ public interface PluginAuthorizerService {
      * @param ctx the context of the channel handler
      * @param msg the publish message to authorize
      */
-    void authorizePublish(@NotNull final ChannelHandlerContext ctx, @NotNull final PUBLISH msg);
+    void authorizePublish(@NotNull ChannelHandlerContext ctx, @NotNull PUBLISH msg);
 
     /**
      * authorize a will publish message when authorizers are available
@@ -42,7 +41,7 @@ public interface PluginAuthorizerService {
      * @param ctx     the context of the channel handler
      * @param connect the connect message to authorize the will for.
      */
-    void authorizeWillPublish(final @NotNull ChannelHandlerContext ctx, @NotNull final CONNECT connect);
+    void authorizeWillPublish(@NotNull ChannelHandlerContext ctx, @NotNull CONNECT connect);
 
     /**
      * authorize a subscribe message when authorizers are available, otherwise delegate to subscribe handler
@@ -50,6 +49,5 @@ public interface PluginAuthorizerService {
      * @param ctx the context of the channel handler
      * @param msg the subscribe message to authorize
      */
-    void authorizeSubscriptions(final @NotNull ChannelHandlerContext ctx, final @NotNull SUBSCRIBE msg);
-
+    void authorizeSubscriptions(@NotNull ChannelHandlerContext ctx, @NotNull SUBSCRIBE msg);
 }

@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.mqtt.handler.subscribe.retained;
 
 import com.google.common.collect.ImmutableList;
@@ -95,8 +94,7 @@ public class SendRetainedMessagesListenerTest {
 
         final ImmutableSet.Builder<String> builder = ImmutableSet.builder();
         final Set<String> set = builder.build();
-        when(retainedMessagePersistence.getWithWildcards("#")).thenReturn(
-                ImmutableList.of(Futures.immediateFuture(set)));
+        when(retainedMessagePersistence.getWithWildcards("#")).thenReturn(Futures.immediateFuture(set));
 
         listener.operationComplete(embeddedChannel.newSucceededFuture());
         embeddedChannel.runPendingTasks();
@@ -190,8 +188,7 @@ public class SendRetainedMessagesListenerTest {
         final ImmutableSet.Builder<String> builder = ImmutableSet.builder();
         builder.add("topic");
         final Set<String> set = builder.build();
-        when(retainedMessagePersistence.getWithWildcards("#")).thenReturn(
-                ImmutableList.of(Futures.immediateFuture(set)));
+        when(retainedMessagePersistence.getWithWildcards("#")).thenReturn(Futures.immediateFuture(set));
 
         final Topic topic = new Topic("#", QoS.EXACTLY_ONCE, false, false, Mqtt5RetainHandling.SEND, 1);
         final List<SubscriptionResult> subscriptions = newArrayList(subResult(topic, false));
@@ -222,8 +219,7 @@ public class SendRetainedMessagesListenerTest {
                         MqttConfigurationDefaults.TTL_DISABLED)));
 
         final Set<String> set = ImmutableSet.of("topic");
-        when(retainedMessagePersistence.getWithWildcards("#")).thenReturn(
-                ImmutableList.of(Futures.immediateFuture(set)));
+        when(retainedMessagePersistence.getWithWildcards("#")).thenReturn(Futures.immediateFuture(set));
 
         final Topic topic = new Topic("#", QoS.EXACTLY_ONCE, false, false, Mqtt5RetainHandling.DO_NOT_SEND, 1);
         final List<SubscriptionResult> subscriptions = newArrayList(subResult(topic, false));
@@ -245,8 +241,7 @@ public class SendRetainedMessagesListenerTest {
                         MqttConfigurationDefaults.TTL_DISABLED)));
 
         final Set<String> set = ImmutableSet.of("topic");
-        when(retainedMessagePersistence.getWithWildcards("#")).thenReturn(
-                ImmutableList.of(Futures.immediateFuture(set)));
+        when(retainedMessagePersistence.getWithWildcards("#")).thenReturn(Futures.immediateFuture(set));
 
         final Topic topic =
                 new Topic("#", QoS.EXACTLY_ONCE, false, false, Mqtt5RetainHandling.SEND_IF_SUBSCRIPTION_DOES_NOT_EXIST,
@@ -271,8 +266,7 @@ public class SendRetainedMessagesListenerTest {
                         MqttConfigurationDefaults.TTL_DISABLED)));
 
         final Set<String> set = ImmutableSet.of("topic");
-        when(retainedMessagePersistence.getWithWildcards("#")).thenReturn(
-                ImmutableList.of(Futures.immediateFuture(set)));
+        when(retainedMessagePersistence.getWithWildcards("#")).thenReturn(Futures.immediateFuture(set));
 
         final Topic topic =
                 new Topic("#", QoS.EXACTLY_ONCE, false, false, Mqtt5RetainHandling.SEND_IF_SUBSCRIPTION_DOES_NOT_EXIST,
@@ -308,8 +302,7 @@ public class SendRetainedMessagesListenerTest {
                         MqttConfigurationDefaults.TTL_DISABLED)));
 
         final ImmutableSet<String> set = ImmutableSet.of("topic", "topic2");
-        when(retainedMessagePersistence.getWithWildcards("#")).thenReturn(
-                ImmutableList.of(Futures.immediateFuture(set)));
+        when(retainedMessagePersistence.getWithWildcards("#")).thenReturn(Futures.immediateFuture(set));
         final List<SubscriptionResult> subscriptions = newArrayList(
                 subResult(new Topic("topic", QoS.EXACTLY_ONCE), false),
                 subResult(new Topic("topic2", QoS.AT_MOST_ONCE), false));
@@ -349,8 +342,7 @@ public class SendRetainedMessagesListenerTest {
         final ImmutableSet.Builder<String> builder = ImmutableSet.builder();
         builder.add("topic");
         final Set<String> set = builder.build();
-        when(retainedMessagePersistence.getWithWildcards("#")).thenReturn(
-                ImmutableList.of(Futures.immediateFuture(set)));
+        when(retainedMessagePersistence.getWithWildcards("#")).thenReturn(Futures.immediateFuture(set));
 
         final List<SubscriptionResult> subscriptions = newArrayList(subResult(new Topic("#", QoS.AT_MOST_ONCE), false));
         final SendRetainedMessagesListener listener = createListener(subscriptions, ignoredTopics);
@@ -374,8 +366,7 @@ public class SendRetainedMessagesListenerTest {
         final ImmutableSet.Builder<String> builder = ImmutableSet.builder();
         builder.add("topic");
         final Set<String> set = builder.build();
-        when(retainedMessagePersistence.getWithWildcards("#")).thenReturn(
-                ImmutableList.of(Futures.immediateFuture(set)));
+        when(retainedMessagePersistence.getWithWildcards("#")).thenReturn(Futures.immediateFuture(set));
 
         final List<SubscriptionResult> subscriptions = newArrayList(subResult(new Topic("#", QoS.EXACTLY_ONCE), false));
         final SendRetainedMessagesListener listener = createListener(subscriptions, ignoredTopics);
@@ -436,8 +427,7 @@ public class SendRetainedMessagesListenerTest {
                         MqttConfigurationDefaults.TTL_DISABLED)));
 
         final Set<String> set = ImmutableSet.of("topic");
-        when(retainedMessagePersistence.getWithWildcards("#")).thenReturn(
-                ImmutableList.of(Futures.immediateFuture(set)));
+        when(retainedMessagePersistence.getWithWildcards("#")).thenReturn(Futures.immediateFuture(set));
 
         final Topic topic = new Topic("#", QoS.EXACTLY_ONCE);
         final List<SubscriptionResult> subscriptions = newArrayList(new SubscriptionResult(topic, false, "shareName"));
@@ -462,8 +452,7 @@ public class SendRetainedMessagesListenerTest {
                         MqttConfigurationDefaults.TTL_DISABLED)));
 
         final ImmutableSet<String> set = ImmutableSet.of("topic", "topic2");
-        when(retainedMessagePersistence.getWithWildcards("#")).thenReturn(
-                ImmutableList.of(Futures.immediateFuture(set)));
+        when(retainedMessagePersistence.getWithWildcards("#")).thenReturn(Futures.immediateFuture(set));
         when(queuePersistence.add(eq("client"), eq(false), anyList(), eq(true))).thenReturn(
                 Futures.immediateFuture(null));
         final List<SubscriptionResult> subscriptions = newArrayList(

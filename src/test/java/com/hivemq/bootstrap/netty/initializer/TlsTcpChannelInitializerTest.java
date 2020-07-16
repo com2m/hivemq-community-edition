@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,12 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.bootstrap.netty.initializer;
 
 import com.hivemq.bootstrap.netty.ChannelDependencies;
 import com.hivemq.bootstrap.netty.FakeChannelPipeline;
 import com.hivemq.configuration.service.FullConfigurationService;
+import com.hivemq.configuration.service.entity.Listener;
 import com.hivemq.configuration.service.entity.Tls;
 import com.hivemq.configuration.service.entity.TlsTcpListener;
 import com.hivemq.logging.EventLog;
@@ -27,6 +27,8 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.ssl.SslHandler;
+import io.netty.util.Attribute;
+import io.netty.util.AttributeKey;
 import io.netty.util.concurrent.Future;
 import org.junit.Before;
 import org.junit.Test;
@@ -43,6 +45,9 @@ public class TlsTcpChannelInitializerTest {
 
     @Mock
     private SocketChannel socketChannel;
+
+    @Mock
+    private Attribute<Listener> attribute;
 
     @Mock
     private ChannelDependencies channelDependencies;
@@ -68,9 +73,6 @@ public class TlsTcpChannelInitializerTest {
     @Mock
     private FullConfigurationService fullConfigurationService;
 
-    @Mock
-    private ListenerAttributeAdderFactory listenerAttributeAdderFactory;
-
     private ChannelPipeline pipeline;
 
     private TlsTcpChannelInitializer tlstcpChannelInitializer;
@@ -85,8 +87,8 @@ public class TlsTcpChannelInitializerTest {
         when(ssl.getSslHandler(any(SocketChannel.class), any(Tls.class))).thenReturn(sslHandler);
         when(sslHandler.handshakeFuture()).thenReturn(future);
         when(socketChannel.pipeline()).thenReturn(pipeline);
+        when(socketChannel.attr(any(AttributeKey.class))).thenReturn(attribute);
         when(channelDependencies.getConfigurationService()).thenReturn(fullConfigurationService);
-        when(channelDependencies.getListenerAttributeAdderFactory()).thenReturn(listenerAttributeAdderFactory);
 
         tlstcpChannelInitializer = new TlsTcpChannelInitializer(channelDependencies, tlsTcpListener, ssl, eventLog);
 

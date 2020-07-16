@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.persistence.clientqueue;
 
 import com.google.common.collect.ImmutableList;
@@ -28,11 +27,10 @@ import com.hivemq.mqtt.message.publish.PUBLISHFactory;
 import com.hivemq.mqtt.message.pubrel.PUBREL;
 import com.hivemq.persistence.PersistenceStartup;
 import com.hivemq.persistence.local.xodus.EnvironmentUtil;
+import com.hivemq.persistence.local.xodus.bucket.BucketUtils;
 import com.hivemq.persistence.payload.PublishPayloadPersistence;
 import com.hivemq.util.LocalPersistenceFileUtil;
-import com.hivemq.util.ThreadPreConditions;
 import org.apache.commons.lang3.RandomStringUtils;
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -81,7 +79,6 @@ public class ClientQueueXodusLocalPersistenceTest {
     @Before
     public void setUp() throws Exception {
         MockitoAnnotations.initMocks(this);
-        ThreadPreConditions.disable();
 
         InternalConfigurations.PERSISTENCE_BUCKET_COUNT.set(bucketCount);
         InternalConfigurations.PERSISTENCE_CLOSE_RETRIES.set(3);
@@ -90,6 +87,7 @@ public class ClientQueueXodusLocalPersistenceTest {
                 .thenReturn(temporaryFolder.newFolder());
 
         InternalConfigurations.QOS_0_MEMORY_HARD_LIMIT_DIVISOR.set(10000);
+        InternalConfigurations.QOS_0_MEMORY_LIMIT_PER_CLIENT.set(1024);
         InternalConfigurations.RETAINED_MESSAGE_QUEUE_SIZE.set(5);
 
         persistence = new ClientQueueXodusLocalPersistence(
@@ -100,11 +98,6 @@ public class ClientQueueXodusLocalPersistenceTest {
                 messageDroppedService);
 
         persistence.start();
-    }
-
-    @After
-    public void tearDown() {
-        ThreadPreConditions.enable();
     }
 
     @Test
@@ -915,6 +908,227 @@ public class ClientQueueXodusLocalPersistenceTest {
         assertTrue(notExpectedMessages.isEmpty());
     }
 
+    @Test(timeout = 5000)
+    public void test_increase_negative_size() {
+
+        persistence.increaseClientQos0MessagesMemory(new Key("client", false), -10000);
+
+        final ConcurrentHashMap<String, AtomicInteger> clientQos0MemoryMap = persistence.getClientQos0MemoryMap();
+
+        assertNull(clientQos0MemoryMap.get("client"));
+
+    }
+
+    @Test(timeout = 5000)
+    public void test_increase_positive_size() {
+
+        persistence.increaseClientQos0MessagesMemory(new Key("client", false), 10000);
+
+        final ConcurrentHashMap<String, AtomicInteger> clientQos0MemoryMap = persistence.getClientQos0MemoryMap();
+
+        assertNotNull(clientQos0MemoryMap.get("client"));
+
+    }
+
+    @Test(timeout = 5000)
+    public void test_multiple_increases() {
+
+        persistence.increaseClientQos0MessagesMemory(new Key("client", false), 10000);
+        persistence.increaseClientQos0MessagesMemory(new Key("client", false), 10000);
+        persistence.increaseClientQos0MessagesMemory(new Key("client", false), 10000);
+        persistence.increaseClientQos0MessagesMemory(new Key("client", false), 10000);
+        persistence.increaseClientQos0MessagesMemory(new Key("client", false), 10000);
+        persistence.increaseClientQos0MessagesMemory(new Key("client", false), -10000);
+        persistence.increaseClientQos0MessagesMemory(new Key("client", false), -10000);
+        persistence.increaseClientQos0MessagesMemory(new Key("client", false), -10000);
+        persistence.increaseClientQos0MessagesMemory(new Key("client", false), -10000);
+        persistence.increaseClientQos0MessagesMemory(new Key("client", false), -10000);
+
+        final ConcurrentHashMap<String, AtomicInteger> clientQos0MemoryMap = persistence.getClientQos0MemoryMap();
+
+        assertNull(clientQos0MemoryMap.get("client"));
+
+    }
+
+    @Test(timeout = 5000)
+    public void test_increase_decrease_increase_decrease_increase() {
+
+        persistence.increaseClientQos0MessagesMemory(new Key("client", false), 10000);
+        persistence.increaseClientQos0MessagesMemory(new Key("client", false), -10000);
+        persistence.increaseClientQos0MessagesMemory(new Key("client", false), 10000);
+        persistence.increaseClientQos0MessagesMemory(new Key("client", false), -10000);
+        persistence.increaseClientQos0MessagesMemory(new Key("client", false), 10000);
+
+        final ConcurrentHashMap<String, AtomicInteger> clientQos0MemoryMap = persistence.getClientQos0MemoryMap();
+
+        assertNotNull(clientQos0MemoryMap.get("client"));
+
+    }
+
+    @Test(timeout = 5000)
+    public void test_add_qos_0_per_client_exceeded() {
+
+        persistence.add("client", false, createBigPublish(1, QoS.AT_MOST_ONCE, "topic", 1, 500), 1000, DISCARD, false, BucketUtils.getBucket("client", 4));
+        persistence.add("client", false, createBigPublish(1, QoS.AT_MOST_ONCE, "topic", 1, 500), 1000, DISCARD, false, BucketUtils.getBucket("client", 4));
+
+        verify(messageDroppedService).qos0MemoryExceeded(eq("client"), eq("topic"), eq(0), anyLong(), eq(1024L));
+
+        final ConcurrentHashMap<String, AtomicInteger> clientQos0MemoryMap = persistence.getClientQos0MemoryMap();
+
+        assertNotNull(clientQos0MemoryMap.get("client"));
+
+    }
+
+    @Test(timeout = 5000)
+    public void test_add_qos_0_per_client_exactly_exceeded() {
+
+
+        final PUBLISH exactly1024bytesPublish = createPublish(1, QoS.AT_MOST_ONCE, "topic", 1, new byte[745]);
+
+        assertEquals(1024, exactly1024bytesPublish.getEstimatedSizeInMemory());
+
+        persistence.add("client", false, exactly1024bytesPublish, 1000, DISCARD, false, BucketUtils.getBucket("client", 4));
+        persistence.add("client", false, createPublish(2, QoS.AT_MOST_ONCE, "topic", 2), 1000, DISCARD, false, BucketUtils.getBucket("client", 4));
+
+        verify(messageDroppedService).qos0MemoryExceeded(eq("client"), eq("topic"), eq(0), anyLong(), eq(1024L));
+
+        final ConcurrentHashMap<String, AtomicInteger> clientQos0MemoryMap = persistence.getClientQos0MemoryMap();
+
+        assertNotNull(clientQos0MemoryMap.get("client"));
+
+    }
+
+    @Test
+    public void test_read_byte_limit_respected_qos0() {
+
+        InternalConfigurations.QOS_0_MEMORY_LIMIT_PER_CLIENT.set(1024 * 100);
+
+        persistence.stop();
+        persistence = new ClientQueueXodusLocalPersistence(
+                payloadPersistence,
+                new EnvironmentUtil(),
+                localPersistenceFileUtil,
+                new PersistenceStartup(),
+                messageDroppedService);
+
+        persistence.start();
+
+        final ImmutableList.Builder<PUBLISH> publishes = ImmutableList.builder();
+        int totalPublishBytes = 0;
+        for (int i = 0; i < 100; i++) {
+            final PUBLISH publish = createPublish(i + 1, QoS.AT_MOST_ONCE, "topic" + i, i + 1, null);
+            totalPublishBytes += publish.getEstimatedSizeInMemory();
+            publishes.add(publish);
+        }
+        persistence.add("client", false, publishes.build(), 2, DISCARD, false, 0);
+
+        int byteLimit = totalPublishBytes / 2;
+        final ImmutableList<PUBLISH> allReadPublishes = persistence.readNew("client", false, createPacketIds(1,100), byteLimit, 0);
+        assertEquals(51, allReadPublishes.size());
+
+        final ImmutableList<PUBLISH> allReadPublishes2 = persistence.readNew("client", false, createPacketIds(52, 100), byteLimit, 0);
+        assertEquals(49, allReadPublishes2.size());
+
+    }
+
+    @Test
+    public void test_read_byte_limit_respected_qos1() {
+
+        InternalConfigurations.QOS_0_MEMORY_LIMIT_PER_CLIENT.set(1024 * 100);
+
+        persistence.stop();
+        persistence = new ClientQueueXodusLocalPersistence(
+                payloadPersistence,
+                new EnvironmentUtil(),
+                localPersistenceFileUtil,
+                new PersistenceStartup(),
+                messageDroppedService);
+
+        persistence.start();
+
+        final ImmutableList.Builder<PUBLISH> publishes = ImmutableList.builder();
+        int totalPublishBytes = 0;
+        for (int i = 0; i < 100; i++) {
+            final PUBLISH publish = createPublish(i + 1, QoS.AT_LEAST_ONCE, "topic" + i, i+1, null);
+            totalPublishBytes += publish.getEstimatedSizeInMemory();
+            publishes.add(publish);
+        }
+        persistence.add("client", false, publishes.build(), 100, DISCARD, false, 0);
+
+
+        final int byteLimit = totalPublishBytes / 2;
+        System.out.println(byteLimit);
+        final ImmutableList<PUBLISH> allReadPublishes = persistence.readNew("client", false, createPacketIds(1,100), byteLimit, 0);
+        assertEquals(51, allReadPublishes.size());
+
+        final ImmutableList<PUBLISH> allReadPublishes2 = persistence.readNew("client", false, createPacketIds(52,100), byteLimit, 0);
+        assertEquals(49, allReadPublishes2.size());
+
+        for (final PUBLISH pub : allReadPublishes) {
+            persistence.remove("client", pub.getPacketIdentifier(), pub.getUniqueId(), 0);
+        }
+        for (final PUBLISH pub : allReadPublishes2) {
+            persistence.remove("client", pub.getPacketIdentifier(), pub.getUniqueId(), 0);
+        }
+
+        assertEquals(0, persistence.size("client", false, 0));
+
+    }
+
+    @Test
+    public void test_read_byte_limit_respected_qos0_and_qos1() {
+
+        InternalConfigurations.QOS_0_MEMORY_LIMIT_PER_CLIENT.set(1024 * 100);
+
+        persistence.stop();
+        persistence = new ClientQueueXodusLocalPersistence(
+                payloadPersistence,
+                new EnvironmentUtil(),
+                localPersistenceFileUtil,
+                new PersistenceStartup(),
+                messageDroppedService);
+
+        persistence.start();
+
+        final ImmutableList.Builder<PUBLISH> publishes = ImmutableList.builder();
+        int totalPublishBytes = 0;
+        for (int i = 0; i < 100; i++) {
+            final PUBLISH publish = createPublish(i + 1, QoS.valueOf(i % 2), "topic" + i, i + 1, null);
+            totalPublishBytes += publish.getEstimatedSizeInMemory();
+            publishes.add(publish);
+        }
+        persistence.add("client", false, publishes.build(), 100, DISCARD, false, 0);
+
+        int byteLimit = totalPublishBytes / 2;
+        final ImmutableList<PUBLISH> allReadPublishes = persistence.readNew("client", false, createPacketIds(1,100), byteLimit, 0);
+        assertEquals(51, allReadPublishes.size());
+
+        for (final PUBLISH pub : allReadPublishes) {
+            persistence.remove("client", pub.getPacketIdentifier(), pub.getUniqueId(), 0);
+        }
+
+        final ImmutableList<PUBLISH> allReadPublishes2 = persistence.readNew("client", false, createPacketIds(52,100), byteLimit, 0);
+        assertEquals(48, allReadPublishes2.size());
+
+        for (final PUBLISH pub : allReadPublishes2) {
+            persistence.remove("client", pub.getPacketIdentifier(), pub.getUniqueId(), 0);
+        }
+
+        //last qos0 message
+        final ImmutableList<PUBLISH> allReadPublishes3 = persistence.readNew("client", false, createPacketIds(100,100), byteLimit, 0);
+        assertEquals(1, allReadPublishes3.size());
+        assertEquals(0, persistence.size("client", false, 0));
+
+    }
+
+    private ImmutableIntArray createPacketIds(final int start, final int size) {
+        final ImmutableIntArray.Builder builder = ImmutableIntArray.builder();
+        for (int i = start; i < (size + start); i++) {
+            builder.add(i);
+        }
+        return builder.build();
+    }
+
     private PUBLISH createPublish(final int packetId, final QoS qos) {
         return createPublish(packetId, qos, "topic");
     }
@@ -948,6 +1162,19 @@ public class ClientQueueXodusLocalPersistenceTest {
                 .withQoS(qos)
                 .withPayloadId(1L)
                 .withPayload("message".getBytes())
+                .withTopic(topic)
+                .withHivemqId("hivemqId")
+                .withPersistence(payloadPersistence)
+                .withPublishId(publishId)
+                .build();
+    }
+
+
+    private PUBLISH createPublish(final int packetId, final QoS qos, final String topic, final int publishId, final byte[] message) {
+        return new PUBLISHFactory.Mqtt5Builder().withPacketIdentifier(packetId)
+                .withQoS(qos)
+                .withPayloadId(1L)
+                .withPayload(message)
                 .withTopic(topic)
                 .withHivemqId("hivemqId")
                 .withPersistence(payloadPersistence)

@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,63 +13,54 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions.interceptor.publish.parameter;
 
-import com.hivemq.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Immutable;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.client.parameter.ClientInformation;
 import com.hivemq.extension.sdk.api.client.parameter.ConnectionInformation;
 import com.hivemq.extension.sdk.api.interceptor.publish.parameter.PublishOutboundInput;
-import com.hivemq.extension.sdk.api.packets.publish.PublishPacket;
-import com.hivemq.extensions.PluginInformationUtil;
 import com.hivemq.extensions.executor.task.PluginTaskInput;
-import io.netty.channel.Channel;
-
-import java.util.function.Supplier;
+import com.hivemq.extensions.packets.publish.PublishPacketImpl;
 
 /**
  * @author Lukas Brandl
+ * @author Silvio Giebl
  * @since 4.2.0
  */
-public class PublishOutboundInputImpl implements Supplier<PublishOutboundInputImpl>, PublishOutboundInput, PluginTaskInput {
+@Immutable
+public class PublishOutboundInputImpl implements PublishOutboundInput, PluginTaskInput {
 
-    private @NotNull PublishPacket publishPacket;
-    private final @NotNull ConnectionInformation connectionInformation;
     private final @NotNull ClientInformation clientInformation;
+    private final @NotNull ConnectionInformation connectionInformation;
+    private final @NotNull PublishPacketImpl publishPacket;
 
     public PublishOutboundInputImpl(
-            final @NotNull PublishPacket publishPacket,
-            final @NotNull String clientId,
-            final @NotNull Channel channel) {
+            final @NotNull ClientInformation clientInformation,
+            final @NotNull ConnectionInformation connectionInformation,
+            final @NotNull PublishPacketImpl publishPacket) {
+
+        this.clientInformation = clientInformation;
+        this.connectionInformation = connectionInformation;
         this.publishPacket = publishPacket;
-        this.connectionInformation = PluginInformationUtil.getAndSetConnectionInformation(channel);
-        this.clientInformation = PluginInformationUtil.getAndSetClientInformation(channel, clientId);
     }
 
-    @NotNull
     @Override
-    public PublishPacket getPublishPacket() {
-        return publishPacket;
-    }
-
-    @NotNull
-    @Override
-    public ConnectionInformation getConnectionInformation() {
-        return connectionInformation;
-    }
-
-    @NotNull
-    @Override
-    public ClientInformation getClientInformation() {
+    public @NotNull ClientInformation getClientInformation() {
         return clientInformation;
     }
 
     @Override
-    public @NotNull PublishOutboundInputImpl get() {
-        return this;
+    public @NotNull ConnectionInformation getConnectionInformation() {
+        return connectionInformation;
     }
 
-    public void updatePublish(final @NotNull PublishPacket publishPacket) {
-        this.publishPacket = publishPacket;
+    @Override
+    public @NotNull PublishPacketImpl getPublishPacket() {
+        return publishPacket;
+    }
+
+    public @NotNull PublishOutboundInputImpl update(final @NotNull PublishOutboundOutputImpl output) {
+        return new PublishOutboundInputImpl(clientInformation, connectionInformation, output.getPublishPacket().copy());
     }
 }

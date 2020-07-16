@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,15 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.codec.decoder.mqtt5;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Bytes;
-import com.hivemq.annotations.NotNull;
 import com.hivemq.codec.encoder.mqtt5.Mqtt5PayloadFormatIndicator;
 import com.hivemq.codec.encoder.mqtt5.MqttVariableByteInteger;
 import com.hivemq.configuration.service.FullConfigurationService;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.connect.CONNECT;
@@ -129,10 +128,7 @@ public class Mqtt5ConnectDecoderTest extends AbstractMqtt5DecoderTest {
         assertEquals(true, connect.isResponseInformationRequested());
         assertEquals(false, connect.isProblemInformationRequested());
         assertEquals("test", connect.getClientIdentifier());
-        assertEquals(true, connect.isWill());
 
-        assertEquals(true, connect.isPasswordRequired());
-        assertEquals(true, connect.isUsernameRequired());
         assertEquals("username", connect.getUsername());
         assertArrayEquals(new byte[]{'p', 'a', 's', 's'}, connect.getPassword());
         assertEquals("pass", connect.getPasswordAsUTF8String());
@@ -201,9 +197,6 @@ public class Mqtt5ConnectDecoderTest extends AbstractMqtt5DecoderTest {
         assertEquals(0, connect.getKeepAlive());
         assertEquals("test", connect.getClientIdentifier());
         assertFalse(connect.isCleanStart());
-        assertFalse(connect.isPasswordRequired());
-        assertFalse(connect.isUsernameRequired());
-        assertFalse(connect.isWill());
         assertNull(connect.getWillPublish());
         assertEquals(MAXIMUM_PACKET_SIZE_NOT_SET, connect.getMaximumPacketSize());
         assertEquals(SESSION_EXPIRY_NOT_SET, connect.getSessionExpiryInterval());

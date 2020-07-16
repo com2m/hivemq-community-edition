@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,11 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions;
 
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 
 import javax.xml.bind.annotation.XmlElement;
 import javax.xml.bind.annotation.XmlRootElement;
@@ -46,6 +45,9 @@ public class HiveMQPluginEntity {
     @XmlElement(name = "priority", defaultValue = "0")
     private int priority = 0;
 
+    @XmlElement(name = "start-priority", defaultValue = "1000")
+    private int startPriority = 1000;
+
     @Nullable
     @XmlElement(name = "author")
     private String author;
@@ -54,11 +56,13 @@ public class HiveMQPluginEntity {
     public HiveMQPluginEntity() {
     }
 
-    public HiveMQPluginEntity(@NotNull final String id, @NotNull final String name, @NotNull final String version, final int priority, @Nullable final String author) {
+    public HiveMQPluginEntity(@NotNull final String id, @NotNull final String name, @NotNull final String version,
+                              final int priority, final int startPriority, @Nullable final String author) {
         this.id = id;
         this.name = name;
         this.version = version;
         this.priority = priority;
+        this.startPriority = startPriority;
         this.author = author;
     }
 
@@ -79,6 +83,10 @@ public class HiveMQPluginEntity {
 
     public int getPriority() {
         return this.priority;
+    }
+
+    public int getStartPriority() {
+        return startPriority;
     }
 
     @Nullable

@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,12 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.mqtt.message.disconnect;
 
-import com.hivemq.annotations.Immutable;
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
+import com.hivemq.extension.sdk.api.annotations.Immutable;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
+import com.hivemq.extensions.packets.disconnect.DisconnectPacketImpl;
 import com.hivemq.mqtt.message.MessageType;
 import com.hivemq.mqtt.message.mqtt5.Mqtt5UserProperties;
 import com.hivemq.mqtt.message.mqtt5.MqttMessageWithUserProperties;
@@ -29,13 +29,13 @@ import static com.hivemq.mqtt.message.connect.Mqtt5CONNECT.SESSION_EXPIRY_NOT_SE
 /**
  * @author Dominik Obermaier
  * @author Florian Limpöck
- *
  * @since 1.4
  */
 @Immutable
-public class DISCONNECT extends MqttMessageWithUserProperties.MqttMessageWithReasonCode<Mqtt5DisconnectReasonCode> implements Mqtt3DISCONNECT, Mqtt5DISCONNECT{
+public class DISCONNECT extends MqttMessageWithUserProperties.MqttMessageWithReasonCode<Mqtt5DisconnectReasonCode>
+        implements Mqtt3DISCONNECT, Mqtt5DISCONNECT {
 
-    private final String serverReference;
+    private final @Nullable String serverReference;
     private final long sessionExpiryInterval;
 
     //MQTT 3
@@ -45,11 +45,13 @@ public class DISCONNECT extends MqttMessageWithUserProperties.MqttMessageWithRea
         serverReference = null;
     }
 
-    public DISCONNECT(@NotNull final Mqtt5DisconnectReasonCode reasonCode,
-                      @Nullable final String reasonString,
-                      @NotNull final Mqtt5UserProperties userProperties,
-                      @Nullable final String serverReference,
-                      final long sessionExpiryInterval) {
+    public DISCONNECT(
+            final @NotNull Mqtt5DisconnectReasonCode reasonCode,
+            final @Nullable String reasonString,
+            final @NotNull Mqtt5UserProperties userProperties,
+            final @Nullable String serverReference,
+            final long sessionExpiryInterval) {
+
         super(reasonCode, reasonString, userProperties);
         this.serverReference = serverReference;
         this.sessionExpiryInterval = sessionExpiryInterval;
@@ -61,13 +63,21 @@ public class DISCONNECT extends MqttMessageWithUserProperties.MqttMessageWithRea
     }
 
     @Override
-    public String getServerReference() {
+    public @Nullable String getServerReference() {
         return serverReference;
     }
 
-    @NotNull
     @Override
-    public MessageType getType() {
+    public @NotNull MessageType getType() {
         return MessageType.DISCONNECT;
+    }
+
+    public static @NotNull DISCONNECT from(final @NotNull DisconnectPacketImpl packet) {
+        return new DISCONNECT(
+                Mqtt5DisconnectReasonCode.from(packet.getReasonCode()),
+                packet.getReasonString().orElse(null),
+                Mqtt5UserProperties.of(packet.getUserProperties().asInternalList()),
+                packet.getServerReference().orElse(null),
+                packet.getSessionExpiryInterval().orElse(SESSION_EXPIRY_NOT_SET));
     }
 }

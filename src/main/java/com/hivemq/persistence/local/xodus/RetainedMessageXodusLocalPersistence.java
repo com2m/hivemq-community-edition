@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,19 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.persistence.local.xodus;
 
-import com.google.common.collect.ImmutableSet;
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.bootstrap.ioc.lazysingleton.LazySingleton;
 import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.exceptions.UnrecoverableException;
-import com.hivemq.persistence.PersistenceFilter;
+import com.hivemq.migration.meta.PersistenceType;
 import com.hivemq.persistence.PersistenceStartup;
 import com.hivemq.persistence.RetainedMessage;
 import com.hivemq.persistence.local.xodus.bucket.Bucket;
+import com.hivemq.persistence.local.xodus.bucket.BucketUtils;
 import com.hivemq.persistence.payload.PublishPayloadPersistence;
 import com.hivemq.persistence.retained.RetainedMessageLocalPersistence;
 import com.hivemq.util.LocalPersistenceFileUtil;
@@ -33,15 +34,15 @@ import com.hivemq.util.PublishUtil;
 import com.hivemq.util.ThreadPreConditions;
 import jetbrains.exodus.ByteIterable;
 import jetbrains.exodus.ExodusException;
-import jetbrains.exodus.env.Cursor;
-import jetbrains.exodus.env.StoreConfig;
-import jetbrains.exodus.env.TransactionalComputable;
+import jetbrains.exodus.env.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.PostConstruct;
 import javax.inject.Inject;
+import java.io.File;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -50,7 +51,6 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static com.hivemq.persistence.local.xodus.XodusUtils.*;
 import static com.hivemq.util.ThreadPreConditions.SINGLE_WRITER_THREAD_PREFIX;
 
-
 /**
  * @author Dominik Obermaier
  * @author Christoph Schäbel
@@ -58,15 +58,18 @@ import static com.hivemq.util.ThreadPreConditions.SINGLE_WRITER_THREAD_PREFIX;
 @LazySingleton
 public class RetainedMessageXodusLocalPersistence extends XodusLocalPersistence implements RetainedMessageLocalPersistence {
 
-    private static final Logger log = LoggerFactory.getLogger(RetainedMessageXodusLocalPersistence.class);
+    private static final Logger log = LoggerFactory.getLogger(
+            RetainedMessageXodusLocalPersistence.class);
 
-    private static final String PERSISTENCE_NAME = "retained_messages";
-    private static final String PERSISTENCE_VERSION = "040000";
+    public static final String PERSISTENCE_VERSION = "040000";
 
     private final @NotNull PublishPayloadPersistence payloadPersistence;
     private final @NotNull RetainedMessageXodusSerializer serializer;
 
     private final AtomicLong retainMessageCounter = new AtomicLong(0);
+
+    @VisibleForTesting
+    final ConcurrentHashMap<Integer, PublishTopicTree> topicTrees = new ConcurrentHashMap<>();
 
     @Inject
     public RetainedMessageXodusLocalPersistence(final @NotNull LocalPersistenceFileUtil localPersistenceFileUtil,
@@ -74,11 +77,17 @@ public class RetainedMessageXodusLocalPersistence extends XodusLocalPersistence 
                                                 final @NotNull EnvironmentUtil environmentUtil,
                                                 final @NotNull PersistenceStartup persistenceStartup) {
 
-        super(environmentUtil, localPersistenceFileUtil, persistenceStartup, InternalConfigurations.PERSISTENCE_BUCKET_COUNT.get());
-
+        super(environmentUtil,
+                localPersistenceFileUtil,
+                persistenceStartup,
+                InternalConfigurations.PERSISTENCE_BUCKET_COUNT.get(),
+                //check if enabled
+                InternalConfigurations.RETAINED_MESSAGE_PERSISTENCE_TYPE.get().equals(PersistenceType.FILE));
         this.payloadPersistence = payloadPersistence;
         this.serializer = new RetainedMessageXodusSerializer();
-
+        for (int i = 0; i < bucketCount; i++) {
+            topicTrees.put(i, new PublishTopicTree());
+        }
     }
 
     @NotNull
@@ -110,10 +119,13 @@ public class RetainedMessageXodusLocalPersistence extends XodusLocalPersistence 
         super.postConstruct();
     }
 
-    protected void init() {
+    @Override
+    public void init() {
 
         try {
-            for (final Bucket bucket : buckets) {
+            for (int i = 0; i < buckets.length; i++) {
+                final Bucket bucket = buckets[i];
+                final int bucketIndex = i;
                 bucket.getEnvironment().executeInReadonlyTransaction(txn -> {
                     try (final Cursor cursor = bucket.getStore().openCursor(txn)) {
 
@@ -123,7 +135,8 @@ public class RetainedMessageXodusLocalPersistence extends XodusLocalPersistence 
                             if (payloadId != null) {
                                 payloadPersistence.incrementReferenceCounterOnBootstrap(payloadId);
                             }
-
+                            final String topic = serializer.deserializeKey(byteIterableToBytes(cursor.getKey()));
+                            topicTrees.get(bucketIndex).add(topic);
                             retainMessageCounter.incrementAndGet();
                         }
                     }
@@ -141,13 +154,16 @@ public class RetainedMessageXodusLocalPersistence extends XodusLocalPersistence 
     public void clear(final int bucketIndex) {
 
         ThreadPreConditions.startsWith(SINGLE_WRITER_THREAD_PREFIX);
+        topicTrees.put(bucketIndex, new PublishTopicTree());
 
         final Bucket bucket = buckets[bucketIndex];
 
         bucket.getEnvironment().executeInExclusiveTransaction(txn -> {
             final Cursor cursor = bucket.getStore().openCursor(txn);
             while (cursor.getNext()) {
-
+                final RetainedMessage message = serializer.deserializeValue(byteIterableToBytes(cursor.getValue()));
+                Preconditions.checkNotNull(message.getPayloadId(), "Payload ID must not be null here");
+                payloadPersistence.decrementReferenceCounter(message.getPayloadId());
                 retainMessageCounter.decrementAndGet();
                 cursor.deleteCurrent();
             }
@@ -177,6 +193,7 @@ public class RetainedMessageXodusLocalPersistence extends XodusLocalPersistence 
 
             log.trace("Removing retained message for topic {}", topic);
             bucket.getStore().delete(txn, key);
+            topicTrees.get(bucketIndex).remove(topic);
             payloadPersistence.decrementReferenceCounter(message.getPayloadId());
             retainMessageCounter.decrementAndGet();
         });
@@ -255,6 +272,7 @@ public class RetainedMessageXodusLocalPersistence extends XodusLocalPersistence 
                     log.trace("Creating new retained message for topic {}", topic);
                     //persist needs increment.
                     retainMessageCounter.incrementAndGet();
+                    topicTrees.get(bucketIndex).add(topic);
                 }
             }
         });
@@ -262,27 +280,11 @@ public class RetainedMessageXodusLocalPersistence extends XodusLocalPersistence 
 
     @NotNull
     @Override
-    public Set<String> getAllTopics(@NotNull final PersistenceFilter filter, final int bucketId) {
+    public Set<String> getAllTopics(@NotNull final String subscription, final int bucketId) {
         checkArgument(bucketId >= 0 && bucketId < bucketCount, "Bucket index out of range");
         ThreadPreConditions.startsWith(SINGLE_WRITER_THREAD_PREFIX);
 
-        final Bucket bucket = buckets[bucketId];
-        return bucket.getEnvironment().computeInReadonlyTransaction((TransactionalComputable<Set<String>>) txn -> {
-
-            final ImmutableSet.Builder<String> builder = ImmutableSet.builder();
-
-            try (final Cursor cursor = bucket.getStore().openCursor(txn)) {
-                if (cursor.getNext()) {
-                    do {
-                        final String topic = serializer.deserializeKey(byteIterableToBytes(cursor.getKey()));
-                        if (filter.match(topic)) {
-                            builder.add(topic);
-                        }
-                    } while (cursor.getNext());
-                }
-            }
-            return builder.build();
-        });
+        return topicTrees.get(bucketId).get(subscription);
     }
 
     @Override
@@ -304,12 +306,35 @@ public class RetainedMessageXodusLocalPersistence extends XodusLocalPersistence 
                             cursor.deleteCurrent();
                             payloadPersistence.decrementReferenceCounter(message.getPayloadId());
                             retainMessageCounter.decrementAndGet();
+                            topicTrees.get(bucketId).remove(serializer.deserializeKey(byteIterableToBytes(cursor.getKey())));
                         }
 
                     } while (cursor.getNext());
                 }
             }
         });
+    }
+
+    @Override
+    public void iterate(final @NotNull RetainedMessageLocalPersistence.ItemCallback callback) {
+
+        ThreadPreConditions.startsWith(SINGLE_WRITER_THREAD_PREFIX);
+
+        for (final Bucket bucket : buckets) {
+            bucket.getEnvironment().executeInReadonlyTransaction(txn -> {
+                try (final Cursor cursor = bucket.getStore().openCursor(txn)) {
+                    while (cursor.getNext()) {
+                        final RetainedMessage message = serializer.deserializeValue(byteIterableToBytes(cursor.getValue()));
+                        final String topic = serializer.deserializeKey(byteIterableToBytes(cursor.getKey()));
+                        final Long payLoadID = message.getPayloadId();
+                        //we ignore tombstones and deleted at iteration. Tombstones have null payloadId.
+                        if (payLoadID != null) {
+                            callback.onItem(topic, message);
+                        }
+                    }
+                }
+            });
+        }
     }
 
 }

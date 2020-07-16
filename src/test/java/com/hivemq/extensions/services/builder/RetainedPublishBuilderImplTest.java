@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,11 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions.services.builder;
 
-import com.hivemq.annotations.NotNull;
+import com.google.common.collect.ImmutableList;
 import com.hivemq.configuration.service.FullConfigurationService;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.packets.general.Qos;
 import com.hivemq.extension.sdk.api.packets.general.UserProperties;
 import com.hivemq.extension.sdk.api.packets.publish.PayloadFormatIndicator;
@@ -30,7 +30,6 @@ import com.hivemq.extensions.packets.general.UserPropertiesImpl;
 import com.hivemq.extensions.packets.publish.PublishPacketImpl;
 import com.hivemq.extensions.services.publish.RetainedPublishImpl;
 import com.hivemq.mqtt.message.QoS;
-import com.hivemq.mqtt.message.mqtt5.Mqtt5UserProperties;
 import com.hivemq.mqtt.message.mqtt5.MqttUserProperty;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Before;
@@ -181,7 +180,7 @@ public class RetainedPublishBuilderImplTest {
     @Test
     public void test_from_retained_publish() {
 
-        final UserPropertiesImpl userProperties = new UserPropertiesImpl(Mqtt5UserProperties.of(
+        final UserPropertiesImpl userProperties = UserPropertiesImpl.of(ImmutableList.of(
                 new MqttUserProperty("name", "value"),
                 new MqttUserProperty("name", "value2"),
                 new MqttUserProperty("name2", "val")));
@@ -281,14 +280,17 @@ public class RetainedPublishBuilderImplTest {
 
     @Test
     public void test_minimum() {
-        final RetainedPublish retainedPublish = retainedPublishBuilder.topic("topic").payload(ByteBuffer.wrap("payload".getBytes())).build();
+        final RetainedPublish retainedPublish =
+                retainedPublishBuilder.topic("topic").payload(ByteBuffer.wrap("payload".getBytes())).build();
 
         assertEquals(Qos.AT_MOST_ONCE, retainedPublish.getQos());
         assertEquals("topic", retainedPublish.getTopic());
         assertArrayEquals("payload".getBytes(), retainedPublish.getPayload().get().array());
         assertEquals(Optional.empty(), retainedPublish.getPayloadFormatIndicator());
         assertTrue(retainedPublish.getMessageExpiryInterval().isPresent());
-        assertEquals(configurationService.mqttConfiguration().maxMessageExpiryInterval(), retainedPublish.getMessageExpiryInterval().get().longValue());
+        assertEquals(
+                configurationService.mqttConfiguration().maxMessageExpiryInterval(),
+                retainedPublish.getMessageExpiryInterval().get().longValue());
         assertEquals(Optional.empty(), retainedPublish.getResponseTopic());
         assertEquals(Optional.empty(), retainedPublish.getCorrelationData());
         assertEquals(Optional.empty(), retainedPublish.getContentType());
@@ -368,13 +370,12 @@ public class RetainedPublishBuilderImplTest {
         @NotNull
         @Override
         public UserProperties getUserProperties() {
-            return new UserPropertiesImpl(Mqtt5UserProperties.of(
+            return UserPropertiesImpl.of(ImmutableList.of(
                     new MqttUserProperty("name", "value"),
                     new MqttUserProperty("name", "value2"),
                     new MqttUserProperty("name2", "val")));
         }
     }
-
 
     private class TestPublish implements Publish {
 
