@@ -1,16 +1,29 @@
-# We use multi-stage here to unzip in an initial layer so we don't have to COPY and then RUN unzip (two layers). ADD can lead to larger layers as well.
-FROM busybox AS unzip
+FROM gradle:jdk11 AS builder
 
-ARG HIVEMQ_VERSION=2019.1
+# Make tmp directory and set workdir.
+RUN mkdir /tmp/hivemq-source
+WORKDIR /tmp/hivemq-source
+ARG HIVEMQ_VERSION=2020.3
 
-COPY hivemq-ce-${HIVEMQ_VERSION}.zip /
+COPY ./ ./
 
-RUN unzip /hivemq-ce-${HIVEMQ_VERSION}.zip
+# Install dos2unix (for docker issue).
+RUN apt-get -o Acquire::Check-Date=false update
+RUN apt-get install -y apt-utils
+RUN apt install dos2unix
+RUN dos2unix ./gradlew
 
-FROM openjdk:11-jre-slim
+# Copy source code and build HiveMQ.
+RUN whoami
+RUN ./gradlew clean packaging -x test && ls -la && ls -la ./build && ls -la ./build/zip
 
-ARG HIVEMQ_VERSION=2019.1
+# Unzip HiveMQ and run dos2unix on every file (issue with docker).
+RUN unzip ./build/zip/hivemq-ce-${HIVEMQ_VERSION}.zip -d ./build/zip/
+RUN find ./build/zip/hivemq-ce-${HIVEMQ_VERSION} -type f -print0 | xargs -0 dos2unix
 
+FROM docker.com2m.de/iot/core/iot-base-image:adoptopenjdk-jre-11.0.5_10-openj9-0.17.0-alpine-3
+
+ARG HIVEMQ_VERSION=2020.3
 ENV HIVEMQ_GID=10000
 ENV HIVEMQ_UID=10000
 
@@ -18,15 +31,11 @@ ENV HIVEMQ_UID=10000
 ENV JAVA_OPTS "-XX:+UnlockExperimentalVMOptions -XX:+UseNUMA"
 
 # Default allow all extension, set this to false to disable it
-ENV HIVEMQ_ALLOW_ALL_CLIENTS "true"
-
-# gosu for root step-down to user-privileged process
-ENV GOSU_VERSION 1.11
+ENV HIVEMQ_ALLOW_ALL_CLIENTS "false"
 
 # Set locale
 ENV LANG=en_US.UTF-8
 
-# gosu setup
 RUN set -x \
         && apt-get update && apt-get install -y --no-install-recommends curl gnupg-agent gnupg dirmngr \
         && curl -fSL "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$(dpkg --print-architecture)" -o /usr/local/bin/gosu \
@@ -40,17 +49,30 @@ RUN set -x \
         && gosu nobody true \
         && apt-get purge -y gpg dirmngr && rm -rf /var/lib/apt/lists/*
 
-COPY config.xml /opt/config.xml
-COPY docker-entrypoint.sh /opt/docker-entrypoint.sh
+COPY docker/config.xml /opt/config.xml
+COPY docker/docker-entrypoint.sh /opt/docker-entrypoint.sh
 
 # HiveMQ setup
-COPY --from=unzip /hivemq-ce-${HIVEMQ_VERSION} /opt/hivemq-ce-${HIVEMQ_VERSION}
-RUN ln -s /opt/hivemq-ce-${HIVEMQ_VERSION} /opt/hivemq \
-    && mv /opt/config.xml /opt/hivemq/conf/config.xml \
-    && groupadd --gid ${HIVEMQ_GID} hivemq \
-    && useradd -g hivemq -d /opt/hivemq -s /bin/bash --uid ${HIVEMQ_UID} hivemq \
-    && chmod -R 775 /opt \
+COPY --from=builder /tmp/hivemq-source/build/zip/hivemq-ce-${HIVEMQ_VERSION} /opt/hivemq-ce-${HIVEMQ_VERSION}
+RUN ln -s /opt/hivemq-ce-${HIVEMQ_VERSION} /opt/hivemq
+
+RUN ls -la /opt
+RUN ls -la /opt/hivemq-ce-${HIVEMQ_VERSION}
+
+WORKDIR /opt/hivemq
+
+# Configure user and group for HiveMQ
+RUN addgroup -g ${HIVEMQ_GID} hivemq \
+    && adduser -D -G hivemq -h /opt/hivemq-ce-${HIVEMQ_VERSION} --u ${HIVEMQ_UID} hivemq \
+    && chown -R hivemq:hivemq /opt/hivemq-ce-${HIVEMQ_VERSION} \
+    && chmod -R 777 /opt \
     && chmod +x /opt/hivemq/bin/run.sh /opt/docker-entrypoint.sh
+
+# Substitute eval for exec and replace OOM flag if necessary (for older releases). This is necessary for proper signal propagation
+RUN sed -i -e 's|eval \\"java\\" "$HOME_OPT" "$JAVA_OPTS" -jar "$JAR_PATH"|exec "java" $HOME_OPT $JAVA_OPTS -jar "$JAR_PATH"|' /opt/hivemq/bin/run.sh && \
+    sed -i -e "s|-XX:OnOutOfMemoryError='sleep 5; kill -9 %p'|-XX:+CrashOnOutOfMemoryError|" /opt/hivemq/bin/run.sh
+
+RUN sed -i -e 's|exec "java" "${HOME_OPT}" "${HEAPDUMP_PATH_OPT}" ${JAVA_OPTS} -jar "${JAR_PATH}"|exec "java" "${HOME_OPT}" "${HEAPDUMP_PATH_OPT}" ${JAVA_OPTS} -XX:OnOutOfMemoryError="kill 0" -jar "${JAR_PATH}"|' /opt/hivemq/bin/run.sh
 
 # Make broker data persistent throughout stop/start cycles
 VOLUME /opt/hivemq/data
@@ -66,5 +88,5 @@ EXPOSE 8000
 
 WORKDIR /opt/hivemq
 
-ENTRYPOINT ["/opt/docker-entrypoint.sh"]
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["/opt/hivemq/bin/run.sh"]
