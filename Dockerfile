@@ -40,8 +40,8 @@ RUN set -x \
 	&& apk update \
 	&& apk add --no-cache tini
 
-COPY docker/config.xml /opt/config.xml
-COPY docker/docker-entrypoint.sh /opt/docker-entrypoint.sh
+COPY config.xml /opt/config.xml
+COPY docker-entrypoint.sh /opt/docker-entrypoint.sh
 
 # HiveMQ setup
 COPY --from=builder /tmp/hivemq-source/build/zip/hivemq-ce-${HIVEMQ_VERSION} /opt/hivemq-ce-${HIVEMQ_VERSION}
