@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,16 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.common.shutdown;
 
 import com.google.common.collect.Multimap;
 import com.google.inject.AbstractModule;
 import com.google.inject.Guice;
 import com.google.inject.Injector;
-import com.hivemq.annotations.NotNull;
 import com.hivemq.configuration.info.SystemInformation;
 import com.hivemq.configuration.info.SystemInformationImpl;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -34,7 +33,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertSame;
 
 public class ShutdownHooksTest {
-
 
     private ShutdownHooks shutdownHooks;
 
@@ -73,7 +71,8 @@ public class ShutdownHooksTest {
     @Test
     public void test_added_async_shutdown_hook() throws Exception {
 
-        final HiveMQShutdownHook shutdownHook = createShutdownHook("name", HiveMQShutdownHook.Priority.DOES_NOT_MATTER, true);
+        final HiveMQShutdownHook shutdownHook =
+                createShutdownHook("name", HiveMQShutdownHook.Priority.DOES_NOT_MATTER, true);
         shutdownHooks.add(shutdownHook);
 
         assertEquals(0, shutdownHooks.getRegistry().size());
@@ -83,7 +82,8 @@ public class ShutdownHooksTest {
     @Test
     public void test_remove_async_shutdown_hook() throws Exception {
 
-        final HiveMQShutdownHook shutdownHook = createShutdownHook("name", HiveMQShutdownHook.Priority.DOES_NOT_MATTER, true);
+        final HiveMQShutdownHook shutdownHook =
+                createShutdownHook("name", HiveMQShutdownHook.Priority.DOES_NOT_MATTER, true);
         shutdownHooks.add(shutdownHook);
 
         assertEquals(0, shutdownHooks.getRegistry().size());
@@ -95,7 +95,8 @@ public class ShutdownHooksTest {
 
     @Test
     public void test_added_sync_shutdown_hook() throws Exception {
-        final HiveMQShutdownHook shutdownHook = createShutdownHook("name", HiveMQShutdownHook.Priority.DOES_NOT_MATTER, false);
+        final HiveMQShutdownHook shutdownHook =
+                createShutdownHook("name", HiveMQShutdownHook.Priority.DOES_NOT_MATTER, false);
         shutdownHooks.add(shutdownHook);
 
         assertEquals(1, shutdownHooks.getRegistry().size());
@@ -109,7 +110,8 @@ public class ShutdownHooksTest {
 
     @Test
     public void test_removed_sync_shutdown_hook() throws Exception {
-        final HiveMQShutdownHook shutdownHook = createShutdownHook("name", HiveMQShutdownHook.Priority.DOES_NOT_MATTER, false);
+        final HiveMQShutdownHook shutdownHook =
+                createShutdownHook("name", HiveMQShutdownHook.Priority.DOES_NOT_MATTER, false);
         shutdownHooks.add(shutdownHook);
 
         assertEquals(1, shutdownHooks.getRegistry().size());
@@ -123,7 +125,8 @@ public class ShutdownHooksTest {
 
     @Test
     public void test_added_sync_shutdown_hooks_priorities() throws Exception {
-        final HiveMQShutdownHook shutdownHook = createShutdownHook("hook1", HiveMQShutdownHook.Priority.DOES_NOT_MATTER, false);
+        final HiveMQShutdownHook shutdownHook =
+                createShutdownHook("hook1", HiveMQShutdownHook.Priority.DOES_NOT_MATTER, false);
         final HiveMQShutdownHook shutdownHook2 = createShutdownHook("hook2", HiveMQShutdownHook.Priority.FIRST, false);
         final HiveMQShutdownHook shutdownHook3 = createShutdownHook("hook3", HiveMQShutdownHook.Priority.HIGH, false);
         shutdownHooks.add(shutdownHook);
@@ -144,7 +147,8 @@ public class ShutdownHooksTest {
 
     @Test
     public void test_added_sync_shutdown_hooks_priorities_same_priorities() throws Exception {
-        final HiveMQShutdownHook shutdownHook = createShutdownHook("hook1", HiveMQShutdownHook.Priority.DOES_NOT_MATTER, false);
+        final HiveMQShutdownHook shutdownHook =
+                createShutdownHook("hook1", HiveMQShutdownHook.Priority.DOES_NOT_MATTER, false);
         final HiveMQShutdownHook shutdownHook2 = createShutdownHook("hook2", HiveMQShutdownHook.Priority.HIGH, false);
         final HiveMQShutdownHook shutdownHook3 = createShutdownHook("hook3", HiveMQShutdownHook.Priority.HIGH, false);
         final HiveMQShutdownHook shutdownHook4 = createShutdownHook("hook4", HiveMQShutdownHook.Priority.HIGH, false);
@@ -186,8 +190,8 @@ public class ShutdownHooksTest {
 
     }
 
-
-    private HiveMQShutdownHook createShutdownHook(final String name, final HiveMQShutdownHook.Priority priority, final boolean isAsynchronous) {
+    private HiveMQShutdownHook createShutdownHook(
+            final String name, final HiveMQShutdownHook.Priority priority, final boolean isAsynchronous) {
         return new HiveMQShutdownHook() {
             @NotNull
             @Override

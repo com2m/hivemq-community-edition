@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,14 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.mqtt.handler.publish;
 
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.configuration.service.MqttConfigurationService;
 import com.hivemq.extension.sdk.api.packets.auth.DefaultAuthorizationBehaviour;
 import com.hivemq.extension.sdk.api.packets.auth.ModifiableDefaultPermissions;
@@ -195,13 +194,13 @@ public class IncomingPublishService {
                 break;
             case AT_LEAST_ONCE:
                 final PUBACK puback = new PUBACK(publish.getPacketIdentifier(),
-                        reasonCode != null ? Mqtt5PubAckReasonCode.fromAckReasonCode(reasonCode) : Mqtt5PubAckReasonCode.NOT_AUTHORIZED,
+                        reasonCode != null ? Mqtt5PubAckReasonCode.from(reasonCode) : Mqtt5PubAckReasonCode.NOT_AUTHORIZED,
                         reasonString != null ? reasonString : reason, Mqtt5UserProperties.NO_USER_PROPERTIES);
                 ctx.writeAndFlush(puback);
                 break;
             case EXACTLY_ONCE:
                 final PUBREC pubrec = new PUBREC(publish.getPacketIdentifier(),
-                        reasonCode != null ? Mqtt5PubRecReasonCode.fromAckReasonCode(reasonCode) : Mqtt5PubRecReasonCode.NOT_AUTHORIZED,
+                        reasonCode != null ? Mqtt5PubRecReasonCode.from(reasonCode) : Mqtt5PubRecReasonCode.NOT_AUTHORIZED,
                         reasonString != null ? reasonString : reason, Mqtt5UserProperties.NO_USER_PROPERTIES);
                 ctx.writeAndFlush(pubrec);
                 break;

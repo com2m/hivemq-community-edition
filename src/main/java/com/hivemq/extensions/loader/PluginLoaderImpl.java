@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,17 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions.loader;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.google.common.reflect.TypeToken;
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
 import com.hivemq.annotations.ReadOnly;
 import com.hivemq.extension.sdk.api.ExtensionMain;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.extensions.*;
 import com.hivemq.extensions.classloader.IsolatedPluginClassloader;
 import com.hivemq.extensions.config.HiveMQPluginXMLReader;
@@ -54,22 +53,19 @@ import static com.google.common.base.Preconditions.checkNotNull;
 public class PluginLoaderImpl implements PluginLoader {
 
     private static final Logger log = LoggerFactory.getLogger(PluginLoaderImpl.class);
-    @NotNull
-    private final ClassServiceLoader serviceLoader;
-    @NotNull
-    private final HiveMQExtensions hiveMQExtensions;
-    @NotNull
-    private final HiveMQPluginFactory hiveMQPluginFactory;
-    @NotNull
-    private final PluginStaticInitializer staticInitializer;
+
+    private final @NotNull ClassServiceLoader serviceLoader;
+    private final @NotNull HiveMQExtensions hiveMQExtensions;
+    private final @NotNull HiveMQPluginFactory hiveMQPluginFactory;
+    private final @NotNull PluginStaticInitializer staticInitializer;
 
     @Inject
     @VisibleForTesting
     public PluginLoaderImpl(
-            @NotNull final ClassServiceLoader serviceLoader,
-            @NotNull final HiveMQExtensions hiveMQExtensions,
-            @NotNull final HiveMQPluginFactory hiveMQPluginFactory,
-            @NotNull final PluginStaticInitializer staticInitializer) {
+            final @NotNull ClassServiceLoader serviceLoader,
+            final @NotNull HiveMQExtensions hiveMQExtensions,
+            final @NotNull HiveMQPluginFactory hiveMQPluginFactory,
+            final @NotNull PluginStaticInitializer staticInitializer) {
         this.serviceLoader = serviceLoader;
         this.hiveMQExtensions = hiveMQExtensions;
         this.hiveMQPluginFactory = hiveMQPluginFactory;
@@ -79,15 +75,23 @@ public class PluginLoaderImpl implements PluginLoader {
     @ReadOnly
     @NotNull
     public <T extends ExtensionMain> ImmutableList<HiveMQPluginEvent> loadPlugins(
-            @NotNull final Path pluginFolder,
-            @NotNull final Class<T> desiredPluginClass) {
+            @NotNull final Path pluginFolder, final boolean permissive, @NotNull final Class<T> desiredPluginClass) {
 
         checkNotNull(desiredPluginClass, "extension class must not be null");
         checkNotNull(pluginFolder, "extension folder must not be null");
 
-        checkArgument(Files.exists(pluginFolder), "%s does not exist", pluginFolder.toAbsolutePath());
-        checkArgument(Files.isReadable(pluginFolder), "%s is not readable", pluginFolder.toAbsolutePath());
-        checkArgument(Files.isDirectory(pluginFolder), "%s is not a directory", pluginFolder.toAbsolutePath());
+
+        try {
+            checkArgument(Files.exists(pluginFolder), "%s does not exist", pluginFolder.toAbsolutePath());
+            checkArgument(Files.isReadable(pluginFolder), "%s is not readable", pluginFolder.toAbsolutePath());
+            checkArgument(Files.isDirectory(pluginFolder), "%s is not a directory", pluginFolder.toAbsolutePath());
+        } catch (final @NotNull IllegalArgumentException exception) {
+            if (permissive) {
+                log.warn("Extension folder could not be used: \"{}\"", exception.getMessage());
+                return ImmutableList.of();
+            }
+            throw exception;
+        }
 
         final ImmutableList.Builder<HiveMQPluginEvent> extensions = ImmutableList.builder();
         try {
@@ -241,7 +245,8 @@ public class PluginLoaderImpl implements PluginLoader {
         //check if folder is disabled
         if (!folderEnabled) {
             //plugin is always enabled here
-            return new HiveMQPluginEvent(HiveMQPluginEvent.Change.DISABLE, xmlEntity.getId(), pluginFolder);
+            return new HiveMQPluginEvent(
+                    HiveMQPluginEvent.Change.DISABLE, xmlEntity.getId(), xmlEntity.getStartPriority(), pluginFolder);
         }
 
         if (hiveMQExtensions.isHiveMQPluginIDKnown(xmlEntity.getId()) && pluginEnabled) {
@@ -260,7 +265,9 @@ public class PluginLoaderImpl implements PluginLoader {
 
         hiveMQExtensions.addHiveMQPlugin(hiveMQExtension);
 
-        return new HiveMQPluginEvent(HiveMQPluginEvent.Change.ENABLE, hiveMQExtension.getId(), pluginFolder);
+        return new HiveMQPluginEvent(
+                HiveMQPluginEvent.Change.ENABLE, hiveMQExtension.getId(), hiveMQExtension.getStartPriority(),
+                pluginFolder);
     }
 
     @Nullable <T extends ExtensionMain> HiveMQExtension loadSinglePlugin(
@@ -313,7 +320,7 @@ public class PluginLoaderImpl implements PluginLoader {
             return null;
         } catch (final Exception e) {
             log.warn("Extension {} cannot be loaded. The class {} cannot be instantiated, reason: {}",
-                    pluginFolder.toAbsolutePath().toString(), desiredClass.getCanonicalName(),
+                    pluginFolder.toAbsolutePath().toString(),
                     pluginMainClass.getCanonicalName(), e.getMessage());
             log.debug("Original exception:", e);
             return null;

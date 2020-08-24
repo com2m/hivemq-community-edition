@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,20 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
-import com.hivemq.annotations.ThreadSafe;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
+import com.hivemq.extension.sdk.api.annotations.ThreadSafe;
 import com.hivemq.common.annotations.GuardedBy;
 import com.hivemq.extension.sdk.api.client.parameter.ServerInformation;
 import com.hivemq.extensions.classloader.IsolatedPluginClassloader;
-import com.hivemq.extensions.parameters.start.ExtensionStartOutputImpl;
-import com.hivemq.extensions.parameters.start.ExtensionStartStopInputImpl;
-import com.hivemq.extensions.parameters.stop.ExtensionStopOutputImpl;
+import com.hivemq.extensions.parameter.ExtensionStartOutputImpl;
+import com.hivemq.extensions.parameter.ExtensionStartStopInputImpl;
+import com.hivemq.extensions.parameter.ExtensionStopOutputImpl;
 import com.hivemq.util.Checkpoints;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -250,7 +249,7 @@ public class HiveMQExtensions {
     /**
      * Returns false if the extension is not known to HiveMQ or not enabled
      */
-    public boolean extensionStop(@NotNull final String extensionId, final boolean disable) {
+    public boolean extensionStop(@NotNull final String extensionId, boolean disable) {
         checkNotNull(extensionId, "every extension must have an id");
 
         final HiveMQExtension plugin;
@@ -287,6 +286,7 @@ public class HiveMQExtensions {
             log.warn("Uncaught exception was thrown from extension with id \"" + plugin.getId() +
                     "\" on extension stop. " +
                     "Extensions are responsible on their own to handle exceptions.", t);
+            disable = true;
 
         } finally {
             Thread.currentThread().setContextClassLoader(previousClassLoader);

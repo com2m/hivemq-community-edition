@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,12 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions;
 
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
 import com.hivemq.extension.sdk.api.ExtensionMain;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.extension.sdk.api.parameter.ExtensionStartInput;
 import com.hivemq.extension.sdk.api.parameter.ExtensionStartOutput;
 import com.hivemq.extension.sdk.api.parameter.ExtensionStopInput;
@@ -47,6 +46,7 @@ public class HiveMQExtensionImpl implements HiveMQExtension {
     private final @Nullable String author;
     private final @NotNull Path pluginFolderPath;
     private final int priority;
+    private final int startPriority;
     private final @NotNull AtomicBoolean enabled;
     private @Nullable ExtensionMain extensionMain;
     private @Nullable String previousVersion;
@@ -61,6 +61,8 @@ public class HiveMQExtensionImpl implements HiveMQExtension {
         this.author = pluginEntity.getAuthor();
         this.pluginFolderPath = pluginFolderPath;
         this.priority = pluginEntity.getPriority();
+        this.startPriority = pluginEntity.getStartPriority();
+
         this.enabled = new AtomicBoolean(enabled);
         this.extensionMain = extensionMain;
     }
@@ -93,6 +95,11 @@ public class HiveMQExtensionImpl implements HiveMQExtension {
     @Override
     public int getPriority() {
         return priority;
+    }
+
+    @Override
+    public int getStartPriority() {
+        return startPriority;
     }
 
     @Override

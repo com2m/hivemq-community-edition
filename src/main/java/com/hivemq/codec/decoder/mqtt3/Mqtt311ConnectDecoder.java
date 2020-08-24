@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,14 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.codec.decoder.mqtt3;
 
 import com.hivemq.bootstrap.ioc.lazysingleton.LazySingleton;
 import com.hivemq.codec.decoder.AbstractMqttConnectDecoder;
 import com.hivemq.configuration.HivemqId;
 import com.hivemq.configuration.service.FullConfigurationService;
-import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.logging.EventLog;
 import com.hivemq.mqtt.handler.connack.MqttConnacker;
 import com.hivemq.mqtt.handler.disconnect.Mqtt3ServerDisconnector;
@@ -232,10 +230,7 @@ public class Mqtt311ConnectDecoder extends AbstractMqttConnectDecoder {
                 .withPassword(password)
                 .withCleanStart(isCleanSessionFlag)
                 .withSessionExpiryInterval(isCleanSessionFlag ? 0 : maxSessionExpiryInterval)
-                .withKeepAliveTimer(keepAlive)
-                .withPasswordRequired(isPasswordFlag)
-                .withUsernameRequired(isUsernameFlag)
-                .withWill(isWillFlag)
+                .withKeepAlive(keepAlive)
                 .withWillPublish(willPublish).build();
     }
 

@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,14 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.mqtt.message.subscribe;
 
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.extension.sdk.api.packets.subscribe.Subscription;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.mqtt5.Mqtt5RetainHandling;
+import com.hivemq.persistence.Sizable;
+import com.hivemq.util.ObjectMemoryEstimation;
 
 import java.io.Serializable;
 import java.util.Objects;
@@ -35,7 +36,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
  * @author Florian Limpöck
  * @since 1.4
  */
-public class Topic implements Serializable, Comparable<Topic>, Mqtt3Topic, Mqtt5Topic {
+public class Topic implements Serializable, Comparable<Topic>, Mqtt3Topic, Mqtt5Topic, Sizable {
 
     /**
      * The default qos to work with.
@@ -51,6 +52,8 @@ public class Topic implements Serializable, Comparable<Topic>, Mqtt3Topic, Mqtt5
     private final boolean retainAsPublished;
     private final @NotNull Mqtt5RetainHandling retainHandling;
     private final @Nullable Integer subscriptionIdentifier;
+
+    private int sizeInMemory = SIZE_NOT_CALCULATED;
 
     //MQTT 5 Topic
     public Topic(final @NotNull String topic,
@@ -176,5 +179,26 @@ public class Topic implements Serializable, Comparable<Topic>, Mqtt3Topic, Mqtt5
     @Override
     public int compareTo(final @NotNull Topic o) {
         return this.topic.compareTo(o.getTopic());
+    }
+
+
+    @Override
+    public int getEstimatedSize() {
+
+        if (sizeInMemory != SIZE_NOT_CALCULATED) {
+            return sizeInMemory;
+        }
+        int size = 0;
+
+        size += ObjectMemoryEstimation.objectShellSize();
+        size += ObjectMemoryEstimation.stringSize(topic);
+        size += ObjectMemoryEstimation.enumSize(); // QoS
+        size += ObjectMemoryEstimation.booleanSize(); // no local
+        size += ObjectMemoryEstimation.booleanSize(); // retain as published
+        size += ObjectMemoryEstimation.enumSize(); // retain handling
+        size += ObjectMemoryEstimation.intWrapperSize(); // sub id
+
+        sizeInMemory = size;
+        return sizeInMemory;
     }
 }

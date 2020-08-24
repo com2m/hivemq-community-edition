@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,12 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions.handler;
 
-import com.codahale.metrics.MetricRegistry;
 import com.google.common.collect.Lists;
-import com.hivemq.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.extension.sdk.api.async.Async;
@@ -47,7 +45,6 @@ import com.hivemq.mqtt.message.suback.SUBACK;
 import com.hivemq.mqtt.message.subscribe.SUBSCRIBE;
 import com.hivemq.mqtt.message.subscribe.Topic;
 import com.hivemq.util.ChannelAttributes;
-import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
@@ -78,6 +75,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
@@ -126,7 +124,7 @@ public class IncomingSubscribeHandlerTest {
         messageAtomicReference = new AtomicReference<>();
         pluginAuthorizerService = new TestAuthService(messageAtomicReference);
 
-        pluginTaskExecutorService = new PluginTaskExecutorServiceImpl(() -> executor1);
+        pluginTaskExecutorService = new PluginTaskExecutorServiceImpl(() -> executor1, mock(ShutdownHooks.class));
         incomingSubscribeHandler = new IncomingSubscribeHandler(pluginTaskExecutorService, asyncer, hiveMQExtensions, pluginAuthorizerService, configurationService);
 
         createChannel();
@@ -355,7 +353,7 @@ public class IncomingSubscribeHandlerTest {
         assertTrue(subackLatch.await(5, TimeUnit.SECONDS));
     }
 
-    @Test(timeout = 500000)
+    @Test(timeout = 5000)
     public void test_read_subscribe_extension_null() throws Exception {
 
         final ClientContextImpl clientContext = new ClientContextImpl(hiveMQExtensions, new ModifiableDefaultPermissionsImpl());
@@ -381,7 +379,7 @@ public class IncomingSubscribeHandlerTest {
             }
         });
 
-        when(hiveMQExtensions.getExtensionForClassloader(any(IsolatedPluginClassloader.class))).thenReturn(plugin, plugin, null);
+        when(hiveMQExtensions.getExtensionForClassloader(any(IsolatedPluginClassloader.class))).thenReturn(null);
 
         channel.writeInbound(new SUBSCRIBE(1, new Topic("topic", QoS.AT_LEAST_ONCE, true, true, Mqtt5RetainHandling.SEND, 1)));
 

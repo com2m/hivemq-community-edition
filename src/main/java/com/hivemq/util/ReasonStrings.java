@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.util;
 
 /**
@@ -125,7 +124,25 @@ public class ReasonStrings {
 
     public static final String DISCONNECT_SUBSCRIPTION_IDENTIFIERS_NOT_SUPPORTED = "Disconnecting client. SUBSCRIBE containing subscription identifiers was sent. The broker does not allow this.";
 
+    public static final String DISCONNECT_SESSION_TAKEN_OVER = "Another client connected with the same client id.";
+
     public static final String SUBACK_EXTENSION_PREVENTED = "SUBSCRIBE prevented by an extension.";
+    public static final String UNSUBACK_EXTENSION_PREVENTED = "UNSUBSCRIBE prevented by an extension.";
+
+    public static final String AUTH_FAILED = "Authentication failed";
+    public static final String RE_AUTH_FAILED = "Re-authentication failed";
+    public static final String AUTH_FAILED_NO_AUTHENTICATOR = "Authentication failed, no authenticator registered";
+    public static final String RE_AUTH_FAILED_NO_AUTHENTICATOR = "Re-authentication failed, no authenticator registered";
+    public static final String AUTH_FAILED_CLIENT_TIMEOUT = "Authentication failed, timeout before the client provided required authentication data";
+    public static final String RE_AUTH_FAILED_CLIENT_TIMEOUT = "Re-authentication failed, timeout before the client provided required authentication data";
+    public static final String AUTH_FAILED_EXTENSION_TIMEOUT = "Authentication failed, authenticator timed out";
+    public static final String RE_AUTH_FAILED_EXTENSION_TIMEOUT = "Re-authentication failed, authenticator timed out";
+    public static final String AUTH_FAILED_UNDECIDED = "Authentication failed, authenticator did not decide authenticity";
+    public static final String RE_AUTH_FAILED_UNDECIDED = "Re-authentication failed, authenticator did not decide authenticity";
+    public static final String AUTH_FAILED_EXCEPTION = "Authentication failed, exception in authenticator";
+    public static final String RE_AUTH_FAILED_EXCEPTION = "Re-authentication failed, exception in authenticator";
+    public static final String AUTH_FAILED_SEND_EXCEPTION = "Authentication failed, could not send AUTH to client";
+    public static final String RE_AUTH_FAILED_SEND_EXCEPTION = "Re-authentication failed, could not send AUTH to client";
 
     private ReasonStrings() {
         //Don't instantiate

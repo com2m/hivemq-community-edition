@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,14 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions.handler;
 
 import com.google.common.util.concurrent.Futures;
+import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.configuration.info.SystemInformationImpl;
 import com.hivemq.configuration.service.impl.listener.ListenerConfigurationService;
 import com.hivemq.extension.sdk.api.auth.parameter.TopicPermission;
 import com.hivemq.extension.sdk.api.services.intializer.ClientInitializer;
+import com.hivemq.extensions.HiveMQExtension;
 import com.hivemq.extensions.HiveMQExtensions;
 import com.hivemq.extensions.classloader.IsolatedPluginClassloader;
 import com.hivemq.extensions.client.parameter.ServerInformationImpl;
@@ -34,9 +35,9 @@ import com.hivemq.mqtt.handler.connack.MqttConnacker;
 import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.connack.CONNACK;
-import com.hivemq.mqtt.message.connack.Mqtt3ConnAckReturnCode;
 import com.hivemq.mqtt.message.connect.CONNECT;
 import com.hivemq.mqtt.message.connect.MqttWillPublish;
+import com.hivemq.mqtt.message.mqtt5.Mqtt5UserProperties;
 import com.hivemq.mqtt.message.reason.Mqtt5ConnAckReasonCode;
 import com.hivemq.persistence.clientsession.ClientSessionPersistence;
 import com.hivemq.util.ChannelAttributes;
@@ -95,7 +96,13 @@ public class PluginInitializerHandlerTest {
     private InitializersImpl initializers;
 
     @Mock
+    private IsolatedPluginClassloader classloader1;
+
+    @Mock
     private HiveMQExtensions hiveMQExtensions;
+
+    @Mock
+    private HiveMQExtension plugin;
 
     @Mock
     private ClientSessionPersistence clientSessionPersistence;
@@ -122,7 +129,7 @@ public class PluginInitializerHandlerTest {
         when(channelHandlerContext.channel()).thenReturn(embeddedChannel);
         when(channelHandlerContext.executor()).thenReturn(ImmediateEventExecutor.INSTANCE);
 
-        pluginTaskExecutorService = new PluginTaskExecutorServiceImpl(() -> executor1);
+        pluginTaskExecutorService = new PluginTaskExecutorServiceImpl(() -> executor1, mock(ShutdownHooks.class));
         pluginInitializerHandler = new PluginInitializerHandler(initializers, pluginTaskExecutorService,
                 new ServerInformationImpl(new SystemInformationImpl(), listenerConfigurationService),
                 hiveMQExtensions, clientSessionPersistence, mqttConnacker);
@@ -182,37 +189,13 @@ public class PluginInitializerHandlerTest {
 
         when(initializers.getClientInitializerMap()).thenReturn(createClientInitializerMap());
 
+        channelHandlerContext.channel().attr(ChannelAttributes.AUTH_PERMISSIONS).set(new ModifiableDefaultPermissionsImpl());
+
         pluginInitializerHandler.write(channelHandlerContext, TestMessageUtil.createFullMqtt5Connack(), channelPromise);
 
 
         verify(initializers, timeout(5000).times(1)).getClientInitializerMap();
         verify(channelHandlerContext, timeout(5000)).writeAndFlush(any(Object.class), eq(channelPromise));
-
-    }
-
-    @Test(timeout = 10000)
-    public void test_write_connack_fire_initialize_channel_null() throws Exception {
-
-        when(initializers.getClientInitializerMap()).thenReturn(createClientInitializerMap());
-
-        final EmbeddedChannel embeddedChannel = new EmbeddedChannel();
-        embeddedChannel.attr(ChannelAttributes.CLIENT_ID).set("test_client");
-        embeddedChannel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-        when(channelHandlerContext.channel())
-                .thenReturn(embeddedChannel)
-                .thenReturn(embeddedChannel)
-                .thenReturn(embeddedChannel)
-                .thenReturn(embeddedChannel)
-                .thenReturn(embeddedChannel)
-                .thenReturn(embeddedChannel)
-                .thenReturn(embeddedChannel)
-                .thenReturn(null);
-
-        pluginInitializerHandler.write(channelHandlerContext, TestMessageUtil.createFullMqtt5Connack(), channelPromise);
-
-        verify(initializers, timeout(5000).times(1)).getClientInitializerMap();
-        verify(channelHandlerContext, timeout(5000).times(1)).writeAndFlush(any(Object.class), eq(channelPromise));
-        assertNull(embeddedChannel.attr(ChannelAttributes.PREVENT_LWT).get());
 
     }
 
@@ -240,7 +223,6 @@ public class PluginInitializerHandlerTest {
                 .withQos(QoS.AT_LEAST_ONCE).withPayload(new byte[]{1, 2, 3}).build();
 
         final CONNECT connect = new CONNECT.Mqtt5Builder().withClientIdentifier("test-client")
-                .withWill(true)
                 .withWillPublish(willPublish)
                 .build();
 
@@ -254,7 +236,7 @@ public class PluginInitializerHandlerTest {
         pluginInitializerHandler.write(channelHandlerContext, TestMessageUtil.createFullMqtt5Connack(), channelPromise);
 
         verify(mqttConnacker, timeout(5000)).connackError(any(Channel.class), anyString(), anyString(),
-                eq(Mqtt5ConnAckReasonCode.NOT_AUTHORIZED), eq(Mqtt3ConnAckReturnCode.REFUSED_NOT_AUTHORIZED), anyString());
+                eq(Mqtt5ConnAckReasonCode.NOT_AUTHORIZED), anyString(), eq(Mqtt5UserProperties.NO_USER_PROPERTIES), eq(true));
 
         assertEquals(true, embeddedChannel.attr(ChannelAttributes.PREVENT_LWT).get());
     }
@@ -270,7 +252,6 @@ public class PluginInitializerHandlerTest {
                 .withQos(QoS.AT_LEAST_ONCE).withPayload(new byte[]{1, 2, 3}).build();
 
         final CONNECT connect = new CONNECT.Mqtt5Builder().withClientIdentifier("test-client")
-                .withWill(true)
                 .withWillPublish(willPublish)
                 .build();
 

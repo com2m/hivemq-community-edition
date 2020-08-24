@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,13 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.codec.decoder.mqtt5;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
 import com.hivemq.bootstrap.ioc.lazysingleton.LazySingleton;
 import com.hivemq.codec.decoder.AbstractMqttConnectDecoder;
 import com.hivemq.codec.encoder.mqtt5.Mqtt5PayloadFormatIndicator;
@@ -27,6 +24,8 @@ import com.hivemq.codec.encoder.mqtt5.MqttBinaryData;
 import com.hivemq.codec.encoder.mqtt5.MqttVariableByteInteger;
 import com.hivemq.configuration.HivemqId;
 import com.hivemq.configuration.service.FullConfigurationService;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.mqtt.handler.connack.MqttConnacker;
 import com.hivemq.mqtt.handler.disconnect.Mqtt5ServerDisconnector;
 import com.hivemq.mqtt.message.QoS;
@@ -76,7 +75,7 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
         Preconditions.checkNotNull(buf, "A byte buffer must never be null");
 
         if (!validateHeader(header)) {
-            mqttConnacker.connackErrorMqtt5(channel,
+            mqttConnacker.connackError(channel,
                     "A client (IP: {}) connected with an invalid fixed header.",
                     "Invalid CONNECT fixed header",
                     Mqtt5ConnAckReasonCode.MALFORMED_PACKET,
@@ -137,7 +136,7 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
 
         String clientId = MqttBinaryData.decodeString(buf, validateUTF8);
         if (clientId == null) {
-            mqttConnacker.connackErrorMqtt5(channel,
+            mqttConnacker.connackError(channel,
                     "The client id of the client (IP: {}) is not well formed. This is not allowed.",
                     "Sent CONNECT with malformed client id",
                     Mqtt5ConnAckReasonCode.CLIENT_IDENTIFIER_NOT_VALID,
@@ -149,7 +148,7 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
             clientId = clientIds.generateNext();
             channel.attr(ChannelAttributes.CLIENT_ID_ASSIGNED).set(true);
         } else if (clientId.isEmpty()) {
-            mqttConnacker.connackErrorMqtt5(channel,
+            mqttConnacker.connackError(channel,
                     "The client id of the client (IP: {}) is empty. This is not allowed.",
                     "Sent CONNECT with empty client id",
                     Mqtt5ConnAckReasonCode.CLIENT_IDENTIFIER_NOT_VALID,
@@ -184,16 +183,14 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
                 .withClientIdentifier(clientId)
                 .withCleanStart(cleanStart)
                 .withKeepAlive(keepAlive)
-                .withWill(will)
                 .withWillPublish(mqttWillPublish)
                 .build();
-
     }
 
     private ImmutableList.Builder<MqttUserProperty> readUserProperty(final Channel channel, final ByteBuf buf, ImmutableList.Builder<MqttUserProperty> userPropertiesBuilder) {
         final MqttUserProperty userProperty = MqttUserProperty.decode(buf, validateUTF8);
         if (userProperty == null) {
-            mqttConnacker.connackErrorMqtt5(channel,
+            mqttConnacker.connackError(channel,
                     "A client (IP: {}) sent a CONNECT with a malformed user property. This is not allowed.",
                     "Sent a CONNECT with a malformed user property",
                     Mqtt5ConnAckReasonCode.MALFORMED_PACKET,
@@ -209,11 +206,10 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
 
 
     private boolean decodeAndValidateUsername(final Channel channel, final ByteBuf buf, final Mqtt5Builder connectBuilder, final boolean usernameRequired) {
-        final String username;
         if (usernameRequired) {
-            username = MqttBinaryData.decodeString(buf, validateUTF8);
+            final String username = MqttBinaryData.decodeString(buf, validateUTF8);
             if (username == null) {
-                mqttConnacker.connackErrorMqtt5(channel,
+                mqttConnacker.connackError(channel,
                         "A client (IP: {}) sent a CONNECT with a malformed UTF-8 string for username. This is not allowed.",
                         "Sent a CONNECT with a malformed UTF-8 string for username",
                         Mqtt5ConnAckReasonCode.MALFORMED_PACKET,
@@ -222,20 +218,16 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
                 return false;
             }
             channel.attr(ChannelAttributes.AUTH_USERNAME).set(username);
-        } else {
-            username = null;
+            connectBuilder.withUsername(username);
         }
-
-        connectBuilder.withUsername(username).withUsernameRequired(usernameRequired);
         return true;
     }
 
     private boolean decodeAndValidatePassword(final Channel channel, final ByteBuf buf, final Mqtt5Builder connectBuilder, final boolean passwordRequired) {
-        final byte[] password;
         if (passwordRequired) {
-            password = MqttBinaryData.decode(buf);
+            final byte[] password = MqttBinaryData.decode(buf);
             if (password == null) {
-                mqttConnacker.connackErrorMqtt5(channel,
+                mqttConnacker.connackError(channel,
                         "A client (IP: {}) sent a CONNECT with malformed password. This is not allowed.",
                         "Sent a CONNECT with malformed password",
                         Mqtt5ConnAckReasonCode.MALFORMED_PACKET,
@@ -243,10 +235,8 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
                 return false;
             }
             channel.attr(ChannelAttributes.AUTH_PASSWORD).set(password);
-        } else {
-            password = null;
+            connectBuilder.withPassword(password);
         }
-        connectBuilder.withPassword(password).withPasswordRequired(passwordRequired);
         return true;
     }
 
@@ -349,7 +339,7 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
         }
 
         if (authMethod == null && authData != null) {
-            mqttConnacker.connackErrorMqtt5(channel,
+            mqttConnacker.connackError(channel,
                     "A client (IP: {}) sent a CONNECT with a auth data but without auth method. This is not allowed.",
                     "Sent a CONNECT with a auth data but without auth method",
                     Mqtt5ConnAckReasonCode.PROTOCOL_ERROR,
@@ -362,18 +352,20 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
             return false;
         }
 
-        connectBuilder
-                .withAuthMethod(authMethod)
+        channel.attr(ChannelAttributes.CLIENT_SESSION_EXPIRY_INTERVAL).set(sessionExpiryInterval);
+        connectBuilder.withAuthMethod(authMethod)
                 .withAuthData(authData)
                 .withSessionExpiryInterval(sessionExpiryInterval)
                 .withReceiveMaximum(receiveMaximum)
                 .withMaximumPacketSize(maximumPacketSize)
                 .withTopicAliasMaximum(topicAliasMaximum)
-                .withResponseInformationRequested(requestResponseInformation == null ?
-                        DEFAULT_RESPONSE_INFORMATION_REQUESTED : requestResponseInformation)
-                .withProblemInformationRequested(requestProblemInformation == null ?
-                        DEFAULT_PROBLEM_INFORMATION_REQUESTED : requestProblemInformation)
-                .withMqtt5UserProperties(userProperties);
+                .withResponseInformationRequested(
+                        requestResponseInformation == null ? DEFAULT_RESPONSE_INFORMATION_REQUESTED :
+                                requestResponseInformation)
+                .withProblemInformationRequested(
+                        requestProblemInformation == null ? DEFAULT_PROBLEM_INFORMATION_REQUESTED :
+                                requestProblemInformation)
+                .withUserProperties(userProperties);
 
         return true;
 
@@ -390,7 +382,7 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
         }
         receiveMaximum = buf.readUnsignedShort();
         if (receiveMaximum == 0) {
-            mqttConnacker.connackErrorMqtt5(channel,
+            mqttConnacker.connackError(channel,
                     "A client (IP: {}) sent a CONNECT with receive maximum = '0'. This is not allowed.",
                     "Sent a CONNECT with receive maximum = '0'",
                     Mqtt5ConnAckReasonCode.PROTOCOL_ERROR,
@@ -411,7 +403,7 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
         }
         maximumPacketSize = buf.readUnsignedInt();
         if (maximumPacketSize == 0) {
-            mqttConnacker.connackErrorMqtt5(channel,
+            mqttConnacker.connackError(channel,
                     "A client (IP: {}) sent a CONNECT with maximum packet size = '0'. This is not allowed.",
                     "Sent a CONNECT with maximum packet size = '0'",
                     Mqtt5ConnAckReasonCode.PROTOCOL_ERROR,
@@ -449,7 +441,7 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
         if (read == 1) {
             return true;
         }
-        mqttConnacker.connackErrorMqtt5(channel,
+        mqttConnacker.connackError(channel,
                 "A client (IP: {}) sent a CONNECT with a malformed boolean for " + key + ". This is not allowed.",
                 "Sent a CONNECT with a malformed boolean for " + key,
                 Mqtt5ConnAckReasonCode.MALFORMED_PACKET,
@@ -465,7 +457,7 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
         }
         authMethod = MqttBinaryData.decodeString(buf, validateUTF8);
         if (authMethod == null) {
-            mqttConnacker.connackErrorMqtt5(channel,
+            mqttConnacker.connackError(channel,
                     "A client (IP: {}) sent a CONNECT with a malformed UTF-8 string for auth method. This is not allowed.",
                     "Sent a CONNECT with a malformed UTF-8 string for auth method",
                     Mqtt5ConnAckReasonCode.MALFORMED_PACKET,
@@ -483,7 +475,7 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
         }
         authData = MqttBinaryData.decode(buf);
         if (authData == null) {
-            mqttConnacker.connackErrorMqtt5(channel,
+            mqttConnacker.connackError(channel,
                     "A client (IP: {}) sent a CONNECT with a malformed auth data. This is not allowed.",
                     "Sent a CONNECT with a malformed auth data",
                     Mqtt5ConnAckReasonCode.MALFORMED_PACKET,
@@ -619,7 +611,7 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
     private boolean readAndValidatePayload(final Channel channel, final ByteBuf buf, final MqttWillPublish.Mqtt5Builder mqtt5Builder) {
         final byte[] payload = MqttBinaryData.decode(buf);
         if (payload == null) {
-            mqttConnacker.connackErrorMqtt5(channel,
+            mqttConnacker.connackError(channel,
                     "A client (IP: {}) sent a CONNECT with malformed will payload. This is not allowed.",
                     "Sent a CONNECT with malformed will payload",
                     Mqtt5ConnAckReasonCode.MALFORMED_PACKET,
@@ -650,7 +642,6 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
                     "A client (IP: {}) sent a CONNECT with an incorrect UTF-8 string length for 'will topic'.",
                     "Incorrect CONNECT UTF-8 string length for 'will topic'",
                     Mqtt5ConnAckReasonCode.TOPIC_NAME_INVALID,
-                    null,
                     ReasonStrings.CONNACK_TOPIC_NAME_INVALID_WILL_LENGTH);
 
             return DISCONNECTED;
@@ -699,11 +690,11 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
 
         final String utf8String = Strings.getValidatedPrefixedString(buf, utf8StringLength, validateUTF8);
         if (utf8String == null) {
-            mqttConnacker.connackError(channel,
+            mqttConnacker.connackError(
+                    channel,
                     "A client (IP: {}) sent a CONNECT with a malformed 'will topic'. This is not allowed.",
                     "Sent CONNECT with malformed UTF-8 String for 'will topic'",
                     Mqtt5ConnAckReasonCode.TOPIC_NAME_INVALID,
-                    null,
                     ReasonStrings.CONNACK_TOPIC_NAME_INVALID_WILL_MALFORMED);
 
         }
@@ -718,7 +709,7 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
         }
 
         if (willTopic.isEmpty()) {
-            mqttConnacker.connackErrorMqtt5(channel,
+            mqttConnacker.connackError(channel,
                     "A client (IP: {}) sent a CONNECT with empty will topic. This is not allowed.",
                     "Sent a CONNECT with empty will topic",
                     Mqtt5ConnAckReasonCode.TOPIC_NAME_INVALID,
@@ -735,7 +726,7 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
 
     private boolean propertiesLengthInvalid(final Channel channel, final ByteBuf buf, final int propertyLength) {
         if (propertyLength < 0) {
-            mqttConnacker.connackErrorMqtt5(channel,
+            mqttConnacker.connackError(channel,
                     "A client (IP: {}) sent a CONNECT with malformed properties length.",
                     "Sent CONNECT with malformed properties length",
                     Mqtt5ConnAckReasonCode.PROTOCOL_ERROR,
@@ -757,7 +748,7 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
      */
     private boolean invalidUserPropertiesLength(final @NotNull Channel channel, final @NotNull Mqtt5UserProperties userProperties) {
         if (userProperties.encodedLength() > maxUserPropertiesLength) {
-            mqttConnacker.connackErrorMqtt5(channel,
+            mqttConnacker.connackError(channel,
                     "A client (IP: {}) sent a CONNECT with user properties that are too large. Disconnecting client.",
                     "Sent CONNECT with too large user properties", Mqtt5ConnAckReasonCode.PACKET_TOO_LARGE,
                     "CONNECT with too large user properties");
@@ -799,7 +790,8 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
         responseTopic = MqttBinaryData.decodeString(buf, validateUTF8);
         if (responseTopic == null) {
 
-            mqttConnacker.connackErrorMqtt5(channel,
+            mqttConnacker.connackError(
+                    channel,
                     "A client (IP: {}) sent a CONNECT with a malformed UTF-8 string for response topic. This is not allowed.",
                     "Sent a CONNECT with a malformed UTF-8 string for response topic",
                     Mqtt5ConnAckReasonCode.MALFORMED_PACKET,
@@ -824,9 +816,11 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
      */
     protected boolean validateConnectFlagByte(final byte connectFlagsByte, final Channel channel) {
         if (isBitSet(connectFlagsByte, 0)) {
-            mqttConnacker.connackError(channel, "A client (IP: {}) connected with invalid CONNECT flags. Disconnecting client",
-                    "Invalid CONNECT flags", Mqtt5ConnAckReasonCode.MALFORMED_PACKET,
-                    null,
+            mqttConnacker.connackError(
+                    channel,
+                    "A client (IP: {}) connected with invalid CONNECT flags. Disconnecting client",
+                    "Invalid CONNECT flags",
+                    Mqtt5ConnAckReasonCode.MALFORMED_PACKET,
                     ReasonStrings.CONNACK_MALFORMED_CONNECT_FLAGS);
             return false;
         }
@@ -859,7 +853,7 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
         }
         correlationData = MqttBinaryData.decode(buf);
         if (correlationData == null) {
-            mqttConnacker.connackErrorMqtt5(channel,
+            mqttConnacker.connackError(channel,
                     "A client (IP: {}) sent a CONNECT with a malformed correlation data. This is not allowed.",
                     "Sent a CONNECT with a malformed correlation data",
                     Mqtt5ConnAckReasonCode.MALFORMED_PACKET,
@@ -897,7 +891,7 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
         }
         contentType = MqttBinaryData.decodeString(buf, validateUTF8);
         if (contentType == null) {
-            mqttConnacker.connackErrorMqtt5(channel,
+            mqttConnacker.connackError(channel,
                     "A client (IP: {}) sent a CONNECT with a malformed UTF-8 string for content type. This is not allowed.",
                     "Sent a CONNECT with a malformed UTF-8 string for content type",
                     Mqtt5ConnAckReasonCode.MALFORMED_PACKET,
@@ -943,7 +937,7 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
         payloadFormatIndicator = Mqtt5PayloadFormatIndicator.fromCode(payloadFormatIndicatorByte);
         if (payloadFormatIndicator == null) {
             //NOT IN MQTT 5 SPEC
-            mqttConnacker.connackErrorMqtt5(channel,
+            mqttConnacker.connackError(channel,
                     "A client (IP: {}) sent a CONNECT with a wrong payload format indicator. This is not allowed.",
                     "Sent a CONNECT with a wrong payload format indicator",
                     Mqtt5ConnAckReasonCode.MALFORMED_PACKET,
@@ -1026,11 +1020,11 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
     private boolean topicInvalid(final Channel channel, final String topicName, final String location) {
 
         if (Topics.containsWildcard(topicName)) {
-            mqttConnacker.connackError(channel,
+            mqttConnacker.connackError(
+                    channel,
                     "A client (IP: {}) sent a CONNECT with a wildcard character (# or +) in the " + location + ". This is not allowed.",
                     "Sent CONNECT with wildcard character (#/+) in the " + location,
                     Mqtt5ConnAckReasonCode.TOPIC_NAME_INVALID,
-                    null,
                     String.format(ReasonStrings.CONNACK_TOPIC_NAME_INVALID_WILL_WILDCARD, location));
 
             return true;
@@ -1059,7 +1053,7 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
     private boolean validateWill(final boolean isWillFlag, final boolean isWillRetain, final int willQoS, final Channel channel) {
         final boolean valid = (isWillFlag && willQoS < 3) || (!isWillRetain && willQoS == 0);
         if (!valid) {
-            mqttConnacker.connackErrorMqtt5(channel, "A client (IP: {}) connected with an invalid willTopic flag combination. Disconnecting client.",
+            mqttConnacker.connackError(channel, "A client (IP: {}) connected with an invalid willTopic flag combination. Disconnecting client.",
                     "Invalid will-topic/flag combination",
                     Mqtt5ConnAckReasonCode.MALFORMED_PACKET,
                     ReasonStrings.CONNACK_MALFORMED_WILL_FLAG);
@@ -1079,10 +1073,11 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
     private boolean validateProtocolName(final ByteBuf variableHeader, final Channel channel) {
 
         if (!PROTOCOL_NAME.equals(Strings.getPrefixedString(variableHeader))) {
-            mqttConnacker.connackError(channel, "A client (IP: {}) connected with an invalid protocol name. Disconnecting client.",
+            mqttConnacker.connackError(
+                    channel,
+                    "A client (IP: {}) connected with an invalid protocol name. Disconnecting client.",
                     "Invalid CONNECT protocol name",
                     Mqtt5ConnAckReasonCode.UNSUPPORTED_PROTOCOL_VERSION,
-                    null,
                     ReasonStrings.CONNACK_UNSUPPORTED_PROTOCOL_VERSION);
             variableHeader.clear();
             return false;
@@ -1106,18 +1101,18 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
         if (buf.readableBytes() >= VARIABLE_HEADER_LENGTH) {
             return buf.readSlice(VARIABLE_HEADER_LENGTH);
         } else {
-            mqttConnacker.connackError(channel,
+            mqttConnacker.connackError(
+                    channel,
                     "A client (IP: {}) sent a CONNECT message with an incorrect variable header. Disconnecting client.",
                     "Invalid CONNECT variable header",
                     Mqtt5ConnAckReasonCode.PROTOCOL_ERROR,
-                    null,
                     ReasonStrings.CONNACK_PROTOCOL_VARIABLE_HEADER);
             return null;
         }
     }
 
     private void connackByMoreThanOnce(final Channel channel, final String key) {
-        mqttConnacker.connackErrorMqtt5(channel,
+        mqttConnacker.connackError(channel,
                 "A client (IP: {}) sent a CONNECT with '" + key + "' included more than once. This is not allowed.",
                 "Sent a CONNECT with '" + key + "' included more than once",
                 Mqtt5ConnAckReasonCode.PROTOCOL_ERROR,
@@ -1126,7 +1121,7 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
     }
 
     private void connackByRemainingLengthToShort(final Channel channel) {
-        mqttConnacker.connackErrorMqtt5(channel,
+        mqttConnacker.connackError(channel,
                 "A client (IP: {}) sent a CONNECT with remaining length too short. This is not allowed.",
                 "Sent a CONNECT with remaining length too short",
                 Mqtt5ConnAckReasonCode.MALFORMED_PACKET,
@@ -1134,7 +1129,7 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
     }
 
     private void connackByMalformedPropertyLength(final Channel channel) {
-        mqttConnacker.connackErrorMqtt5(channel,
+        mqttConnacker.connackError(channel,
                 "A client (IP: {}) sent a CONNECT with a malformed properties length. This is not allowed. Disconnecting client.",
                 "Sent a CONNECT with a malformed properties length",
                 Mqtt5ConnAckReasonCode.MALFORMED_PACKET,
@@ -1143,7 +1138,7 @@ public class Mqtt5ConnectDecoder extends AbstractMqttConnectDecoder {
     }
 
     private void connackByInvalidPropertyIdentifier(final Channel channel, final int propertyIdentifier) {
-        mqttConnacker.connackErrorMqtt5(channel,
+        mqttConnacker.connackError(channel,
                 "A client (IP: {}) sent a CONNECT with a invalid property identifier '" + propertyIdentifier + "'. This is not allowed. Disconnecting client.",
                 "Sent CONNECT with invalid property identifier",
                 Mqtt5ConnAckReasonCode.MALFORMED_PACKET,

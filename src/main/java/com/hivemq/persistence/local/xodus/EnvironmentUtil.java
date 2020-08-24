@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,10 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.persistence.local.xodus;
 
-import com.hivemq.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.configuration.service.InternalConfigurations;
+import com.hivemq.migration.meta.PersistenceType;
 import jetbrains.exodus.env.EnvironmentConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,7 +43,7 @@ public class EnvironmentUtil {
     /**
      * Creates a new Xodus Environment config from a PersistenceConfig
      *
-     * @param name              the name of the environmentConfig
+     * @param name the name of the environmentConfig
      * @return a Xodus EnvironmentConfig
      * @throws NullPointerException if one of the parameters is <code>null</code>
      */
@@ -78,15 +79,16 @@ public class EnvironmentUtil {
      * @return a Xodus EnvironmentConfig
      * @throws NullPointerException if one of the parameters is <code>null</code>
      */
-    public EnvironmentConfig createEnvironmentConfig(final int gcMinAge,
-                                                     final int gcDeletionDelay,
-                                                     final int gcFilesInterval,
-                                                     final int gcRunPeriod,
-                                                     @NotNull final GCType gcType,
-                                                     final int syncPeriod,
-                                                     final boolean durableWrites,
-                                                     final boolean jmxEnabled,
-                                                     @NotNull final String name) {
+    public EnvironmentConfig createEnvironmentConfig(
+            final int gcMinAge,
+            final int gcDeletionDelay,
+            final int gcFilesInterval,
+            final int gcRunPeriod,
+            @NotNull final GCType gcType,
+            final int syncPeriod,
+            final boolean durableWrites,
+            final boolean jmxEnabled,
+            @NotNull final String name) {
 
         checkNotNull(name, "Name for environment config must not be null");
         checkNotNull(gcType, "Garbage Collection Type for %s must not be null", name);
@@ -121,6 +123,15 @@ public class EnvironmentUtil {
         log.trace("Setting JMX enabled for persistence {} to {}", name, jmxEnabled);
 
         environmentConfig.setLogCacheUseNio(XODUS_LOG_CACHE_USE_NIO);
+
+        final PersistenceType payloadPersistenceType = InternalConfigurations.PAYLOAD_PERSISTENCE_TYPE.get();
+        final PersistenceType retainedMessagePersistenceType = InternalConfigurations.RETAINED_MESSAGE_PERSISTENCE_TYPE.get();
+        // Use the default cache size if only xodus persistences are used.
+        if (payloadPersistenceType != PersistenceType.FILE && retainedMessagePersistenceType != PersistenceType.FILE) {
+            final int logCacheMemory = InternalConfigurations.XODUS_PERSISTENCE_LOG_MEMORY_PERCENTAGE;
+            log.trace("Setting log cache memory percentage for persistence {} to {}", name, logCacheMemory);
+            environmentConfig.setMemoryUsagePercentage(logCacheMemory);
+        }
 
         return environmentConfig;
     }

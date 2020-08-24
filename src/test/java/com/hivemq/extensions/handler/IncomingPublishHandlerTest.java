@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,11 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions.handler;
 
 import com.google.common.collect.Lists;
-import com.hivemq.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.extension.sdk.api.async.Async;
@@ -45,7 +44,6 @@ import com.hivemq.mqtt.message.dropping.MessageDroppedService;
 import com.hivemq.mqtt.message.puback.PUBACK;
 import com.hivemq.mqtt.message.publish.PUBLISH;
 import com.hivemq.mqtt.message.pubrec.PUBREC;
-import com.hivemq.mqtt.message.reason.Mqtt5DisconnectReasonCode;
 import com.hivemq.mqtt.message.reason.Mqtt5PubAckReasonCode;
 import com.hivemq.mqtt.message.subscribe.SUBSCRIBE;
 import com.hivemq.util.ChannelAttributes;
@@ -79,8 +77,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.*;
 import static org.mockito.Matchers.*;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 /**
  * @author Florian Limpöck
@@ -142,7 +139,7 @@ public class IncomingPublishHandlerTest {
         messageAtomicReference = new AtomicReference<>();
         pluginAuthorizerService = new TestAuthService(messageAtomicReference);
 
-        pluginTaskExecutorService = new PluginTaskExecutorServiceImpl(() -> executor1);
+        pluginTaskExecutorService = new PluginTaskExecutorServiceImpl(() -> executor1, mock(ShutdownHooks.class));
         incomingPublishHandler =
                 new IncomingPublishHandler(pluginTaskExecutorService, asyncer, hiveMQExtensions, messageDroppedService,
                         pluginAuthorizerService, mqtt3ServerDisconnector, configurationService);
@@ -424,7 +421,7 @@ public class IncomingPublishHandlerTest {
 
     }
 
-    @Test
+    @Test(timeout =  5000)
     public void test_read_publish_context_has_interceptors_change_topic_mqtt5() throws Exception {
 
         final ClientContextImpl clientContext =
@@ -509,7 +506,7 @@ public class IncomingPublishHandlerTest {
         }
 
         assertTrue(dropLatch.await(5, TimeUnit.SECONDS));
-        verify(mqtt3ServerDisconnector).disconnect(eq(channel), anyString(), anyString(), any(Mqtt5DisconnectReasonCode.class), anyString());
+        verify(mqtt3ServerDisconnector).disconnect(eq(channel), anyString(), anyString(), any(), any());
 
     }
 

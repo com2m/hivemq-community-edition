@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,14 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.util;
 
 import com.google.common.base.Preconditions;
 import com.google.common.primitives.Ints;
 import com.google.common.primitives.Longs;
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 
@@ -210,7 +209,6 @@ public class Bytes {
         bytes[prefix + 3] = (byte) anInt;
     }
 
-
     /**
      * Copies a long into an existing byte array.
      *
@@ -258,15 +256,17 @@ public class Bytes {
     @Nullable
     public static byte[] getBytesFromReadOnlyBuffer(@NotNull final Optional<ByteBuffer> optional) {
         Preconditions.checkNotNull(optional, "optional must never be null");
-        final byte[] byteArray;
+        return optional.map(Bytes::fromReadOnlyBuffer).orElse(null);
+    }
 
-        if (optional.isPresent()) {
-            final ByteBuffer byteBuffer = optional.get().asReadOnlyBuffer().rewind();
-            byteArray = new byte[byteBuffer.remaining()];
-            byteBuffer.get(byteArray);
-        } else {
-            byteArray = null;
+    @Nullable
+    public static byte[] fromReadOnlyBuffer(final @Nullable ByteBuffer byteBuffer){
+        if(byteBuffer == null){
+            return null;
         }
-        return byteArray;
+        final ByteBuffer rewind = byteBuffer.asReadOnlyBuffer().rewind();
+        final byte[] array = new byte[rewind.remaining()];
+        rewind.get(array);
+        return array;
     }
 }

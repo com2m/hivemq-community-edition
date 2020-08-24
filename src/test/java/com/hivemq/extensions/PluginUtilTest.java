@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,12 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions;
 
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import util.TestExtensionUtil;
 
 import java.io.File;
 
@@ -46,14 +46,16 @@ public class PluginUtilTest extends PluginAbstractTest {
 
     @Test(timeout = 5000)
     public void test_valid_plugin_folder() throws Exception {
-        final File validPluginFolder = createValidPlugin(folder, "extension", "validPlugin");
+        final File validPluginFolder =
+                TestExtensionUtil.createValidExtension(folder.newFolder("extensions"), "validPlugin");
 
         assertTrue(PluginUtil.isValidPluginFolder(validPluginFolder.toPath(), true));
     }
 
     @Test(timeout = 5000)
     public void test_folder_jar_only() throws Exception {
-        final File validPluginFolder = createValidPlugin(folder, "extension", "validPlugin");
+        final File validPluginFolder =
+                TestExtensionUtil.createValidExtension(folder.newFolder("extensions"), "validPlugin");
         new File(validPluginFolder, "hivemq-extension.xml").delete();
 
         assertFalse(PluginUtil.isValidPluginFolder(validPluginFolder.toPath(), true));
@@ -61,8 +63,9 @@ public class PluginUtilTest extends PluginAbstractTest {
 
     @Test(timeout = 5000)
     public void test_folder_xml_only() throws Exception {
-        final File validPluginFolder = createValidPlugin(folder, "extension", "validPlugin");
-        new File(validPluginFolder, "validPlugin.jar").delete();
+        final File validPluginFolder =
+                TestExtensionUtil.createValidExtension(folder.newFolder("extension"), "validPlugin");
+        new File(validPluginFolder, "extension.jar").delete();
 
         assertFalse(PluginUtil.isValidPluginFolder(validPluginFolder.toPath(), true));
     }
@@ -70,7 +73,8 @@ public class PluginUtilTest extends PluginAbstractTest {
     @Test
     public void test_plugin_disable() throws Exception {
 
-        final File validPluginFolder = createValidPlugin(folder, "extension", "validPlugin");
+        final File validPluginFolder =
+                TestExtensionUtil.createValidExtension(folder.newFolder("extensions"), "validPlugin");
 
         final boolean result = PluginUtil.disablePluginFolder(validPluginFolder.toPath());
 

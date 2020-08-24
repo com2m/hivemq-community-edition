@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,12 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions.services.subscription;
 
 import com.google.common.base.Preconditions;
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.extension.sdk.api.packets.general.Qos;
 import com.hivemq.extension.sdk.api.services.subscription.TopicSubscription;
 import com.hivemq.mqtt.message.QoS;
@@ -54,7 +53,7 @@ public class TopicSubscriptionImpl implements TopicSubscription {
     public TopicSubscriptionImpl(final @NotNull Topic topic) {
         Preconditions.checkNotNull(topic, "Topic must never be null");
         this.topicFilter = topic.getTopic();
-        this.qos = Objects.requireNonNull(Qos.valueOf(topic.getQoS().getQosNumber()));
+        this.qos = topic.getQoS().toQos();
         this.retainAsPublished = topic.isRetainAsPublished();
         this.noLocal = topic.isNoLocal();
         this.subscriptionIdentifier = topic.getSubscriptionIdentifier();

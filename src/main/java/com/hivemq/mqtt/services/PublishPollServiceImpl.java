@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,15 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.mqtt.services;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.primitives.ImmutableIntArray;
 import com.google.common.util.concurrent.*;
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.bootstrap.ioc.lazysingleton.LazySingleton;
 import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.mqtt.callback.PublishChannelInactiveCallback;
@@ -329,8 +328,8 @@ public class PublishPollServiceImpl implements PublishPollService {
                         // We can't sent the qos when the message is queue, because we don't know the which client is will be sent
                         final QoS minQos = QoS.valueOf(Math.min(qos, publish.getQoS().getQosNumber()));
                         // There can only be one subscription ID for this message, because there are no overlapping shared subscriptions
-                        final ImmutableList<Integer> subscriptionIdentifiers = subscriptionIdentifier != null ?
-                                ImmutableList.of(subscriptionIdentifier) : ImmutableList.of();
+                        final ImmutableIntArray subscriptionIdentifiers = subscriptionIdentifier != null ?
+                                ImmutableIntArray.of(subscriptionIdentifier) : ImmutableIntArray.of();
                         int packetId = 0;
                         if (minQos.getQosNumber() > 0) {
                             packetId = messageIDPool.takeNextId();

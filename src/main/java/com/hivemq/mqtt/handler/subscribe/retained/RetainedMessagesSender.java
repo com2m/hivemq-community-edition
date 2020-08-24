@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,13 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.mqtt.handler.subscribe.retained;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.primitives.ImmutableIntArray;
 import com.google.common.util.concurrent.*;
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.configuration.HivemqId;
 import com.hivemq.mqtt.callback.PublishChannelInactiveCallback;
 import com.hivemq.mqtt.callback.PublishStoredInPersistenceCallback;
@@ -174,11 +174,13 @@ public class RetainedMessagesSender {
                 final Topic subscribedTopic = subscribedTopics[i];
 
                 final QoS qos = PublishUtil.getMinQoS(subscribedTopic.getQoS(), retainedMessage.getQos());
-                final ImmutableList<Integer> subscriptionIdentifier;
+
+                final ImmutableIntArray subscriptionIdentifiers;
+
                 if (subscribedTopic.getSubscriptionIdentifier() != null) {
-                    subscriptionIdentifier = ImmutableList.of(subscribedTopic.getSubscriptionIdentifier());
+                    subscriptionIdentifiers = ImmutableIntArray.of(subscribedTopic.getSubscriptionIdentifier());
                 } else {
-                    subscriptionIdentifier = ImmutableList.of();
+                    subscriptionIdentifiers = ImmutableIntArray.of();
                 }
 
                 final PUBLISHFactory.Mqtt5Builder publishBuilder = new PUBLISHFactory.Mqtt5Builder()
@@ -197,7 +199,7 @@ public class RetainedMessagesSender {
                         .withContentType(retainedMessage.getContentType())
                         .withCorrelationData(retainedMessage.getCorrelationData())
                         .withPayloadFormatIndicator(retainedMessage.getPayloadFormatIndicator())
-                        .withSubscriptionIdentifiers(subscriptionIdentifier);
+                        .withSubscriptionIdentifiers(subscriptionIdentifiers);
                 builder.add(publishBuilder.build());
 
             }
@@ -291,7 +293,7 @@ public class RetainedMessagesSender {
             if (publish.getQoS() != QoS.AT_MOST_ONCE) {
                 try {
                     publish.setPacketIdentifier(messageIDPools.forClient(clientId).takeNextId());
-                } catch (NoMessageIdAvailableException e) {
+                } catch (final NoMessageIdAvailableException e) {
                     resultFuture.setException(e);
                 }
             }

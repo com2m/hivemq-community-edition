@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.codec.encoder;
 
 import com.hivemq.codec.encoder.mqtt3.Mqtt3ConnectEncoder;
@@ -101,12 +100,9 @@ public class Mqtt3ConnectEncoderTest {
 
         final CONNECT.Mqtt3Builder builder = new CONNECT.Mqtt3Builder().withCleanStart(false);
 
-        builder.withWill(true);
         builder.withClientIdentifier(clientIdentifier);
         builder.withProtocolVersion(ProtocolVersion.MQTTv3_1_1);
-        builder.withUsernameRequired(true);
         builder.withUsername(username);
-        builder.withPasswordRequired(true);
         builder.withPassword(password.getBytes());
 
         final MqttWillPublish.Mqtt3Builder willBuilder = new MqttWillPublish.Mqtt3Builder();
@@ -200,7 +196,6 @@ public class Mqtt3ConnectEncoderTest {
         final CONNECT.Mqtt3Builder connectBuilder = new CONNECT.Mqtt3Builder()
                 .withProtocolVersion(ProtocolVersion.MQTTv3_1)
                 .withClientIdentifier("clientId")
-                .withWill(true)
                 .withCleanStart(false);
 
         final MqttWillPublish.Mqtt3Builder willBuilder = new MqttWillPublish.Mqtt3Builder();
@@ -249,7 +244,6 @@ public class Mqtt3ConnectEncoderTest {
         final CONNECT.Mqtt3Builder connectBuilder = new CONNECT.Mqtt3Builder()
                 .withProtocolVersion(ProtocolVersion.MQTTv3_1)
                 .withClientIdentifier("clientIé")
-                .withWill(true)
                 .withCleanStart(false);
 
         final MqttWillPublish.Mqtt3Builder willBuilder = new MqttWillPublish.Mqtt3Builder();
@@ -299,8 +293,6 @@ public class Mqtt3ConnectEncoderTest {
         final CONNECT.Mqtt3Builder connectBuilder = new CONNECT.Mqtt3Builder()
                 .withProtocolVersion(ProtocolVersion.MQTTv3_1)
                 .withClientIdentifier("clientId")
-                .withPasswordRequired(true)
-                .withUsernameRequired(true)
                 .withUsername("username")
                 .withPassword("password".getBytes(UTF_8))
                 .withCleanStart(false);
@@ -342,8 +334,6 @@ public class Mqtt3ConnectEncoderTest {
         final CONNECT.Mqtt3Builder connectBuilder = new CONNECT.Mqtt3Builder()
                 .withProtocolVersion(ProtocolVersion.MQTTv3_1)
                 .withClientIdentifier("clientIé")
-                .withPasswordRequired(true)
-                .withUsernameRequired(true)
                 .withUsername("usernamé")
                 .withPassword("password".getBytes(UTF_8))
                 .withCleanStart(false);
@@ -385,7 +375,6 @@ public class Mqtt3ConnectEncoderTest {
         final CONNECT.Mqtt3Builder connectBuilder = new CONNECT.Mqtt3Builder()
                 .withProtocolVersion(ProtocolVersion.MQTTv3_1)
                 .withClientIdentifier("clientId")
-                .withUsernameRequired(true)
                 .withUsername("username")
                 .withCleanStart(false);
 
@@ -462,9 +451,6 @@ public class Mqtt3ConnectEncoderTest {
                 .withProtocolVersion(ProtocolVersion.MQTTv3_1_1)
                 .withClientIdentifier("clientId")
                 .withCleanStart(true)
-                .withWill(true)
-                .withPasswordRequired(true)
-                .withUsernameRequired(true)
                 .withUsername("username")
                 .withPassword("password".getBytes(UTF_8));
 

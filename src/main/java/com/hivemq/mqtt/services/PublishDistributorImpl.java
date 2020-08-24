@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,16 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.mqtt.services;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.primitives.ImmutableIntArray;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.mqtt.handler.publish.PublishStatus;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.publish.PUBLISH;
@@ -37,7 +37,6 @@ import com.hivemq.persistence.util.FutureUtils;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -113,7 +112,7 @@ public class PublishDistributorImpl implements PublishDistributor {
     @Override
     public ListenableFuture<PublishStatus> sendMessageToSubscriber(@NotNull final PUBLISH publish, @NotNull final String clientId, final int subscriptionQos,
                                                                    final boolean sharedSubscription, final boolean retainAsPublished,
-                                                                   @Nullable final List<Integer> subscriptionIdentifier) {
+                                                                   @Nullable final ImmutableIntArray subscriptionIdentifier) {
 
         return handlePublish(publish, clientId, subscriptionQos, sharedSubscription, retainAsPublished, subscriptionIdentifier);
     }
@@ -121,7 +120,7 @@ public class PublishDistributorImpl implements PublishDistributor {
     @NotNull
     private ListenableFuture<PublishStatus> handlePublish(@NotNull final PUBLISH publish, @NotNull final String client, final int subscriptionQos,
                                                           final boolean sharedSubscription, final boolean retainAsPublished,
-                                                          @Nullable final List<Integer> subscriptionIdentifier) {
+                                                          @Nullable final ImmutableIntArray subscriptionIdentifier) {
 
         if (sharedSubscription) {
             return queuePublish(client, publish, subscriptionQos, true, retainAsPublished, subscriptionIdentifier);
@@ -146,7 +145,7 @@ public class PublishDistributorImpl implements PublishDistributor {
     @NotNull
     private SettableFuture<PublishStatus> queuePublish(@NotNull final String client, @NotNull final PUBLISH publish,
                                                        final int subscriptionQos, final boolean shared, final boolean retainAsPublished,
-                                                       @Nullable final List<Integer> subscriptionIdentifier) {
+                                                       @Nullable final ImmutableIntArray subscriptionIdentifier) {
 
         final ListenableFuture<Void> future = clientQueuePersistence.add(client, shared, createPublish(publish, subscriptionQos, retainAsPublished, subscriptionIdentifier));
         final SettableFuture<PublishStatus> statusFuture = SettableFuture.create();
@@ -166,21 +165,21 @@ public class PublishDistributorImpl implements PublishDistributor {
     }
 
     @NotNull
-    private PUBLISH createPublish(@NotNull final PUBLISH publish, final int subscriptionQos, final boolean retainAsPublished, @Nullable final List<Integer> subscriptionIdentifier) {
+    private PUBLISH createPublish(@NotNull final PUBLISH publish, final int subscriptionQos, final boolean retainAsPublished, @Nullable final ImmutableIntArray subscriptionIdentifier) {
         final long payloadId = payloadPersistence.add(publish.getPayload(), 1);
-        final ImmutableList<Integer> identifiers;
+        final ImmutableIntArray identifiers;
         if (subscriptionIdentifier == null) {
-            identifiers = ImmutableList.of();
+            identifiers = ImmutableIntArray.of();
         } else {
-            identifiers = ImmutableList.copyOf(subscriptionIdentifier);
+            identifiers = subscriptionIdentifier;
         }
 
-        final PUBLISHFactory.Mqtt5Builder builder = new PUBLISHFactory.Mqtt5Builder()
-                .fromPublish(publish)
+        final PUBLISHFactory.Mqtt5Builder builder = new PUBLISHFactory.Mqtt5Builder().fromPublish(publish)
                 .withPayloadId(payloadId)
+                .withPayload(null) // not needed anymore as we just put it in the payload persistence.
                 .withPersistence(payloadPersistence)
                 .withRetain(publish.isRetain() && retainAsPublished)
-                .withSubscriptionIdentifiers(ImmutableList.copyOf(identifiers));
+                .withSubscriptionIdentifiers(identifiers);
 
         final int qos = Math.min(publish.getQoS().getQosNumber(), subscriptionQos);
         builder.withQoS(QoS.valueOf(qos));

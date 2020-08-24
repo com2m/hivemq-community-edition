@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,19 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.persistence.clientqueue;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.primitives.ImmutableIntArray;
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
 import com.hivemq.bootstrap.ioc.lazysingleton.LazySingleton;
 import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.configuration.service.MqttConfigurationService;
 import com.hivemq.configuration.service.MqttConfigurationService.QueuedMessagesStrategy;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.mqtt.message.MessageWithID;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.dropping.MessageDroppedService;
@@ -73,7 +73,7 @@ public class ClientQueueXodusLocalPersistence extends XodusLocalPersistence impl
     private static final Logger log = LoggerFactory.getLogger(ClientQueueXodusLocalPersistence.class);
 
     private static final String PERSISTENCE_NAME = "client_queue";
-    private static final String PERSISTENCE_VERSION = "040000";
+    public static final String PERSISTENCE_VERSION = "040000";
     private static final int LINKED_LIST_NODE_OVERHEAD = 24;
 
     private final @NotNull ClientQueuePersistenceSerializer serializer;
@@ -94,6 +94,11 @@ public class ClientQueueXodusLocalPersistence extends XodusLocalPersistence impl
     private final @NotNull AtomicLong qos0MessagesMemory = new AtomicLong();
     private final long qos0MemoryLimit;
 
+    private final int qos0ClientMemoryLimit;
+
+    @NotNull
+    private final ConcurrentHashMap<String, AtomicInteger> clientQos0MemoryMap;
+
     @Inject
     ClientQueueXodusLocalPersistence(
             final @NotNull PublishPayloadPersistence payloadPersistence,
@@ -103,8 +108,9 @@ public class ClientQueueXodusLocalPersistence extends XodusLocalPersistence impl
             final @NotNull MessageDroppedService messageDroppedService) {
 
         super(environmentUtil, localPersistenceFileUtil, persistenceStartup,
-                InternalConfigurations.PERSISTENCE_BUCKET_COUNT.get());
+                InternalConfigurations.PERSISTENCE_BUCKET_COUNT.get(), true);
         retainedMessageMax = InternalConfigurations.RETAINED_MESSAGE_QUEUE_SIZE.get();
+        qos0ClientMemoryLimit = InternalConfigurations.QOS_0_MEMORY_LIMIT_PER_CLIENT.get();
 
         this.serializer = new ClientQueuePersistenceSerializer(payloadPersistence);
         this.messageDroppedService = messageDroppedService;
@@ -113,6 +119,7 @@ public class ClientQueueXodusLocalPersistence extends XodusLocalPersistence impl
         this.payloadPersistence = payloadPersistence;
         this.qos0MessageBuckets = new ConcurrentHashMap<>();
         this.qos0MemoryLimit = getQos0MemoryLimit();
+        this.clientQos0MemoryMap = new ConcurrentHashMap<>();
     }
 
     private long getQos0MemoryLimit() {
@@ -385,7 +392,7 @@ public class ClientQueueXodusLocalPersistence extends XodusLocalPersistence impl
             @NotNull final Key key, @NotNull final PublishWithRetained publishWithRetained, final int bucketIndex) {
         final long currentQos0MessagesMemory = qos0MessagesMemory.get();
         final PUBLISH publish = publishWithRetained.publish;
-        if (currentQos0MessagesMemory > qos0MemoryLimit) {
+        if (currentQos0MessagesMemory >= qos0MemoryLimit) {
             if (key.isShared()) {
                 messageDroppedService.qos0MemoryExceededShared(
                         key.getQueueId(), publish.getTopic(), 0, currentQos0MessagesMemory, qos0MemoryLimit);
@@ -396,13 +403,23 @@ public class ClientQueueXodusLocalPersistence extends XodusLocalPersistence impl
             payloadPersistence.decrementReferenceCounter(publish.getPayloadId());
             return;
         }
+
+        if (!key.isShared()) {
+            final AtomicInteger clientQos0Memory = clientQos0MemoryMap.get(key.getQueueId());
+            if (clientQos0Memory != null && clientQos0Memory.get() >= qos0ClientMemoryLimit) {
+                messageDroppedService.qos0MemoryExceeded(key.getQueueId(), publish.getTopic(), 0, clientQos0Memory.get(), qos0ClientMemoryLimit);
+                payloadPersistence.decrementReferenceCounter(publish.getPayloadId());
+                return;
+            }
+        }
+
         getOrPutQos0Messages(key, bucketIndex).add(publishWithRetained);
         getOrPutQueueSize(key, bucketIndex).incrementAndGet();
         if (publishWithRetained.retained) {
             getOrPutRetainedQueueSize(key, bucketIndex).incrementAndGet();
         }
         increaseQos0MessagesMemory(publish.getEstimatedSizeInMemory());
-        return;
+        increaseClientQos0MessagesMemory(key, publish.getEstimatedSizeInMemory());
     }
 
     private void logMessageDropped(
@@ -422,6 +439,37 @@ public class ClientQueueXodusLocalPersistence extends XodusLocalPersistence impl
             qos0MessagesMemory.addAndGet(size - LINKED_LIST_NODE_OVERHEAD);
         } else {
             qos0MessagesMemory.addAndGet(size + LINKED_LIST_NODE_OVERHEAD);
+        }
+    }
+
+    /**
+     * @param size the amount of bytes the currently used qos 0 memory will be increased by. May be negative.
+     */
+    @VisibleForTesting
+    void increaseClientQos0MessagesMemory(final Key key, final int size) {
+        if (key.isShared()) {
+            return;
+        }
+
+        final AtomicInteger qos0MemoryPerClient = clientQos0MemoryMap.compute(key.getQueueId(), (clientId, clientQos0Memory) -> {
+            if (clientQos0Memory == null) {
+                if (size < 0) {
+                    //strange case that should never happen as there must be a increase before a decrease..
+                    return new AtomicInteger(0);
+                } else {
+                    return new AtomicInteger(size + LINKED_LIST_NODE_OVERHEAD);
+                }
+            }
+            if (size < 0) {
+                clientQos0Memory.addAndGet(size - LINKED_LIST_NODE_OVERHEAD);
+            } else {
+                clientQos0Memory.addAndGet(size + LINKED_LIST_NODE_OVERHEAD);
+            }
+            return clientQos0Memory;
+        });
+
+        if (qos0MemoryPerClient.get() <= 0) {
+            clientQos0MemoryMap.remove(key.getQueueId());
         }
     }
 
@@ -495,11 +543,13 @@ public class ClientQueueXodusLocalPersistence extends XodusLocalPersistence impl
             // In case there are only qos 0 messages
             final ImmutableList.Builder<PUBLISH> publishes = ImmutableList.builder();
             int qos0MessagesFound = 0;
-            while (qos0MessagesFound < packetIds.length()) {
+            int qos0Bytes = 0;
+            while (qos0MessagesFound < packetIds.length() && bytesLimit > qos0Bytes) {
                 final PUBLISH qos0Publish = pollQos0Message(key, bucketIndex);
                 if (!PublishUtil.isExpired(qos0Publish.getTimestamp(), qos0Publish.getMessageExpiryInterval())) {
                     publishes.add(qos0Publish);
                     qos0MessagesFound++;
+                    qos0Bytes += qos0Publish.getEstimatedSizeInMemory();
                 }
                 if (qos0Messages.isEmpty()) {
                     break;
@@ -575,6 +625,7 @@ public class ClientQueueXodusLocalPersistence extends XodusLocalPersistence impl
             getOrPutRetainedQueueSize(key, bucketIndex).decrementAndGet();
         }
         increaseQos0MessagesMemory(qos0Publish.getEstimatedSizeInMemory() * -1);
+        increaseClientQos0MessagesMemory(key, qos0Publish.getEstimatedSizeInMemory() * -1);
         payloadPersistence.decrementReferenceCounter(qos0Publish.getPayloadId());
         return qos0Publish;
     }
@@ -648,14 +699,18 @@ public class ClientQueueXodusLocalPersistence extends XodusLocalPersistence impl
                     final int packetId = message.getPacketIdentifier();
                     if (packetId == pubrel.getPacketIdentifier()) {
                         packetIdFound[0] = true;
-                        final ByteIterable serializedPubRel =
-                                serializer.serializePubRel(pubrel, serializer.deserializeRetained(cursor.getValue()));
+                        final boolean retained = serializer.deserializeRetained(cursor.getValue());
                         if (message instanceof PUBLISH) {
                             final PUBLISH publish = (PUBLISH) message;
                             payloadPersistence.decrementReferenceCounter(publish.getPayloadId());
-                            bucket.getStore().put(txn, cursor.getKey(), serializedPubRel);
+                            pubrel.setExpiryInterval(publish.getMessageExpiryInterval());
+                            pubrel.setPublishTimestamp(publish.getTimestamp());
                             replacedId[0] = publish.getUniqueId();
+                        } else if (message instanceof PUBREL) {
+                            pubrel.setExpiryInterval(((PUBREL) message).getExpiryInterval());
+                            pubrel.setPublishTimestamp(((PUBREL) message).getPublishTimestamp());
                         }
+                        final ByteIterable serializedPubRel = serializer.serializePubRel(pubrel, retained);
                         bucket.getStore().put(txn, cursor.getKey(), serializedPubRel);
                         return false;
                     }
@@ -775,6 +830,7 @@ public class ClientQueueXodusLocalPersistence extends XodusLocalPersistence impl
         final LinkedList<PublishWithRetained> qos0Messages = getOrPutQos0Messages(key, bucketIndex);
         for (final PublishWithRetained qos0Message : qos0Messages) {
             increaseQos0MessagesMemory(qos0Message.publish.getEstimatedSizeInMemory() * -1);
+            increaseClientQos0MessagesMemory(key, qos0Message.publish.getEstimatedSizeInMemory() * -1);
             payloadPersistence.decrementReferenceCounter(qos0Message.publish.getPayloadId());
         }
         qos0MessageBuckets.get(bucketIndex).remove(key);
@@ -803,6 +859,7 @@ public class ClientQueueXodusLocalPersistence extends XodusLocalPersistence impl
                 getOrPutRetainedQueueSize(key, bucketIndex).decrementAndGet();
             }
             increaseQos0MessagesMemory(publish.getEstimatedSizeInMemory() * -1);
+            increaseClientQos0MessagesMemory(key, publish.getEstimatedSizeInMemory() * -1);
         }
     }
 
@@ -905,6 +962,10 @@ public class ClientQueueXodusLocalPersistence extends XodusLocalPersistence impl
         return queueSizeBuckets;
     }
 
+    public @NotNull ConcurrentHashMap<String, AtomicInteger> getClientQos0MemoryMap() {
+        return clientQos0MemoryMap;
+    }
+
     private void cleanExpiredMessages(@NotNull final Key key, final int bucketIndex) {
         final LinkedList<PublishWithRetained> qos0Messages = getOrPutQos0Messages(key, bucketIndex);
         final Iterator<PublishWithRetained> iterator = qos0Messages.iterator();
@@ -914,6 +975,7 @@ public class ClientQueueXodusLocalPersistence extends XodusLocalPersistence impl
             if (PublishUtil.isExpired(qos0Message.getTimestamp(), qos0Message.getMessageExpiryInterval())) {
                 getOrPutQueueSize(key, bucketIndex).decrementAndGet();
                 increaseQos0MessagesMemory(qos0Message.getEstimatedSizeInMemory() * -1);
+                increaseClientQos0MessagesMemory(key, qos0Message.getEstimatedSizeInMemory() * -1);
                 payloadPersistence.decrementReferenceCounter(qos0Message.getPayloadId());
                 if (publishWithRetained.retained) {
                     getOrPutRetainedQueueSize(key, bucketIndex).decrementAndGet();
@@ -930,18 +992,36 @@ public class ClientQueueXodusLocalPersistence extends XodusLocalPersistence impl
                 iterateQueue(cursor, key, false, () -> {
                     final ByteIterable serializedValue = cursor.getValue();
                     final MessageWithID message = serializer.deserializeValue(serializedValue);
-                    if (!(message instanceof PUBLISH)) {
-                        return true;
-                    }
-                    final PUBLISH publish = (PUBLISH) message;
-                    if (PublishUtil.isExpired(publish) &&
-                            !(publish.getQoS() == QoS.EXACTLY_ONCE && publish.getPacketIdentifier() > 0)) {
-                        payloadPersistence.decrementReferenceCounter(publish.getPayloadId());
+                    if (message instanceof PUBREL) {
+                        final PUBREL pubrel = (PUBREL) message;
+                        if (!InternalConfigurations.EXPIRE_INFLIGHT_PUBRELS) {
+                            return true;
+                        }
+                        if (pubrel.getExpiryInterval() == null || pubrel.getPublishTimestamp() == null) {
+                            return true;
+                        }
+                        if (!PublishUtil.isExpired(pubrel.getPublishTimestamp(), pubrel.getExpiryInterval())) {
+                            return true;
+                        }
                         getOrPutQueueSize(key, bucketIndex).decrementAndGet();
                         if (serializer.deserializeRetained(serializedValue)) {
                             getOrPutRetainedQueueSize(key, bucketIndex).decrementAndGet();
                         }
                         cursor.deleteCurrent();
+
+                    } else if (message instanceof PUBLISH) {
+                        final PUBLISH publish = (PUBLISH) message;
+                        final boolean expireInflight = InternalConfigurations.EXPIRE_INFLIGHT_MESSAGES;
+                        final boolean isInflight = publish.getQoS() == QoS.EXACTLY_ONCE && publish.getPacketIdentifier() > 0;
+                        final boolean drop = PublishUtil.isExpired(publish) && (!isInflight || expireInflight);
+                        if (drop) {
+                            payloadPersistence.decrementReferenceCounter(publish.getPayloadId());
+                            getOrPutQueueSize(key, bucketIndex).decrementAndGet();
+                            if (serializer.deserializeRetained(serializedValue)) {
+                                getOrPutRetainedQueueSize(key, bucketIndex).decrementAndGet();
+                            }
+                            cursor.deleteCurrent();
+                        }
                     }
                     return true;
                 });

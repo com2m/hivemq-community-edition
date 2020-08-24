@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.bootstrap.netty;
 
 /**
@@ -37,7 +36,6 @@ public class ChannelHandlerNames {
 
     public static final String NEW_CONNECTION_IDLE_HANDLER = "new_connection_idle_handler";
     public static final String NO_CONNECT_IDLE_EVENT_HANDLER = "no_connect_idle_event_handler";
-    public static final String REMOVE_CONNECT_IDLE_HANDLER = "remove_connect_idle_handler";
     public static final String NO_TLS_HANDSHAKE_IDLE_EVENT_HANDLER = "no_tls_handshake_idle_event_handler";
 
     public static final String MQTT_5_FLOW_CONTROL_HANDLER = "mqtt_5_flow_control_handler";
@@ -92,7 +90,7 @@ public class ChannelHandlerNames {
     public static final String MQTT_WEBSOCKET_ENCODER = "mqtt_websocket_encoder";
     public static final String DROP_OUTGOING_PUBLISHES_HANDLER = "drop_outgoing_publishes_handler";
     public static final String CHANNEL_INACTIVE_HANDLER = "channel_inactive_handler";
-    public static final String PUBLISH_MESSAGE_EXPIRY_HANDLER = "publish_message_expiry_handler";
+    public static final String MESSAGE_EXPIRY_HANDLER = "message_expiry_handler";
 
     /* *************
      *     Both    *
@@ -103,7 +101,6 @@ public class ChannelHandlerNames {
     public static final String MQTT_CONNECTION_COUNTER_HANDLER = "mqtt_connection_counter_handler";
     public static final String MQTT_MESSAGE_BARRIER = "mqtt_message_barrier";
     public static final String MQTT_SUBSCRIBE_MESSAGE_BARRIER = "mqtt_subscribe_message_barrier";
-    public static final String STOP_READING_AFTER_CONNECT_HANDLER = "stop_reading_after_connect_handler";
 
     /* *************
      *   Extensions   *
@@ -112,14 +109,24 @@ public class ChannelHandlerNames {
     public static final String PLUGIN_INITIALIZER_HANDLER = "plugin_initializer_handler";
     public static final String CLIENT_LIFECYCLE_EVENT_HANDLER = "client_lifecycle_event_handler";
     public static final String PUBLISH_OUTBOUND_INTERCEPTOR_HANDLER = "publish_outbound_interceptor_handler";
+    public static final String PUBACK_INTERCEPTOR_HANDLER = "puback_interceptor_handler";
+    public static final String PUBREC_INTERCEPTOR_HANDLER = "pubrec_interceptor_handler";
+    public static final String PUBREL_INTERCEPTOR_HANDLER = "pubrel_interceptor_handler";
+    public static final String PUBCOMP_INTERCEPTOR_HANDLER = "pubcomp_interceptor_handler";
     public static final String CONNECT_INBOUND_INTERCEPTOR_HANDLER = "connect_inbound_interceptor_handler";
     public static final String CONNACK_OUTBOUND_INTERCEPTOR_HANDLER = "connack_outbound_interceptor_handler";
+    public static final String DISCONNECT_INTERCEPTOR_HANDLER = "disconnect_interceptor_handler";
+    public static final String SUBACK_OUTBOUND_INTERCEPTOR_HANDLER = "suback_outbound_interceptor_handler";
+    public static final String UNSUBSCRIBE_INBOUND_INTERCEPTOR_HANDLER = "inbound_unsubscribe_interceptor_handler";
+    public static final String UNSUBACK_OUTBOUND_INTERCEPTOR_HANDLER = "unsuback_outbound_interceptor_handler";
+    public static final String PING_INTERCEPTOR_HANDLER = "ping_interceptor_handler";
 
     /* *************
      *     Misc    *
      ***************/
 
     public static final String EXCEPTION_HANDLER = "exception_handler";
+    public static final String CONNECTION_LIMITER = "connection_limiter";
 }
 
 

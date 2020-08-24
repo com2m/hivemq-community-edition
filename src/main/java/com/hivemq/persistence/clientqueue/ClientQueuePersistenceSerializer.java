@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,12 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.persistence.clientqueue;
 
-import com.google.common.collect.ImmutableList;
-import com.hivemq.annotations.NotNull;
+import com.google.common.primitives.ImmutableIntArray;
 import com.hivemq.codec.encoder.mqtt5.Mqtt5PayloadFormatIndicator;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.mqtt.message.MessageWithID;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.mqtt5.Mqtt5UserProperties;
@@ -42,7 +42,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  * @author Lukas Brandl
  * @author Silvio Giebl
  */
-class ClientQueuePersistenceSerializer {
+public class ClientQueuePersistenceSerializer {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClientQueuePersistenceSerializer.class);
 
@@ -160,10 +160,9 @@ class ClientQueuePersistenceSerializer {
     // ********** Value **********
 
     @NotNull
-    ByteIterable serializePublishWithoutPacketId(@NotNull final PUBLISH publish, boolean retained) {
+    ByteIterable serializePublishWithoutPacketId(@NotNull final PUBLISH publish, final boolean retained) {
         return XodusUtils.bytesToByteIterable(createPublishBytes(publish, retained));
     }
-
 
     @NotNull
     ByteIterable serializeAndSetPacketId(@NotNull final ByteIterable serializedValue, final int packetId) {
@@ -174,7 +173,8 @@ class ClientQueuePersistenceSerializer {
 
     @NotNull
     ByteIterable serializePubRel(@NotNull final PUBREL pubrel, final boolean retained) {
-        return XodusUtils.bytesToByteIterable(createPubrelBytes(pubrel.getPacketIdentifier(), retained));
+        return XodusUtils.bytesToByteIterable(createPubrelBytes(pubrel.getPacketIdentifier(), retained, pubrel.getExpiryInterval(),
+                pubrel.getPublishTimestamp()));
     }
 
     int deserializePacketId(@NotNull final ByteIterable serializedValue) {
@@ -187,7 +187,14 @@ class ClientQueuePersistenceSerializer {
 
         if ((bytes[Short.BYTES] & PUBREL_BIT) == PUBREL_BIT) {
             final int packetId = Bytes.readUnsignedShort(bytes, 0);
-            return new PUBREL(packetId);
+            final PUBREL pubrel = new PUBREL(packetId);
+            if (serializedValue.getLength() >= Short.BYTES + 1 + Long.BYTES * 2) {
+                final long expiry = Bytes.readLong(bytes, Short.BYTES + 1);
+                pubrel.setExpiryInterval(expiry);
+                final long timestamp = Bytes.readLong(bytes, Short.BYTES + 1 + Long.BYTES);
+                pubrel.setPublishTimestamp(timestamp);
+            }
+            return pubrel;
         }
         if ((bytes[Short.BYTES] & PUBLISH_BIT) == PUBLISH_BIT) {
             return deserializePublish(bytes);
@@ -202,13 +209,23 @@ class ClientQueuePersistenceSerializer {
     }
 
     @NotNull
-    private byte[] createPubrelBytes(final int packetId, final boolean retained) {
-        final byte[] result = new byte[Short.BYTES + 1];
+    private byte[] createPubrelBytes(final int packetId, final boolean retained, @Nullable final Long expiry, @Nullable final Long publishTimestamp) {
+        final byte[] result;
+        if (expiry != null && publishTimestamp != null) {
+            result = new byte[Short.BYTES + 1 + Long.BYTES * 2];
+        } else {
+            result = new byte[Short.BYTES + 1];
+        }
         int cursor = 0;
         cursor = XodusUtils.serializeShort(packetId, result, cursor);
         result[cursor] = PUBREL_BIT;
         if (retained) {
             result[cursor] |= RETAINED_MESSAGE_BIT;
+        }
+        cursor++;
+        if (expiry != null && publishTimestamp != null) {
+            cursor = XodusUtils.serializeLong(expiry, result, cursor);
+            cursor = XodusUtils.serializeLong(publishTimestamp, result, cursor);
         }
         return result;
     }
@@ -221,8 +238,8 @@ class ClientQueuePersistenceSerializer {
         final byte[] responseTopic = message.getResponseTopic() == null ? null : message.getResponseTopic().getBytes(UTF_8);
         final byte[] contentType = message.getContentType() == null ? null : message.getContentType().getBytes(UTF_8);
         final byte[] correlationData = message.getCorrelationData();
-        final ImmutableList<Integer> subscriptionIdentifiers = message.getSubscriptionIdentifiers();
-        final int subscriptionIdentifierLength = subscriptionIdentifiers == null ? 0 : subscriptionIdentifiers.size();
+        final ImmutableIntArray subscriptionIdentifiers = message.getSubscriptionIdentifiers();
+        final int subscriptionIdentifierLength = subscriptionIdentifiers == null ? 0 : subscriptionIdentifiers.length();
         final int payloadFormatIndicator = message.getPayloadFormatIndicator() != null ? message.getPayloadFormatIndicator().getCode() : -1;
         final Mqtt5UserProperties userProperties = message.getUserProperties();
 
@@ -242,7 +259,7 @@ class ClientQueuePersistenceSerializer {
                         (subscriptionIdentifiers == null ? 0 : Integer.BYTES + subscriptionIdentifierLength * Integer.BYTES) + // subscription identifiers
 
                         1 + // payload format indicator
-                        (userProperties.size() == 0 ? 0 : PropertiesSerializationUtil.encodedSize(userProperties))
+                        (userProperties.asList().size() == 0 ? 0 : PropertiesSerializationUtil.encodedSize(userProperties))
                 ];
 
         int cursor = 0;
@@ -275,7 +292,7 @@ class ClientQueuePersistenceSerializer {
         if (subscriptionIdentifiers != null) {
             presentFlags |= SUBSCRIPTION_IDENTIFIERS_PRESENT_BIT;
         }
-        if (userProperties.size() > 0) {
+        if (userProperties.asList().size() > 0) {
             presentFlags |= USER_PROPERTIES_PRESENT_BIT;
         }
 
@@ -301,15 +318,16 @@ class ClientQueuePersistenceSerializer {
             Bytes.copyIntToByteArray(subscriptionIdentifierLength, result, cursor);
             cursor += Integer.BYTES;
             if (subscriptionIdentifierLength > 0) {
-                for (final Integer identifier : subscriptionIdentifiers) {
-                    Bytes.copyIntToByteArray(identifier, result, cursor);
+
+                for (int i = 0; i < subscriptionIdentifiers.length(); i++) {
+                    Bytes.copyIntToByteArray(subscriptionIdentifiers.get(i), result, cursor);
                     cursor += Integer.BYTES;
                 }
             }
         }
 
         cursor = XodusUtils.serializeByte((byte) payloadFormatIndicator, result, cursor);
-        if (userProperties.size() > 0) {
+        if (userProperties.asList().size() > 0) {
             PropertiesSerializationUtil.write(userProperties, result, cursor);
         }
 
@@ -392,7 +410,7 @@ class ClientQueuePersistenceSerializer {
             final int subscriptionIdentifiersLength = Bytes.readInt(serialized, cursor);
             cursor += Integer.BYTES;
 
-            final ImmutableList.Builder<Integer> subscriptionIdentifiers = ImmutableList.builder();
+            final ImmutableIntArray.Builder subscriptionIdentifiers = ImmutableIntArray.builder();
             for (int i = 0; i < subscriptionIdentifiersLength; i++) {
                 subscriptionIdentifiers.add(Bytes.readInt(serialized, cursor));
                 cursor += Integer.BYTES;

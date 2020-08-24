@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,13 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.mqtt.message.mqtt5;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.codec.encoder.mqtt5.UnsignedDataTypes;
 import com.hivemq.mqtt.message.MessageWithID;
 import com.hivemq.mqtt.message.reason.Mqtt5ReasonCode;
@@ -31,6 +30,7 @@ import java.nio.charset.StandardCharsets;
  */
 public abstract class MqttMessageWithUserProperties extends MessageWithID {
 
+    @NotNull
     private Mqtt5UserProperties userProperties;
 
     public MqttMessageWithUserProperties(@NotNull final Mqtt5UserProperties userProperties) {
@@ -48,7 +48,7 @@ public abstract class MqttMessageWithUserProperties extends MessageWithID {
         return userProperties;
     }
 
-    public void setUserProperties(final Mqtt5UserProperties userProperties) {
+    public void setUserProperties(final @NotNull Mqtt5UserProperties userProperties) {
         this.userProperties = userProperties;
     }
 
@@ -125,7 +125,7 @@ public abstract class MqttMessageWithUserProperties extends MessageWithID {
     public abstract static class MqttMessageWithReasonCode<R extends Mqtt5ReasonCode>
             extends MqttMessageWithReasonString {
 
-        private final R reasonCode;
+        private final @NotNull R reasonCode;
 
         protected MqttMessageWithReasonCode(@NotNull final R reasonCode, @Nullable final String reasonString, @NotNull final Mqtt5UserProperties userProperties) {
 

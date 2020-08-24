@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,14 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions.executor;
 
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.SettableFuture;
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
+import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.configuration.service.InternalConfigurations;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.extension.sdk.api.async.TimeoutFallback;
 import com.hivemq.extensions.classloader.IsolatedPluginClassloader;
 import com.hivemq.extensions.executor.task.*;
@@ -35,9 +35,7 @@ import javax.inject.Provider;
 import java.util.Iterator;
 import java.util.List;
 
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
 /**
  * @author Christoph Schäbel
@@ -62,25 +60,27 @@ public class PluginTaskExecutorServiceImplTest {
 
         InternalConfigurations.PLUGIN_TASK_QUEUE_EXECUTOR_COUNT.set(2);
 
-        executorService = new PluginTaskExecutorServiceImpl(new ExecutorProvider(Lists.newArrayList(executor1, executor2)));
+        executorService =
+                new PluginTaskExecutorServiceImpl(new ExecutorProvider(Lists.newArrayList(executor1, executor2)),
+                        mock(ShutdownHooks.class));
     }
 
     @Test
     public void test_inout_executed_in_the_right_executor() {
 
         executorService.handlePluginInOutTaskExecution(
-                new TestPluginInOutContext(String.class, getIdForBucket(0)),
-                () -> new TestPluginTaskInput(),
-                () -> new TestPluginTaskOutput(),
+                new TestPluginInOutContext(getIdForBucket(0)),
+                TestPluginTaskInput::new,
+                TestPluginTaskOutput::new,
                 new TestPluginInOutTask(classloader)
         );
 
         verify(executor1, times(1)).handlePluginTaskExecution(any(PluginTaskExecution.class));
 
         executorService.handlePluginInOutTaskExecution(
-                new TestPluginInOutContext(String.class, getIdForBucket(1)),
-                () -> new TestPluginTaskInput(),
-                () -> new TestPluginTaskOutput(),
+                new TestPluginInOutContext(getIdForBucket(1)),
+                TestPluginTaskInput::new,
+                TestPluginTaskOutput::new,
                 new TestPluginInOutTask(classloader)
         );
 
@@ -92,16 +92,16 @@ public class PluginTaskExecutorServiceImplTest {
     public void test_in_executed_in_the_right_executor() {
 
         executorService.handlePluginInTaskExecution(
-                new TestPluginInContext(String.class, getIdForBucket(0)),
-                () -> new TestPluginTaskInput(),
+                new TestPluginInContext(getIdForBucket(0)),
+                TestPluginTaskInput::new,
                 new TestPluginInTask(classloader)
         );
 
         verify(executor1, times(1)).handlePluginTaskExecution(any(PluginTaskExecution.class));
 
         executorService.handlePluginInTaskExecution(
-                new TestPluginInContext(String.class, getIdForBucket(1)),
-                () -> new TestPluginTaskInput(),
+                new TestPluginInContext(getIdForBucket(1)),
+                TestPluginTaskInput::new,
                 new TestPluginInTask(classloader)
         );
 
@@ -113,16 +113,16 @@ public class PluginTaskExecutorServiceImplTest {
     public void test_out_executed_in_the_right_executor() {
 
         executorService.handlePluginOutTaskExecution(
-                new TestPluginOutContext(String.class, getIdForBucket(0)),
-                () -> new TestPluginTaskOutput(),
+                new TestPluginOutContext(getIdForBucket(0)),
+                TestPluginTaskOutput::new,
                 new TestPluginOutTask(classloader)
         );
 
         verify(executor1, times(1)).handlePluginTaskExecution(any(PluginTaskExecution.class));
 
         executorService.handlePluginOutTaskExecution(
-                new TestPluginOutContext(String.class, getIdForBucket(1)),
-                () -> new TestPluginTaskOutput(),
+                new TestPluginOutContext(getIdForBucket(1)),
+                TestPluginTaskOutput::new,
                 new TestPluginOutTask(classloader)
         );
 
@@ -139,7 +139,6 @@ public class PluginTaskExecutorServiceImplTest {
             }
         }
     }
-
 
     private class ExecutorProvider implements Provider<PluginTaskExecutor> {
 
@@ -162,15 +161,14 @@ public class PluginTaskExecutorServiceImplTest {
         }
     }
 
-
     private static class TestPluginTaskInput implements PluginTaskInput {
 
     }
 
     private static class TestPluginInOutContext extends PluginInOutTaskContext<TestPluginTaskOutput> {
 
-        TestPluginInOutContext(@NotNull final Class<?> taskClazz, @NotNull final String identifier) {
-            super(taskClazz, identifier);
+        TestPluginInOutContext(@NotNull final String identifier) {
+            super(identifier);
         }
 
         @Override
@@ -181,8 +179,8 @@ public class PluginTaskExecutorServiceImplTest {
 
     private static class TestPluginOutContext extends PluginOutTaskContext<TestPluginTaskOutput> {
 
-        TestPluginOutContext(@NotNull final Class<?> taskClazz, @NotNull final String identifier) {
-            super(taskClazz, identifier);
+        TestPluginOutContext(@NotNull final String identifier) {
+            super(identifier);
         }
 
         @Override
@@ -193,12 +191,11 @@ public class PluginTaskExecutorServiceImplTest {
 
     private static class TestPluginInContext extends PluginInTaskContext {
 
-        TestPluginInContext(@NotNull final Class<?> taskClazz, @NotNull final String identifier) {
-            super(taskClazz, identifier);
+        TestPluginInContext(@NotNull final String identifier) {
+            super(identifier);
         }
 
     }
-
 
     private static class TestPluginTaskOutput implements PluginTaskOutput {
 
@@ -244,14 +241,15 @@ public class PluginTaskExecutorServiceImplTest {
 
         private final IsolatedPluginClassloader classloader;
 
-        public TestPluginInOutTask(IsolatedPluginClassloader classloader) {
+        public TestPluginInOutTask(final IsolatedPluginClassloader classloader) {
             this.classloader = classloader;
         }
 
         @NotNull
         @Override
-        public TestPluginTaskOutput apply(@NotNull final TestPluginTaskInput testPluginTaskInput,
-                                          @NotNull final TestPluginTaskOutput testPluginTaskOutput) {
+        public TestPluginTaskOutput apply(
+                @NotNull final TestPluginTaskInput testPluginTaskInput,
+                @NotNull final TestPluginTaskOutput testPluginTaskOutput) {
 
             return testPluginTaskOutput;
         }
@@ -266,7 +264,7 @@ public class PluginTaskExecutorServiceImplTest {
 
         private final IsolatedPluginClassloader classloader;
 
-        public TestPluginOutTask(IsolatedPluginClassloader classloader) {
+        public TestPluginOutTask(final IsolatedPluginClassloader classloader) {
             this.classloader = classloader;
         }
 
@@ -283,10 +281,9 @@ public class PluginTaskExecutorServiceImplTest {
 
     private static class TestPluginInTask implements PluginInTask<TestPluginTaskInput> {
 
-
         private final IsolatedPluginClassloader classloader;
 
-        public TestPluginInTask(IsolatedPluginClassloader classloader) {
+        public TestPluginInTask(final IsolatedPluginClassloader classloader) {
             this.classloader = classloader;
         }
 
@@ -300,6 +297,5 @@ public class PluginTaskExecutorServiceImplTest {
             return classloader;
         }
     }
-
 
 }

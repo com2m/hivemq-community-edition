@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,14 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.persistence.clientsession;
 
 import com.google.common.util.concurrent.ListenableFuture;
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.codec.encoder.mqtt5.UnsignedDataTypes;
 import com.hivemq.mqtt.message.connect.MqttWillPublish;
+import com.hivemq.mqtt.message.reason.Mqtt5DisconnectReasonCode;
 import com.hivemq.persistence.local.xodus.MultipleChunkResult;
 
 import java.util.Map;
@@ -93,6 +93,21 @@ public interface ClientSessionPersistence {
      */
     @NotNull
     ListenableFuture<Boolean> forceDisconnectClient(@NotNull String clientId, boolean preventLwtMessage, @NotNull DisconnectSource source);
+
+    /**
+     * Enforce a client disconnect from a specific source, preventing or delivering the will message.
+     *
+     * @param clientId          The client id of the client to disconnect.
+     * @param preventLwtMessage The flag if the will message should be prevented or delivered.
+     * @param source            The source of the enforce call.
+     * @param reasonCode        The reason code for the enforced disconnect.
+     * @param reasonString      The reason string for the enforced disconnect.
+     * @return a future of a boolean which gives the information that a client was disconnected (true) or wasn't
+     * connected (false).
+     */
+    @NotNull
+    ListenableFuture<Boolean> forceDisconnectClient(@NotNull String clientId, boolean preventLwtMessage, @NotNull DisconnectSource source,
+                                                    @Nullable Mqtt5DisconnectReasonCode reasonCode, @Nullable String reasonString);
 
     /**
      * Sets the session expiry interval for a client in seconds.

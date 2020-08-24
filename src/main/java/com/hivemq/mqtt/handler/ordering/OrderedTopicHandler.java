@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,15 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.mqtt.handler.ordering;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.SettableFuture;
-import com.hivemq.annotations.Immutable;
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
-import com.hivemq.codec.encoder.mqtt5.PublishDroppedEvent;
+import com.hivemq.extension.sdk.api.annotations.Immutable;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
+import com.hivemq.mqtt.event.PublishDroppedEvent;
+import com.hivemq.mqtt.event.PubrelDroppedEvent;
 import com.hivemq.mqtt.handler.publish.PublishStatus;
 import com.hivemq.mqtt.message.MessageWithID;
 import com.hivemq.mqtt.message.puback.PUBACK;
@@ -119,13 +119,17 @@ public class OrderedTopicHandler extends ChannelDuplexHandler {
 
     @Override
     public void userEventTriggered(@NotNull final ChannelHandlerContext ctx, @NotNull final Object evt) throws Exception {
-        if (!(evt instanceof PublishDroppedEvent)) {
-            super.userEventTriggered(ctx, evt);
+        if (evt instanceof PublishDroppedEvent) {
+            final PublishDroppedEvent publishDroppedEvent = (PublishDroppedEvent) evt;
+            // Already logged, just proceeded with with the next message
+            messageFlowComplete(ctx, publishDroppedEvent.getMessage().getPacketIdentifier());
+            return;
+        } else if (evt instanceof PubrelDroppedEvent) {
+            final PubrelDroppedEvent pubrelDroppedEvent = (PubrelDroppedEvent) evt;
+            messageFlowComplete(ctx, pubrelDroppedEvent.getMessage().getPacketIdentifier());
             return;
         }
-        final PublishDroppedEvent publishDroppedEvent = (PublishDroppedEvent) evt;
-        // Already logged, just proceeded with with the next message
-        messageFlowComplete(ctx, publishDroppedEvent.getMessage().getPacketIdentifier());
+        super.userEventTriggered(ctx, evt);
     }
 
     @Override
@@ -134,7 +138,7 @@ public class OrderedTopicHandler extends ChannelDuplexHandler {
         if (msg instanceof PubrelWithFuture) {
             final PubrelWithFuture pubrelWithFuture = (PubrelWithFuture) msg;
             messageIdToFutureMap.put(pubrelWithFuture.getPacketIdentifier(), pubrelWithFuture.getFuture());
-            super.write(ctx, pubrelWithFuture.getPubrel(), promise);
+            super.write(ctx, pubrelWithFuture, promise);
             return;
         }
 

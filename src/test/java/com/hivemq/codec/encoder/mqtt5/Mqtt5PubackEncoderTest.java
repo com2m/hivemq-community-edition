@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.codec.encoder.mqtt5;
 
 import com.google.common.collect.ImmutableList;
@@ -24,14 +23,11 @@ import com.hivemq.mqtt.message.mqtt5.MqttUserProperty;
 import com.hivemq.mqtt.message.puback.PUBACK;
 import com.hivemq.mqtt.message.reason.Mqtt5PubAckReasonCode;
 import com.hivemq.util.ChannelAttributes;
-import io.netty.buffer.ByteBuf;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
-import static org.junit.Assert.assertEquals;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -231,7 +227,8 @@ public class Mqtt5PubackEncoderTest extends AbstractMqtt5EncoderTest {
                 0, 1
         };
 
-        final PUBACK pubAck = new PUBACK(1, Mqtt5PubAckReasonCode.SUCCESS, null, Mqtt5UserProperties.NO_USER_PROPERTIES);
+        final PUBACK pubAck =
+                new PUBACK(1, Mqtt5PubAckReasonCode.SUCCESS, null, Mqtt5UserProperties.NO_USER_PROPERTIES);
 
         encodeTestBufferSize(expected, pubAck, encoder.bufferSize(channel.pipeline().context(encoder), pubAck));
     }
@@ -336,24 +333,10 @@ public class Mqtt5PubackEncoderTest extends AbstractMqtt5EncoderTest {
         };
         final MaximumPacketBuilder maxPacket = new MaximumPacketBuilder().build(MAX_PACKET_SIZE);
 
-        final PUBACK pubAck = new PUBACK(1, reasonCode, null, getUserProperties(maxPacket.getMaxUserPropertiesCount() + 1));
+        final PUBACK pubAck =
+                new PUBACK(1, reasonCode, null, getUserProperties(maxPacket.getMaxUserPropertiesCount() + 1));
 
         encodeTestBufferSize(expected, pubAck, encoder.bufferSize(channel.pipeline().context(encoder), pubAck));
-    }
-
-    @Test
-    public void encode_maximum_packet_size_exceeded() {
-
-        channel.attr(ChannelAttributes.MAX_PACKET_SIZE_SEND).set(1L);
-
-        final MaximumPacketBuilder maxPacket = new MaximumPacketBuilder().build(MAX_PACKET_SIZE);
-
-        final PUBACK pubAck = new PUBACK(1, reasonCode, null, getUserProperties(maxPacket.getMaxUserPropertiesCount() + 1));
-        channel.writeOutbound(pubAck);
-        final ByteBuf buf = channel.readOutbound();
-        assertEquals(0, buf.readableBytes());
-
-        verify(messageDroppedService).messageMaxPacketSizeExceeded("clientId","PUBACK", 1, 4);
     }
 
     @Test

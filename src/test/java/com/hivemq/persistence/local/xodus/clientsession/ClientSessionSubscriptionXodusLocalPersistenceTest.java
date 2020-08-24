@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,19 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.persistence.local.xodus.clientsession;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
 import com.google.common.collect.UnmodifiableIterator;
-import com.hivemq.annotations.NotNull;
 import com.hivemq.configuration.service.InternalConfigurations;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.subscribe.Topic;
-import com.hivemq.persistence.MatchAllPersistenceFilter;
-import com.hivemq.persistence.PersistenceFilter;
 import com.hivemq.persistence.PersistenceStartup;
 import com.hivemq.persistence.local.xodus.BucketChunkResult;
 import com.hivemq.persistence.local.xodus.EnvironmentUtil;
@@ -96,7 +92,7 @@ public class ClientSessionSubscriptionXodusLocalPersistenceTest {
     @Test
     public void test_add_get_subscriptions() {
 
-        persistence.addSubscriptions("clientid", Sets.newHashSet(new Topic("topic1", QoS.AT_MOST_ONCE), new Topic("topic2", QoS.AT_MOST_ONCE), new Topic("topic3", QoS.AT_MOST_ONCE)), 123L, BucketUtils.getBucket("clientid", bucketCount));
+        persistence.addSubscriptions("clientid", ImmutableSet.of(new Topic("topic1", QoS.AT_MOST_ONCE), new Topic("topic2", QoS.AT_MOST_ONCE), new Topic("topic3", QoS.AT_MOST_ONCE)), 123L, BucketUtils.getBucket("clientid", bucketCount));
 
         final ImmutableSet<Topic> subscriptions = persistence.getSubscriptions("clientid");
 
@@ -106,7 +102,7 @@ public class ClientSessionSubscriptionXodusLocalPersistenceTest {
     @Test(expected = NullPointerException.class)
     public void test_add_get_subscriptions_client_id_null_check() {
 
-        persistence.addSubscriptions(null, Sets.newHashSet(new Topic("topic1", QoS.AT_MOST_ONCE), new Topic("topic2", QoS.AT_MOST_ONCE), new Topic("topic3", QoS.AT_MOST_ONCE)), 123L, BucketUtils.getBucket("clientid", bucketCount));
+        persistence.addSubscriptions(null, ImmutableSet.of(new Topic("topic1", QoS.AT_MOST_ONCE), new Topic("topic2", QoS.AT_MOST_ONCE), new Topic("topic3", QoS.AT_MOST_ONCE)), 123L, BucketUtils.getBucket("clientid", bucketCount));
     }
 
     @Test(expected = NullPointerException.class)
@@ -118,7 +114,7 @@ public class ClientSessionSubscriptionXodusLocalPersistenceTest {
     @Test(expected = IllegalStateException.class)
     public void test_add_get_subscriptions_client_timestamp_state_check() {
 
-        persistence.addSubscriptions("clientid", Sets.newHashSet(new Topic("topic1", QoS.AT_MOST_ONCE), new Topic("topic2", QoS.AT_MOST_ONCE), new Topic("topic3", QoS.AT_MOST_ONCE)), -123L, BucketUtils.getBucket("clientid", bucketCount));
+        persistence.addSubscriptions("clientid", ImmutableSet.of(new Topic("topic1", QoS.AT_MOST_ONCE), new Topic("topic2", QoS.AT_MOST_ONCE), new Topic("topic3", QoS.AT_MOST_ONCE)), -123L, BucketUtils.getBucket("clientid", bucketCount));
     }
 
     @Test
@@ -417,15 +413,20 @@ public class ClientSessionSubscriptionXodusLocalPersistenceTest {
         final ImmutableSet<Topic> subscriptions = persistence.getSubscriptions("clientid");
         assertEquals(3, subscriptions.size());
 
+        int found = 0;
         for (final Topic subscription : subscriptions) {
             if (subscription.getTopic().equals("topic/a")) {
                 assertEquals(subscription.getSubscriptionIdentifier().intValue(), 1);
+                found++;
             } else if (subscription.getTopic().equals("topic/#")) {
                 assertEquals(subscription.getSubscriptionIdentifier().intValue(), 2);
+                found++;
             } else if (subscription.getTopic().equals("topic/+")) {
                 assertEquals(subscription.getSubscriptionIdentifier().intValue(), 3);
+                found++;
             }
         }
+        assertEquals(3, found);
     }
 
     @Test
@@ -435,25 +436,11 @@ public class ClientSessionSubscriptionXodusLocalPersistenceTest {
         persistence.addSubscription("clientid2", new Topic("topic3", QoS.AT_MOST_ONCE), 1234567890L, BucketUtils.getBucket("clientid2", bucketCount));
 
 
-        final Map<String, Set<Topic>> client1Entries = persistence.getAllSubscribersChunk(MatchAllPersistenceFilter.INSTANCE, BucketUtils.getBucket("clientid", bucketCount), null, 10).getValue();
-        final Map<String, Set<Topic>> client2Entries = persistence.getAllSubscribersChunk(MatchAllPersistenceFilter.INSTANCE, BucketUtils.getBucket("clientid2", bucketCount), null, 10).getValue();
+        final Map<String, ImmutableSet<Topic>> client1Entries = persistence.getAllSubscribersChunk(BucketUtils.getBucket("clientid", bucketCount), null, 10).getValue();
+        final Map<String, ImmutableSet<Topic>> client2Entries = persistence.getAllSubscribersChunk(BucketUtils.getBucket("clientid2", bucketCount), null, 10).getValue();
 
         assertEquals(2, client1Entries.get("clientid").size());
         assertEquals(1, client2Entries.get("clientid2").size());
-    }
-
-    @Test
-    public void test_get_chunk_match_some() {
-        persistence.addSubscription("clientid", new Topic("topic", QoS.AT_LEAST_ONCE), 123L, BucketUtils.getBucket("clientid", bucketCount));
-        persistence.addSubscription("clientid", new Topic("topic2", QoS.EXACTLY_ONCE), 431L, BucketUtils.getBucket("clientid", bucketCount));
-        persistence.addSubscription("clientid2", new Topic("topic3", QoS.AT_MOST_ONCE), 1234567890L, BucketUtils.getBucket("clientid2", bucketCount));
-
-
-        final Map<String, Set<Topic>> client1Entries = persistence.getAllSubscribersChunk(getMatchClientidFilter(), BucketUtils.getBucket("clientid", bucketCount), null, 100).getValue();
-        final Map<String, Set<Topic>> client2Entries = persistence.getAllSubscribersChunk(getMatchClientidFilter(), BucketUtils.getBucket("clientid2", bucketCount), null, 100).getValue();
-
-        assertEquals(2, client1Entries.get("clientid").size());
-        assertEquals(0, client2Entries.size());
     }
 
     @Test
@@ -465,7 +452,7 @@ public class ClientSessionSubscriptionXodusLocalPersistenceTest {
 
         final Map<String, Set<Topic>> all = new HashMap<>();
         for (int i = 0; i < bucketCount; i++) {
-            all.putAll(persistence.getAllSubscribersChunk(MatchAllPersistenceFilter.INSTANCE, i, null, 10).getValue());
+            all.putAll(persistence.getAllSubscribersChunk(i, null, 10).getValue());
         }
 
         for (final Map.Entry<String, Set<Topic>> entry : all.entrySet()) {
@@ -485,13 +472,13 @@ public class ClientSessionSubscriptionXodusLocalPersistenceTest {
         persistence.addSubscription("3", new Topic("A3", QoS.AT_LEAST_ONCE), 123L, 1);
         persistence.addSubscription("3", new Topic("B3", QoS.AT_LEAST_ONCE), 123L, 1);
 
-        final BucketChunkResult<Map<String, Set<Topic>>> chunk =
-                persistence.getAllSubscribersChunk(MatchAllPersistenceFilter.INSTANCE, 1, null, 3);
+        final BucketChunkResult<Map<String, ImmutableSet<Topic>>> chunk =
+                persistence.getAllSubscribersChunk(1, null, 3);
 
-        final Map<String, Set<Topic>> all = chunk.getValue();
+        final Map<String, ImmutableSet<Topic>> all = chunk.getValue();
 
         assertEquals(2, all.size());
-        for (final Map.Entry<String, Set<Topic>> entry : all.entrySet()) {
+        for (final Map.Entry<String, ImmutableSet<Topic>> entry : all.entrySet()) {
             assertEquals(2, entry.getValue().size());
 
             for (final Topic topic : entry.getValue()) {
@@ -499,13 +486,13 @@ public class ClientSessionSubscriptionXodusLocalPersistenceTest {
             }
         }
 
-        final BucketChunkResult<Map<String, Set<Topic>>> chunk2 =
-                persistence.getAllSubscribersChunk(MatchAllPersistenceFilter.INSTANCE, 1, chunk.getLastKey(), 1);
+        final BucketChunkResult<Map<String, ImmutableSet<Topic>>> chunk2 =
+                persistence.getAllSubscribersChunk(1, chunk.getLastKey(), 1);
 
-        final Map<String, Set<Topic>> all2 = chunk2.getValue();
+        final Map<String, ImmutableSet<Topic>> all2 = chunk2.getValue();
 
         assertEquals(1, all2.size());
-        for (final Map.Entry<String, Set<Topic>> entry2 : all2.entrySet()) {
+        for (final Map.Entry<String, ImmutableSet<Topic>> entry2 : all2.entrySet()) {
             assertEquals(2, entry2.getValue().size());
 
             for (final Topic topic : entry2.getValue()) {
@@ -519,7 +506,7 @@ public class ClientSessionSubscriptionXodusLocalPersistenceTest {
         persistence.addSubscription("clientid", new Topic("topic", QoS.AT_LEAST_ONCE), 123L, 1);
         persistence.addSubscription("clientid", new Topic("topic", QoS.EXACTLY_ONCE), 431L, 1);
 
-        final Map<String, Set<Topic>> client1Entries = persistence.getAllSubscribersChunk(MatchAllPersistenceFilter.INSTANCE, 1, null, 100).getValue();
+        final Map<String, ImmutableSet<Topic>> client1Entries = persistence.getAllSubscribersChunk(1, null, 100).getValue();
 
         final Set<Topic> topics = client1Entries.get("clientid");
         assertEquals(1, topics.size());
@@ -538,10 +525,10 @@ public class ClientSessionSubscriptionXodusLocalPersistenceTest {
         }
 
         final ArrayList<String> clientIds = Lists.newArrayList();
-        BucketChunkResult<Map<String, Set<Topic>>> chunk = null;
+        BucketChunkResult<Map<String, ImmutableSet<Topic>>> chunk = null;
 
         do {
-            chunk = persistence.getAllSubscribersChunk(MatchAllPersistenceFilter.INSTANCE, 1, chunk != null ? chunk.getLastKey() : null, 16);
+            chunk = persistence.getAllSubscribersChunk(1, chunk != null ? chunk.getLastKey() : null, 16);
             clientIds.addAll(chunk.getValue().keySet());
         } while (!chunk.isFinished());
 
@@ -568,13 +555,13 @@ public class ClientSessionSubscriptionXodusLocalPersistenceTest {
         }
 
         final ArrayList<String> clientIds = Lists.newArrayList();
-        BucketChunkResult<Map<String, Set<Topic>>> chunk = null;
+        BucketChunkResult<Map<String, ImmutableSet<Topic>>> chunk = null;
 
         do {
             if (chunk != null && chunk.getLastKey() != null) {
                 persistence.removeAll(chunk.getLastKey(), System.currentTimeMillis(), 1);
             }
-            chunk = persistence.getAllSubscribersChunk(MatchAllPersistenceFilter.INSTANCE, 1, chunk != null ? chunk.getLastKey() : null, 1);
+            chunk = persistence.getAllSubscribersChunk(1, chunk != null ? chunk.getLastKey() : null, 1);
             clientIds.addAll(chunk.getValue().keySet());
         } while (!chunk.isFinished());
 
@@ -603,10 +590,10 @@ public class ClientSessionSubscriptionXodusLocalPersistenceTest {
         }
 
         final ArrayList<String> clientIds = Lists.newArrayList();
-        BucketChunkResult<Map<String, Set<Topic>>> chunk = null;
+        BucketChunkResult<Map<String, ImmutableSet<Topic>>> chunk = null;
 
         do {
-            chunk = persistence.getAllSubscribersChunk(MatchAllPersistenceFilter.INSTANCE, 1, chunk != null ? chunk.getLastKey() : null, 16);
+            chunk = persistence.getAllSubscribersChunk(1, chunk != null ? chunk.getLastKey() : null, 16);
             clientIds.addAll(chunk.getValue().keySet());
         } while (!chunk.isFinished());
 
@@ -651,14 +638,4 @@ public class ClientSessionSubscriptionXodusLocalPersistenceTest {
         });
     }
 
-
-    @NotNull
-    private PersistenceFilter getMatchClientidFilter() {
-        return new PersistenceFilter() {
-            @Override
-            public boolean match(final String key) {
-                return key.equals("clientid");
-            }
-        };
-    }
 }

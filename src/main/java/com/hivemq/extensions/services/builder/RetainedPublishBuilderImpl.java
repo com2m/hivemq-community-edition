@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,17 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions.services.builder;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-import com.hivemq.annotations.NotNull;
-import com.hivemq.annotations.Nullable;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.configuration.service.MqttConfigurationService;
 import com.hivemq.configuration.service.RestrictionsConfigurationService;
 import com.hivemq.configuration.service.SecurityConfigurationService;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.extension.sdk.api.packets.general.Qos;
 import com.hivemq.extension.sdk.api.packets.general.UserProperties;
 import com.hivemq.extension.sdk.api.packets.general.UserProperty;
@@ -37,16 +36,13 @@ import com.hivemq.extensions.packets.general.UserPropertiesImpl;
 import com.hivemq.extensions.packets.publish.PublishPacketImpl;
 import com.hivemq.extensions.services.publish.PublishImpl;
 import com.hivemq.extensions.services.publish.RetainedPublishImpl;
-import com.hivemq.mqtt.message.mqtt5.Mqtt5UserProperties;
 import com.hivemq.mqtt.message.mqtt5.MqttUserProperty;
 import com.hivemq.mqtt.message.publish.PUBLISH;
-import com.hivemq.util.Topics;
 
 import javax.inject.Inject;
 import java.nio.ByteBuffer;
 import java.util.Optional;
 
-import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.hivemq.mqtt.message.publish.PUBLISH.MESSAGE_EXPIRY_INTERVAL_NOT_SET;
 
@@ -80,7 +76,7 @@ public class RetainedPublishBuilderImpl implements RetainedPublishBuilder {
     private ByteBuffer payload;
 
     @NotNull
-    private final ImmutableList.Builder<MqttUserProperty> userPropertyBuilder = new ImmutableList.Builder<>();
+    private final ImmutableList.Builder<MqttUserProperty> userPropertyBuilder = ImmutableList.builder();
 
     @NotNull
     private final MqttConfigurationService mqttConfigurationService;
@@ -163,17 +159,7 @@ public class RetainedPublishBuilderImpl implements RetainedPublishBuilder {
     @NotNull
     @Override
     public RetainedPublishBuilder topic(@NotNull final String topic) {
-        checkNotNull(topic, "Topic must not be null");
-        checkArgument(topic.length() <= restrictionsConfig.maxTopicLength(), "Topic filter length must not exceed '" + restrictionsConfig.maxTopicLength() + "' characters, but has '" + topic.length() + "' characters");
-
-        if (!Topics.isValidTopicToPublish(topic)) {
-            throw new IllegalArgumentException("The topic (" + topic + ") is invalid for retained PUBLISH messages");
-        }
-
-        if (!PluginBuilderUtil.isValidUtf8String(topic, securityConfigurationService.validateUTF8())) {
-            throw new IllegalArgumentException("The topic (" + topic + ") is UTF-8 malformed");
-        }
-
+        PluginBuilderUtil.checkTopic(topic, restrictionsConfig.maxTopicLength(), securityConfigurationService.validateUTF8());
         this.topic = topic;
         return this;
     }
@@ -243,8 +229,7 @@ public class RetainedPublishBuilderImpl implements RetainedPublishBuilder {
             messageExpiryInterval = mqttConfigurationService.maxMessageExpiryInterval();
         }
 
-        return new RetainedPublishImpl(qos, topic, payloadFormatIndicator, messageExpiryInterval,
-                responseTopic, correlationData, contentType, payload,
-                new UserPropertiesImpl(Mqtt5UserProperties.of(userPropertyBuilder.build())));
+        return new RetainedPublishImpl(qos, topic, payloadFormatIndicator, messageExpiryInterval, responseTopic,
+                correlationData, contentType, payload, UserPropertiesImpl.of(userPropertyBuilder.build()));
     }
 }

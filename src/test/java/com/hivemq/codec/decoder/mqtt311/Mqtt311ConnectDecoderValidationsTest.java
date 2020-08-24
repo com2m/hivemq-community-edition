@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.codec.decoder.mqtt311;
 
 import com.hivemq.codec.decoder.mqtt3.Mqtt311ConnectDecoder;
@@ -24,6 +23,7 @@ import com.hivemq.mqtt.handler.disconnect.Mqtt3ServerDisconnector;
 import com.hivemq.mqtt.handler.disconnect.MqttDisconnectUtil;
 import com.hivemq.mqtt.message.connack.CONNACK;
 import com.hivemq.mqtt.message.connack.Mqtt3ConnAckReturnCode;
+import com.hivemq.mqtt.message.reason.Mqtt5ConnAckReasonCode;
 import com.hivemq.util.Strings;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -230,7 +230,7 @@ public class Mqtt311ConnectDecoderValidationsTest {
 
         assertNull(decoder.decode(channel, buffer, fixedHeader));
 
-        verify(connacker).connackErrorMqtt3(any(Channel.class), anyString(), anyString(), eq(Mqtt3ConnAckReturnCode.REFUSED_NOT_AUTHORIZED));
+        verify(connacker).connackError(any(Channel.class), anyString(), anyString(), eq(Mqtt5ConnAckReasonCode.NOT_AUTHORIZED), anyString());
     }
 
     @Test

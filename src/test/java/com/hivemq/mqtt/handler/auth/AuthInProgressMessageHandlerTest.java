@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,10 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.mqtt.handler.auth;
 
-import com.hivemq.configuration.service.MqttConfigurationService;
 import com.hivemq.logging.EventLog;
 import com.hivemq.mqtt.handler.connack.MqttConnackSendUtil;
 import com.hivemq.mqtt.handler.connack.MqttConnacker;
@@ -44,9 +42,6 @@ import static org.junit.Assert.*;
 @SuppressWarnings("NullabilityAnnotations")
 public class AuthInProgressMessageHandlerTest {
 
-
-    @Mock
-    private MqttConfigurationService mqttConfigurationService;
     @Mock
     private EventLog eventLog;
 
@@ -57,7 +52,7 @@ public class AuthInProgressMessageHandlerTest {
     public void setUp() {
         MockitoAnnotations.initMocks(this);
 
-        final MqttConnackSendUtil connackSendUtil = new MqttConnackSendUtil(eventLog, mqttConfigurationService);
+        final MqttConnackSendUtil connackSendUtil = new MqttConnackSendUtil(eventLog);
 
         connacker = new MqttConnacker(connackSendUtil);
 
@@ -97,6 +92,6 @@ public class AuthInProgressMessageHandlerTest {
 
         assertNull(channel.readInbound());
         assertEquals(Mqtt5ConnAckReasonCode.PROTOCOL_ERROR, connack.getReasonCode());
-        assertEquals("non AUTH non DISCONNECT message", connack.getReasonString());
+        assertEquals("Client must not send a message other than AUTH or DISCONNECT during enhanced authentication", connack.getReasonString());
     }
 }

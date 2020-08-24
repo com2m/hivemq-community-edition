@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions.packets.connect;
 
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.packets.connect.WillPublishPacket;
 import com.hivemq.extension.sdk.api.packets.general.MqttVersion;
 import com.hivemq.extension.sdk.api.packets.general.Qos;
@@ -24,9 +24,12 @@ import com.hivemq.mqtt.message.connect.CONNECT;
 import com.hivemq.mqtt.message.connect.MqttWillPublish;
 import com.hivemq.mqtt.message.mqtt5.Mqtt5UserProperties;
 import com.hivemq.mqtt.message.mqtt5.MqttUserProperty;
+import nl.jqno.equalsverifier.EqualsVerifier;
+import nl.jqno.equalsverifier.Warning;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
@@ -37,9 +40,8 @@ import static org.junit.Assert.*;
  */
 public class ConnectPacketImplTest {
 
-
-    private ConnectPacketImpl connectPacket;
-    private ConnectPacketImpl emptyPacket;
+    private @NotNull ConnectPacketImpl connectPacket;
+    private @NotNull ConnectPacketImpl emptyPacket;
 
     @Before
     public void setUp() {
@@ -58,12 +60,16 @@ public class ConnectPacketImplTest {
                 .withResponseInformationRequested(true)
                 .withProblemInformationRequested(true)
                 .withWillPublish(new MqttWillPublish.Mqtt5Builder().withTopic("topic")
-                        .withPayload("payload".getBytes()).withQos(QoS.AT_LEAST_ONCE).build())
-                .withMqtt5UserProperties(Mqtt5UserProperties.of(new MqttUserProperty("one", "one"))).build();
+                        .withPayload("payload".getBytes())
+                        .withQos(QoS.AT_LEAST_ONCE)
+                        .build())
+                .withUserProperties(Mqtt5UserProperties.of(new MqttUserProperty("one", "one")))
+                .build();
 
         final CONNECT empty = new CONNECT.Mqtt5Builder()
                 .withClientIdentifier("client")
                 .build();
+
         connectPacket = new ConnectPacketImpl(connect);
         emptyPacket = new ConnectPacketImpl(empty);
     }
@@ -134,12 +140,11 @@ public class ConnectPacketImplTest {
     public void test_user_name() {
         assertEquals("user", connectPacket.getUserName().get());
         assertFalse(emptyPacket.getUserName().isPresent());
-
     }
 
     @Test(timeout = 5000)
     public void test_password() {
-        assertArrayEquals("password".getBytes(), connectPacket.getPassword().get().array());
+        assertEquals(ByteBuffer.wrap("password".getBytes()), connectPacket.getPassword().get());
         assertFalse(emptyPacket.getPassword().isPresent());
     }
 
@@ -151,13 +156,21 @@ public class ConnectPacketImplTest {
 
     @Test(timeout = 5000)
     public void test_auth_data() {
-        assertArrayEquals("data".getBytes(), connectPacket.getAuthenticationData().get().array());
+        assertEquals(ByteBuffer.wrap("data".getBytes()), connectPacket.getAuthenticationData().get());
         assertFalse(emptyPacket.getAuthenticationData().isPresent());
-
     }
 
     @Test(timeout = 5000)
     public void test_mqtt_version() {
         assertEquals(MqttVersion.V_5, connectPacket.getMqttVersion());
+    }
+
+    @Test
+    public void equals() {
+        EqualsVerifier.forClass(ConnectPacketImpl.class)
+                .withIgnoredAnnotations(NotNull.class) // EqualsVerifier thinks @NotNull Optional is @NotNull
+                .withNonnullFields("mqttVersion", "clientId", "userProperties")
+                .suppress(Warning.STRICT_INHERITANCE)
+                .verify();
     }
 }

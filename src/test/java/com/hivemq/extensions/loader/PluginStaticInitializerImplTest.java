@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,15 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hivemq.extensions.loader;
 
 import com.codahale.metrics.MetricRegistry;
 import com.google.common.collect.ImmutableMap;
-import com.hivemq.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.configuration.service.FullConfigurationService;
-import com.hivemq.configuration.service.MqttConfigurationService;
-import com.hivemq.configuration.service.impl.MqttConfigurationServiceImpl;
 import com.hivemq.extension.sdk.api.ExtensionMain;
 import com.hivemq.extension.sdk.api.client.parameter.ServerInformation;
 import com.hivemq.extension.sdk.api.events.EventRegistry;
@@ -44,17 +41,17 @@ import com.hivemq.extension.sdk.api.services.subscription.SubscriptionStore;
 import com.hivemq.extensions.HiveMQExtensions;
 import com.hivemq.extensions.classloader.IsolatedPluginClassloader;
 import com.hivemq.extensions.exception.PluginLoadingException;
+import com.hivemq.extensions.handler.PluginAuthenticatorService;
+import com.hivemq.extensions.handler.PluginAuthorizerService;
 import com.hivemq.extensions.services.auth.AuthenticatorsImpl;
 import com.hivemq.extensions.services.auth.AuthorizersImpl;
 import com.hivemq.extensions.services.auth.SecurityRegistryImpl;
-import com.hivemq.extensions.services.builder.PublishBuilderImpl;
-import com.hivemq.extensions.services.builder.RetainedPublishBuilderImpl;
-import com.hivemq.extensions.services.builder.TopicSubscriptionBuilderImpl;
-import com.hivemq.extensions.services.builder.WillPublishBuilderImpl;
+import com.hivemq.extensions.services.builder.*;
 import com.hivemq.extensions.services.executor.GlobalManagedPluginExecutorService;
 import com.hivemq.extensions.services.executor.ManagedExecutorServicePerExtension;
 import com.hivemq.extensions.services.initializer.InitializerRegistryImpl;
 import com.hivemq.extensions.services.initializer.InitializersImpl;
+import com.hivemq.persistence.ChannelPersistence;
 import org.jboss.shrinkwrap.api.ShrinkWrap;
 import org.jboss.shrinkwrap.api.exporter.ZipExporter;
 import org.jboss.shrinkwrap.api.spec.JavaArchive;
@@ -99,8 +96,6 @@ public class PluginStaticInitializerImplTest {
     private PublishBuilder publishBuilder;
     private WillPublishBuilder willPublishBuilder;
 
-    private final MqttConfigurationService mqttConfigurationService = new MqttConfigurationServiceImpl();
-
     private FullConfigurationService fullConfigurationService;
 
     @Mock
@@ -122,7 +117,15 @@ public class PluginStaticInitializerImplTest {
     private PublishService publishService;
 
     @Mock
+    private ChannelPersistence channelPersistence;
+
+    @Mock
     private EventRegistry eventRegistry;
+
+    private PluginAuthorizerService pluginAuthorizerService;
+
+    @Mock
+    private PluginAuthenticatorService pluginAuthenticatorService;
 
     @Mock
     private ClusterService clusterService;
@@ -145,10 +148,11 @@ public class PluginStaticInitializerImplTest {
                 new InitializerRegistryImpl(new InitializersImpl(hiveMQExtensions));
         retainedPublishBuilder = new RetainedPublishBuilderImpl(fullConfigurationService);
         topicSubscriptionBuilder = new TopicSubscriptionBuilderImpl(fullConfigurationService);
+        topicPermissionBuilder = new TopicPermissionBuilderImpl(fullConfigurationService);
         publishBuilder = new PublishBuilderImpl(fullConfigurationService);
         willPublishBuilder = new WillPublishBuilderImpl(fullConfigurationService);
-        securityRegistry = new SecurityRegistryImpl(new AuthenticatorsImpl(hiveMQExtensions), new AuthorizersImpl(
-                hiveMQExtensions), new HiveMQExtensions(serverInformation));
+        securityRegistry = new SecurityRegistryImpl(new AuthenticatorsImpl(hiveMQExtensions),
+                new AuthorizersImpl(hiveMQExtensions));
         servicesDependencies = Mockito.spy(
                 new PluginServicesDependenciesImpl(metricRegistry, initializerRegistry, retainedMessageStore,
                         clientService, subscriptionStore, managedPluginExecutorService, publishService,

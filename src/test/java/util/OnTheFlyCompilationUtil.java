@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 dc-square GmbH
+ * Copyright 2019-present HiveMQ GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package util;
 
 import com.google.common.collect.Iterables;
@@ -37,6 +36,7 @@ import java.util.*;
  * Various utilities for compilation of Java classes on the fly
  *
  * @author Dominik Obermaier
+ * @author Georg Held
  */
 public class OnTheFlyCompilationUtil {
 
@@ -137,7 +137,7 @@ public class OnTheFlyCompilationUtil {
         public URL getResource(final String name) {
             final String[] list = tempDir.list(new NameFileFilter(name));
             if (list.length == 0) {
-                return null;
+                return super.getResource(name);
             } else {
                 try {
                     return new File(tempDir, list[0]).toURI().toURL();
