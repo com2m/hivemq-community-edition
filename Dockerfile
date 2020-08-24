@@ -49,8 +49,8 @@ RUN set -x \
         && gosu nobody true \
         && apt-get purge -y gpg dirmngr && rm -rf /var/lib/apt/lists/*
 
-COPY docker/config.xml /opt/config.xml
-COPY docker/docker-entrypoint.sh /opt/docker-entrypoint.sh
+COPY config.xml /opt/config.xml
+COPY docker-entrypoint.sh /opt/docker-entrypoint.sh
 
 # HiveMQ setup
 COPY --from=builder /tmp/hivemq-source/build/zip/hivemq-ce-${HIVEMQ_VERSION} /opt/hivemq-ce-${HIVEMQ_VERSION}
