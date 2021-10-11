@@ -20,6 +20,7 @@ import com.codahale.metrics.MetricRegistry;
 import com.google.common.collect.Lists;
 import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extensions.iteration.BucketChunkResult;
 import com.hivemq.logging.EventLog;
 import com.hivemq.metrics.HiveMQMetrics;
 import com.hivemq.mqtt.message.QoS;
@@ -32,7 +33,6 @@ import com.hivemq.persistence.clientsession.ClientSessionWill;
 import com.hivemq.persistence.clientsession.PendingWillMessages;
 import com.hivemq.persistence.exception.InvalidSessionExpiryIntervalException;
 import com.hivemq.persistence.local.ClientSessionLocalPersistence;
-import com.hivemq.persistence.local.xodus.BucketChunkResult;
 import com.hivemq.persistence.local.xodus.bucket.BucketUtils;
 import com.hivemq.persistence.payload.PublishPayloadPersistence;
 import com.hivemq.util.LocalPersistenceFileUtil;
@@ -352,7 +352,8 @@ public class ClientSessionMemoryLocalPersistenceTest {
                 .withRetain(true)
                 .withHivemqId("hivemqId")
                 .build();
-        final ClientSession clientSession = new ClientSession(true, 10, new ClientSessionWill(mqttWillPublish, 1L));
+        final ClientSession clientSession = new ClientSession(true, 10,
+                new ClientSessionWill(mqttWillPublish, 1L), 234L);
 
         persistence.put("clientid1",
                 clientSession,
@@ -451,8 +452,8 @@ public class ClientSessionMemoryLocalPersistenceTest {
                         .withDelayInterval(10);
         final ClientSessionWill sessionWill = new ClientSessionWill(willPublish.build(), 1L);
         persistence.put("noWill", new ClientSession(false, 0), System.currentTimeMillis(), 0);
-        persistence.put("connected", new ClientSession(true, 0, sessionWill), System.currentTimeMillis(), 0);
-        persistence.put("sendWill", new ClientSession(false, 0, sessionWill), System.currentTimeMillis(), 0);
+        persistence.put("connected", new ClientSession(true, 0, sessionWill, 234L), System.currentTimeMillis(), 0);
+        persistence.put("sendWill", new ClientSession(false, 0, sessionWill, 234L), System.currentTimeMillis(), 0);
         final Map<String, PendingWillMessages.PendingWill> wills = persistence.getPendingWills(0);
 
         assertEquals(1, wills.size());
@@ -472,7 +473,7 @@ public class ClientSessionMemoryLocalPersistenceTest {
                         .withDelayInterval(0)
                         .withHivemqId("HiveMQId")
                         .withUserProperties(Mqtt5UserProperties.NO_USER_PROPERTIES)
-                        .build(), 1L)), 123L, 1);
+                        .build(), 1L), 234L), 123L, 1);
 
         final ClientSession clientSession = persistence.disconnect(client1, 124L, false, 1, 0L);
 
@@ -496,7 +497,7 @@ public class ClientSessionMemoryLocalPersistenceTest {
                         .withDelayInterval(0)
                         .withHivemqId("HiveMQId")
                         .withUserProperties(Mqtt5UserProperties.NO_USER_PROPERTIES)
-                        .build(), 1L)), 123L, 1);
+                        .build(), 1L), 234L), 123L, 1);
 
         final ClientSession clientSession = persistence.disconnect(client1, 124L, true, 1, 0L);
 
@@ -518,7 +519,7 @@ public class ClientSessionMemoryLocalPersistenceTest {
                         .withDelayInterval(0)
                         .withHivemqId("HiveMQId")
                         .withUserProperties(Mqtt5UserProperties.NO_USER_PROPERTIES)
-                        .build(), 1L)), 123L, 1);
+                        .build(), 1L), 234L), 123L, 1);
 
         persistence.disconnect(client1, 124L, true, 1, 0L);
         final PersistenceEntry<ClientSession> entry = persistence.removeWill(client1, 1);
@@ -541,7 +542,7 @@ public class ClientSessionMemoryLocalPersistenceTest {
                         .withDelayInterval(0)
                         .withHivemqId("HiveMQId")
                         .withUserProperties(Mqtt5UserProperties.NO_USER_PROPERTIES)
-                        .build(), 1L)), 123L, 1);
+                        .build(), 1L), 234L), 123L, 1);
 
         final PersistenceEntry<ClientSession> entry = persistence.removeWill(client1, 1);
 
@@ -711,7 +712,8 @@ public class ClientSessionMemoryLocalPersistenceTest {
                 .withHivemqId("hivemqId")
                 .build();
 
-        final ClientSession clientSession = new ClientSession(true, 10, new ClientSessionWill(mqttWillPublish, 1L));
+        final ClientSession clientSession = new ClientSession(true, 10,
+                new ClientSessionWill(mqttWillPublish, 1L), 234L);
 
         persistence.put("client", clientSession, System.currentTimeMillis(), 1);
         final long peak = memoryGauge.getValue();
@@ -740,7 +742,8 @@ public class ClientSessionMemoryLocalPersistenceTest {
                 .withHivemqId("hivemqId")
                 .build();
 
-        final ClientSession clientSession = new ClientSession(true, 10, new ClientSessionWill(mqttWillPublish, 1L));
+        final ClientSession clientSession = new ClientSession(true, 10,
+                new ClientSessionWill(mqttWillPublish, 1L), 234L);
 
         persistence.put("client", clientSession, System.currentTimeMillis(), 1);
         final long peak = memoryGauge.getValue();
@@ -748,6 +751,16 @@ public class ClientSessionMemoryLocalPersistenceTest {
 
         persistence.removeWithTimestamp("client", 1);
         assertEquals(0L, memoryGauge.getValue().longValue());
+    }
+
+    @Test(timeout = 10_000)
+    public void test_queue_limit() {
+        persistence.put("clientId", new ClientSession(true, 1000L, null, 10L),
+                System.currentTimeMillis(), 0);
+
+        final ClientSession session = persistence.getSession("clientId", 0);
+
+        assertEquals(10L, session.getQueueLimit().longValue());
     }
 
     @NotNull

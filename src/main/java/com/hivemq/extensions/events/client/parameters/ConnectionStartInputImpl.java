@@ -23,11 +23,14 @@ import com.hivemq.extension.sdk.api.client.parameter.ClientInformation;
 import com.hivemq.extension.sdk.api.client.parameter.ConnectionInformation;
 import com.hivemq.extension.sdk.api.events.client.parameters.ConnectionStartInput;
 import com.hivemq.extension.sdk.api.packets.connect.ConnectPacket;
-import com.hivemq.extensions.PluginInformationUtil;
+import com.hivemq.extensions.ExtensionInformationUtil;
 import com.hivemq.extensions.executor.task.PluginTaskInput;
 import com.hivemq.extensions.packets.connect.ConnectPacketImpl;
 import com.hivemq.mqtt.message.connect.CONNECT;
+import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.Channel;
+
+import java.util.Objects;
 
 /**
  * @author Florian Limpöck
@@ -39,13 +42,16 @@ public class ConnectionStartInputImpl implements ConnectionStartInput, PluginTas
     private final @NotNull ClientInformation clientInformation;
     private final @NotNull ConnectionInformation connectionInformation;
     private @Nullable ConnectPacket connectPacket;
+    private final long connectTimestamp;
 
     public ConnectionStartInputImpl(final @NotNull CONNECT connect, final @NotNull Channel channel) {
         Preconditions.checkNotNull(connect, "connect message must never be null");
         Preconditions.checkNotNull(channel, "channel must never be null");
         this.connect = connect;
-        this.connectionInformation = PluginInformationUtil.getAndSetConnectionInformation(channel);
-        this.clientInformation = PluginInformationUtil.getAndSetClientInformation(channel, connect.getClientIdentifier());
+        this.connectionInformation = ExtensionInformationUtil.getAndSetConnectionInformation(channel);
+        this.clientInformation = ExtensionInformationUtil.getAndSetClientInformation(channel, connect.getClientIdentifier());
+        this.connectTimestamp = Objects.requireNonNullElse(channel.attr(ChannelAttributes.CONNECT_RECEIVED_TIMESTAMP).get(),
+                System.currentTimeMillis());
     }
 
     @Override
@@ -61,7 +67,7 @@ public class ConnectionStartInputImpl implements ConnectionStartInput, PluginTas
     @Override
     public @NotNull ConnectPacket getConnectPacket() {
         if (connectPacket == null) {
-            connectPacket = new ConnectPacketImpl(connect);
+            connectPacket = new ConnectPacketImpl(connect, connectTimestamp);
         }
         return connectPacket;
     }

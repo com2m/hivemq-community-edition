@@ -24,9 +24,9 @@ import com.hivemq.extension.sdk.api.client.parameter.ConnectionInformation;
 import com.hivemq.extension.sdk.api.client.parameter.ServerInformation;
 import com.hivemq.extension.sdk.api.interceptor.connack.ConnackOutboundInterceptor;
 import com.hivemq.extension.sdk.api.interceptor.connack.ConnackOutboundInterceptorProvider;
+import com.hivemq.extensions.ExtensionInformationUtil;
 import com.hivemq.extensions.HiveMQExtension;
 import com.hivemq.extensions.HiveMQExtensions;
-import com.hivemq.extensions.PluginInformationUtil;
 import com.hivemq.extensions.executor.PluginOutPutAsyncer;
 import com.hivemq.extensions.executor.PluginTaskExecutorService;
 import com.hivemq.extensions.executor.task.PluginInOutTask;
@@ -57,8 +57,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @since 4.2.0
  */
 @Singleton
-@ChannelHandler.Sharable
-public class ConnackOutboundInterceptorHandler extends ChannelOutboundHandlerAdapter {
+public class ConnackOutboundInterceptorHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ConnackOutboundInterceptorHandler.class);
 
@@ -89,20 +88,7 @@ public class ConnackOutboundInterceptorHandler extends ChannelOutboundHandlerAda
         this.eventLog = eventLog;
     }
 
-    @Override
-    public void write(
-            final @NotNull ChannelHandlerContext ctx,
-            final @NotNull Object msg,
-            final @NotNull ChannelPromise promise) {
-
-        if (msg instanceof CONNACK) {
-            writeConnack(ctx, (CONNACK) msg, promise);
-        } else {
-            ctx.write(msg, promise);
-        }
-    }
-
-    public void writeConnack(
+    public void handleOutboundConnack(
             final @NotNull ChannelHandlerContext ctx,
             final @NotNull CONNACK connack,
             final @NotNull ChannelPromise promise) {
@@ -110,6 +96,7 @@ public class ConnackOutboundInterceptorHandler extends ChannelOutboundHandlerAda
         final Channel channel = ctx.channel();
         final String clientId = channel.attr(ChannelAttributes.CLIENT_ID).get();
         if (clientId == null) {
+            ctx.write(connack, promise);
             return;
         }
 
@@ -120,8 +107,8 @@ public class ConnackOutboundInterceptorHandler extends ChannelOutboundHandlerAda
             return;
         }
 
-        final ClientInformation clientInfo = PluginInformationUtil.getAndSetClientInformation(channel, clientId);
-        final ConnectionInformation connectionInfo = PluginInformationUtil.getAndSetConnectionInformation(channel);
+        final ClientInformation clientInfo = ExtensionInformationUtil.getAndSetClientInformation(channel, clientId);
+        final ConnectionInformation connectionInfo = ExtensionInformationUtil.getAndSetConnectionInformation(channel);
         final boolean requestResponseInformation =
                 Objects.requireNonNullElse(channel.attr(ChannelAttributes.REQUEST_RESPONSE_INFORMATION).get(), false);
 

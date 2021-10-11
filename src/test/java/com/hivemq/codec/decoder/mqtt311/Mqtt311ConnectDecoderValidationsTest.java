@@ -17,30 +17,25 @@ package com.hivemq.codec.decoder.mqtt311;
 
 import com.hivemq.codec.decoder.mqtt3.Mqtt311ConnectDecoder;
 import com.hivemq.configuration.HivemqId;
+import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.logging.EventLog;
 import com.hivemq.mqtt.handler.connack.MqttConnacker;
-import com.hivemq.mqtt.handler.disconnect.Mqtt3ServerDisconnector;
-import com.hivemq.mqtt.handler.disconnect.MqttDisconnectUtil;
-import com.hivemq.mqtt.message.connack.CONNACK;
-import com.hivemq.mqtt.message.connack.Mqtt3ConnAckReturnCode;
 import com.hivemq.mqtt.message.reason.Mqtt5ConnAckReasonCode;
+import com.hivemq.util.ClientIds;
 import com.hivemq.util.Strings;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelFutureListener;
 import io.netty.util.Attribute;
 import io.netty.util.AttributeKey;
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import util.TestConfigurationBootstrap;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.*;
@@ -68,8 +63,7 @@ public class Mqtt311ConnectDecoderValidationsTest {
         MockitoAnnotations.initMocks(this);
         when(channel.attr(any(AttributeKey.class))).thenReturn(mock(Attribute.class));
         decoder = new Mqtt311ConnectDecoder(connacker,
-                new Mqtt3ServerDisconnector(new MqttDisconnectUtil(eventLog)),
-                eventLog,
+                new ClientIds(new HivemqId()),
                 new TestConfigurationBootstrap().getFullConfigurationService(),
                 new HivemqId());
     }
@@ -84,8 +78,7 @@ public class Mqtt311ConnectDecoderValidationsTest {
 
         assertNull(decoder.decode(channel, buffer, fixedHeader));
 
-        verify(channel).close();
-        verify(eventLog).clientWasDisconnected(any(Channel.class), anyString());
+        verify(connacker).connackError(eq(channel), anyString(), anyString(), eq(Mqtt5ConnAckReasonCode.PROTOCOL_ERROR), anyString());
     }
 
     @Test
@@ -97,8 +90,7 @@ public class Mqtt311ConnectDecoderValidationsTest {
 
         assertNull(decoder.decode(channel, buffer, fixedHeader));
 
-        verify(channel).close();
-        verify(eventLog).clientWasDisconnected(any(Channel.class), anyString());
+        verify(connacker).connackError(eq(channel), anyString(), anyString(), eq(Mqtt5ConnAckReasonCode.PROTOCOL_ERROR), anyString());
     }
 
 
@@ -113,8 +105,7 @@ public class Mqtt311ConnectDecoderValidationsTest {
 
         assertNull(decoder.decode(channel, buffer, fixedHeader));
 
-        verify(channel).close();
-        verify(eventLog).clientWasDisconnected(any(Channel.class), anyString());
+        verify(connacker).connackError(eq(channel), anyString(), anyString(), eq(Mqtt5ConnAckReasonCode.PROTOCOL_ERROR), anyString());
     }
 
     @Test
@@ -128,8 +119,7 @@ public class Mqtt311ConnectDecoderValidationsTest {
 
         assertNull(decoder.decode(channel, buffer, fixedHeader));
 
-        verify(channel).close();
-        verify(eventLog).clientWasDisconnected(any(Channel.class), anyString());
+        verify(connacker).connackError(eq(channel), anyString(), anyString(), eq(Mqtt5ConnAckReasonCode.PROTOCOL_ERROR), anyString());
     }
 
     @Test
@@ -143,8 +133,7 @@ public class Mqtt311ConnectDecoderValidationsTest {
 
         assertNull(decoder.decode(channel, buffer, fixedHeader));
 
-        verify(channel).close();
-        verify(eventLog).clientWasDisconnected(any(Channel.class), anyString());
+        verify(connacker).connackError(eq(channel), anyString(), anyString(), eq(Mqtt5ConnAckReasonCode.PROTOCOL_ERROR), anyString());
     }
 
     @Test
@@ -158,8 +147,7 @@ public class Mqtt311ConnectDecoderValidationsTest {
 
         assertNull(decoder.decode(channel, buffer, fixedHeader));
 
-        verify(channel).close();
-        verify(eventLog).clientWasDisconnected(any(Channel.class), anyString());
+        verify(connacker).connackError(eq(channel), anyString(), anyString(), eq(Mqtt5ConnAckReasonCode.PROTOCOL_ERROR), anyString());
     }
 
     @Test
@@ -173,8 +161,7 @@ public class Mqtt311ConnectDecoderValidationsTest {
 
         assertNull(decoder.decode(channel, buffer, fixedHeader));
 
-        verify(channel).close();
-        verify(eventLog).clientWasDisconnected(any(Channel.class), anyString());
+        verify(connacker).connackError(eq(channel), anyString(), anyString(), eq(Mqtt5ConnAckReasonCode.PROTOCOL_ERROR), anyString());
     }
 
     @Test
@@ -188,8 +175,7 @@ public class Mqtt311ConnectDecoderValidationsTest {
 
         assertNull(decoder.decode(channel, buffer, fixedHeader));
 
-        verify(channel).close();
-        verify(eventLog).clientWasDisconnected(any(Channel.class), anyString());
+        verify(connacker).connackError(eq(channel), anyString(), anyString(), eq(Mqtt5ConnAckReasonCode.PROTOCOL_ERROR), anyString());
     }
 
     @Test
@@ -208,8 +194,7 @@ public class Mqtt311ConnectDecoderValidationsTest {
 
         assertNull(decoder.decode(channel, buffer, fixedHeader));
 
-        verify(channel).close();
-        verify(eventLog).clientWasDisconnected(any(Channel.class), anyString());
+        verify(connacker).connackError(eq(channel), anyString(), anyString(), eq(Mqtt5ConnAckReasonCode.MALFORMED_PACKET), anyString());
     }
 
     @Test
@@ -230,7 +215,7 @@ public class Mqtt311ConnectDecoderValidationsTest {
 
         assertNull(decoder.decode(channel, buffer, fixedHeader));
 
-        verify(connacker).connackError(any(Channel.class), anyString(), anyString(), eq(Mqtt5ConnAckReasonCode.NOT_AUTHORIZED), anyString());
+        verify(connacker).connackError(any(Channel.class), anyString(), anyString(), eq(Mqtt5ConnAckReasonCode.MALFORMED_PACKET), anyString());
     }
 
     @Test
@@ -251,8 +236,7 @@ public class Mqtt311ConnectDecoderValidationsTest {
 
         assertNull(decoder.decode(channel, buffer, fixedHeader));
 
-        verify(channel).close();
-        verify(eventLog).clientWasDisconnected(any(Channel.class), anyString());
+        verify(connacker).connackError(eq(channel), anyString(), anyString(), eq(Mqtt5ConnAckReasonCode.MALFORMED_PACKET), anyString());
     }
 
     @Test
@@ -266,12 +250,11 @@ public class Mqtt311ConnectDecoderValidationsTest {
 
         assertNull(decoder.decode(channel, buffer, fixedHeader));
 
-        verify(channel).close();
-        verify(eventLog).clientWasDisconnected(any(Channel.class), anyString());
+        verify(connacker).connackError(eq(channel), anyString(), anyString(), eq(Mqtt5ConnAckReasonCode.PROTOCOL_ERROR), anyString());
     }
 
     @Test
-    public void test_invalid_persistent_session_but_no_user_name() {
+    public void test_invalid_persistent_session_but_no_client_id() {
 
         final ChannelFuture cf = mock(ChannelFuture.class);
 
@@ -288,13 +271,35 @@ public class Mqtt311ConnectDecoderValidationsTest {
         buffer.writeShort(0);
 
         assertNull(decoder.decode(channel, buffer, fixedHeader));
+        verify(connacker).connackError(eq(channel), anyString(), anyString(), eq(Mqtt5ConnAckReasonCode.CLIENT_IDENTIFIER_NOT_VALID), anyString());
+    }
 
-        final ArgumentCaptor<CONNACK> captor = ArgumentCaptor.forClass(CONNACK.class);
+    @Test
+    public void test_invalid_clean_session_but_no_client_id_not_allowed() {
 
-        verify(channel).writeAndFlush(captor.capture());
+        final FullConfigurationService fullConfigurationService = new TestConfigurationBootstrap().getFullConfigurationService();
+        fullConfigurationService.securityConfiguration().setAllowServerAssignedClientId(false);
 
-        verify(cf).addListener(eq(ChannelFutureListener.CLOSE));
+        decoder = new Mqtt311ConnectDecoder(connacker,
+                new ClientIds(new HivemqId()),
+                fullConfigurationService,
+                new HivemqId());
 
-        assertEquals(Mqtt3ConnAckReturnCode.REFUSED_IDENTIFIER_REJECTED, captor.getValue().getReturnCode());
+        final ChannelFuture cf = mock(ChannelFuture.class);
+
+        when(channel.writeAndFlush(any())).thenReturn(cf);
+
+        final ByteBuf buffer = Unpooled.buffer(10);
+        buffer.writeBytes(new byte[]{0, 4});
+        buffer.writeBytes("MQTT".getBytes(UTF_8));
+        buffer.writeByte(4);
+        buffer.writeByte(0b0000_0010);
+        //keepAlive
+        buffer.writeShort(14);
+        //payload length
+        buffer.writeShort(0);
+
+        assertNull(decoder.decode(channel, buffer, fixedHeader));
+        verify(connacker).connackError(eq(channel), anyString(), anyString(), eq(Mqtt5ConnAckReasonCode.CLIENT_IDENTIFIER_NOT_VALID), anyString());
     }
 }

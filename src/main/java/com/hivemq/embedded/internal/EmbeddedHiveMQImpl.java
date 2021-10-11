@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.hivemq.embedded.internal;
 
 import com.codahale.metrics.MetricFilter;
@@ -28,9 +29,12 @@ import com.hivemq.configuration.HivemqId;
 import com.hivemq.configuration.info.SystemInformationImpl;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.configuration.service.InternalConfigurations;
+import com.hivemq.configuration.service.PersistenceConfigurationService;
+import com.hivemq.embedded.EmbeddedExtension;
 import com.hivemq.embedded.EmbeddedHiveMQ;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.annotations.Nullable;
+import com.hivemq.lifecycle.LifecycleModule;
 import com.hivemq.persistence.PersistenceStartup;
 import com.hivemq.util.ThreadFactoryUtil;
 import org.slf4j.Logger;
@@ -52,6 +56,7 @@ class EmbeddedHiveMQImpl implements EmbeddedHiveMQ {
     private final @NotNull MetricRegistry metricRegistry;
     @VisibleForTesting
     final @NotNull ExecutorService stateChangeExecutor;
+    private final @Nullable EmbeddedExtension embeddedExtension;
     private @Nullable FullConfigurationService configurationService;
     private @Nullable Injector injector;
 
@@ -65,7 +70,15 @@ class EmbeddedHiveMQImpl implements EmbeddedHiveMQ {
 
     EmbeddedHiveMQImpl(
             final @Nullable File conf, final @Nullable File data, final @Nullable File extensions) {
+        this(conf, data, extensions, null);
+    }
 
+    EmbeddedHiveMQImpl(
+            final @Nullable File conf,
+            final @Nullable File data,
+            final @Nullable File extensions,
+            final @Nullable EmbeddedExtension embeddedExtension) {
+        this.embeddedExtension = embeddedExtension;
 
         log.info("Setting default authentication behavior to ALLOW ALL");
         InternalConfigurations.AUTH_DENY_UNAUTHENTICATED_CONNECTIONS.set(false);
@@ -92,7 +105,6 @@ class EmbeddedHiveMQImpl implements EmbeddedHiveMQ {
     }
 
     private enum State {
-
         RUNNING,
         STOPPED,
         FAILED,
@@ -137,9 +149,16 @@ class EmbeddedHiveMQImpl implements EmbeddedHiveMQ {
                 try {
                     configurationService = ConfigurationBootstrap.bootstrapConfig(systemInformation);
 
+                    if (configurationService.persistenceConfigurationService().getMode().equals(PersistenceConfigurationService.PersistenceMode.FILE)) {
+                        log.info("Starting with file persistence mode.");
+                    } else {
+                        log.info("Starting with in-memory persistence mode.");
+                    }
+
                     bootstrapInjector();
                     final HiveMQServer hiveMQServer = injector.getInstance(HiveMQServer.class);
-                    hiveMQServer.start();
+
+                    hiveMQServer.start(embeddedExtension);
 
                     failFutureList(new AbortedStateChangeException("EmbeddedHiveMQ was started"), localStopFutures);
                     succeedFutureList(localStartFutures);
@@ -171,7 +190,7 @@ class EmbeddedHiveMQImpl implements EmbeddedHiveMQ {
             final long startTime = System.currentTimeMillis();
             final ShutdownHooks shutdownHooks = injector.getInstance(ShutdownHooks.class);
 
-            for (final HiveMQShutdownHook hiveMQShutdownHook : shutdownHooks.getRegistry().values()) {
+            for (final HiveMQShutdownHook hiveMQShutdownHook : shutdownHooks.getSynchronousHooks().values()) {
                 try {
                     // We call run, as we want to execute the hooks now, in this thread
                     //noinspection CallToThreadRun
@@ -186,7 +205,7 @@ class EmbeddedHiveMQImpl implements EmbeddedHiveMQ {
                 }
             }
 
-            for (final HiveMQShutdownHook hiveMQShutdownHook : shutdownHooks.getAsyncShutdownHooks()) {
+            for (final HiveMQShutdownHook hiveMQShutdownHook : shutdownHooks.getAsyncShutdownHooks().keySet()) {
                 try {
                     // We call run, as we want to execute the hooks now, in this thread
                     //noinspection CallToThreadRun
@@ -239,10 +258,12 @@ class EmbeddedHiveMQImpl implements EmbeddedHiveMQ {
     private void bootstrapInjector() {
         if (injector == null) {
             final HivemqId hiveMQId = new HivemqId();
+            final LifecycleModule lifecycleModule = new LifecycleModule();
             final Injector persistenceInjector = GuiceBootstrap.persistenceInjector(systemInformation,
                     metricRegistry,
                     hiveMQId,
-                    configurationService);
+                    configurationService,
+                    lifecycleModule);
 
             try {
                 persistenceInjector.getInstance(PersistenceStartup.class).finish();
@@ -254,7 +275,8 @@ class EmbeddedHiveMQImpl implements EmbeddedHiveMQ {
                     metricRegistry,
                     hiveMQId,
                     configurationService,
-                    persistenceInjector);
+                    persistenceInjector,
+                    lifecycleModule);
         }
     }
 

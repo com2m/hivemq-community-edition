@@ -15,8 +15,10 @@
  */
 package com.hivemq.statistics;
 
+import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.configuration.info.SystemInformation;
 import com.hivemq.configuration.service.FullConfigurationService;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
@@ -32,6 +34,8 @@ import static org.mockito.Mockito.*;
  */
 public class UsageStatisticsTest {
 
+    private AutoCloseable closeableMock;
+
     @Mock
     private UsageStatisticsCollector collector;
 
@@ -41,17 +45,25 @@ public class UsageStatisticsTest {
     @Mock
     private SystemInformation systemInformation;
 
+    @Mock
+    private ShutdownHooks shutdownHooks;
+
     private UsageStatistics usageStatistics;
     private FullConfigurationService configurationService;
 
     @Before
     public void before() {
-        MockitoAnnotations.initMocks(this);
+        closeableMock = MockitoAnnotations.openMocks(this);
 
         configurationService = new TestConfigurationBootstrap().getFullConfigurationService();
 
-        usageStatistics = new UsageStatistics(collector, systemInformation, sender, configurationService);
+        usageStatistics = new UsageStatistics(collector, systemInformation, sender, configurationService, shutdownHooks);
+    }
 
+    @After
+    public void tearDown() throws Exception {
+        usageStatistics.stop();
+        closeableMock.close();
     }
 
     @Test
@@ -63,7 +75,6 @@ public class UsageStatisticsTest {
         usageStatistics.start();
 
         verify(collector, never()).getJson(anyString());
-
     }
 
     @Test
@@ -100,7 +111,5 @@ public class UsageStatisticsTest {
         Thread.sleep(100);
 
         verify(collector, times(1)).getJson(eq("startup"));
-
     }
-
 }

@@ -25,7 +25,7 @@ import com.hivemq.extension.sdk.api.interceptor.unsubscribe.parameter.Unsubscrib
 import com.hivemq.extension.sdk.api.packets.unsubscribe.ModifiableUnsubscribePacket;
 import com.hivemq.extensions.HiveMQExtension;
 import com.hivemq.extensions.HiveMQExtensions;
-import com.hivemq.extensions.classloader.IsolatedPluginClassloader;
+import com.hivemq.extensions.classloader.IsolatedExtensionClassloader;
 import com.hivemq.extensions.client.ClientContextImpl;
 import com.hivemq.extensions.executor.PluginOutPutAsyncer;
 import com.hivemq.extensions.executor.PluginOutputAsyncerImpl;
@@ -37,6 +37,8 @@ import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.mqtt.message.mqtt5.Mqtt5UserProperties;
 import com.hivemq.mqtt.message.unsubscribe.UNSUBSCRIBE;
 import com.hivemq.util.ChannelAttributes;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.jboss.shrinkwrap.api.ShrinkWrap;
 import org.jboss.shrinkwrap.api.exporter.ZipExporter;
@@ -62,25 +64,19 @@ import static org.mockito.Mockito.when;
 
 public class UnsubscribeInboundInterceptorHandlerTest {
 
+    public static AtomicBoolean isTriggered = new AtomicBoolean();
     @Rule
     public @NotNull TemporaryFolder temporaryFolder = new TemporaryFolder();
-
     @Mock
     private HiveMQExtension extension;
-
     @Mock
     private HiveMQExtensions extensions;
-
     @Mock
     private ClientContextImpl clientContext;
-
     @Mock
     private FullConfigurationService configurationService;
-
     private PluginTaskExecutor executor;
     private EmbeddedChannel channel;
-
-    public static AtomicBoolean isTriggered = new AtomicBoolean();
     private UnsubscribeInboundInterceptorHandler handler;
 
     @Before
@@ -94,7 +90,7 @@ public class UnsubscribeInboundInterceptorHandlerTest {
         channel = new EmbeddedChannel();
         channel.attr(ChannelAttributes.CLIENT_ID).set("client");
         channel.attr(ChannelAttributes.REQUEST_RESPONSE_INFORMATION).set(true);
-        channel.attr(ChannelAttributes.PLUGIN_CLIENT_CONTEXT).set(clientContext);
+        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
         when(extension.getId()).thenReturn("extension");
 
         configurationService = new TestConfigurationBootstrap().getFullConfigurationService();
@@ -104,7 +100,12 @@ public class UnsubscribeInboundInterceptorHandlerTest {
         handler =
                 new UnsubscribeInboundInterceptorHandler(configurationService, asyncer, extensions,
                         pluginTaskExecutorService);
-        channel.pipeline().addFirst(handler);
+        channel.pipeline().addLast("test", new ChannelInboundHandlerAdapter() {
+            @Override
+            public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+                handler.handleInboundUnsubscribe(ctx, ((UNSUBSCRIBE) msg));
+            }
+        });
     }
 
     @After
@@ -131,10 +132,10 @@ public class UnsubscribeInboundInterceptorHandlerTest {
                 getIsolatedInboundInterceptor("SimpleUnsubscribeTestInterceptor");
         clientContext.addUnsubscribeInboundInterceptor(interceptor);
 
-        channel.attr(ChannelAttributes.PLUGIN_CLIENT_CONTEXT).set(clientContext);
+        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
         channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1);
 
-        when(extensions.getExtensionForClassloader(ArgumentMatchers.any(IsolatedPluginClassloader.class))).thenReturn(extension);
+        when(extensions.getExtensionForClassloader(ArgumentMatchers.any(IsolatedExtensionClassloader.class))).thenReturn(extension);
 
         channel.writeInbound(testUnsubscribe());
         UNSUBSCRIBE unsubscribe = channel.readInbound();
@@ -156,10 +157,10 @@ public class UnsubscribeInboundInterceptorHandlerTest {
                 getIsolatedInboundInterceptor("ModifyUnsubscribeTestInterceptor");
         clientContext.addUnsubscribeInboundInterceptor(interceptor);
 
-        channel.attr(ChannelAttributes.PLUGIN_CLIENT_CONTEXT).set(clientContext);
+        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
         channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1);
 
-        when(extensions.getExtensionForClassloader(ArgumentMatchers.any(IsolatedPluginClassloader.class))).thenReturn(extension);
+        when(extensions.getExtensionForClassloader(ArgumentMatchers.any(IsolatedExtensionClassloader.class))).thenReturn(extension);
 
         channel.writeInbound(testUnsubscribe());
         UNSUBSCRIBE unsubscribe = channel.readInbound();
@@ -183,9 +184,9 @@ public class UnsubscribeInboundInterceptorHandlerTest {
         final File jarFile = temporaryFolder.newFile();
         javaArchive.as(ZipExporter.class).exportTo(jarFile, true);
 
-        final IsolatedPluginClassloader
+        final IsolatedExtensionClassloader
                 cl =
-                new IsolatedPluginClassloader(new URL[]{jarFile.toURI().toURL()}, this.getClass().getClassLoader());
+                new IsolatedExtensionClassloader(new URL[]{jarFile.toURI().toURL()}, this.getClass().getClassLoader());
 
         final Class<?> interceptorClass =
                 cl.loadClass("com.hivemq.extensions.handler.UnsubscribeInboundInterceptorHandlerTest$" + name);

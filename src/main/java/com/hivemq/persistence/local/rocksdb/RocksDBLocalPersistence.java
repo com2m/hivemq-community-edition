@@ -15,19 +15,19 @@
  */
 package com.hivemq.persistence.local.rocksdb;
 
-import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.exceptions.UnrecoverableException;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.persistence.FilePersistence;
 import com.hivemq.persistence.LocalPersistence;
 import com.hivemq.persistence.PersistenceStartup;
 import com.hivemq.persistence.local.xodus.bucket.BucketUtils;
 import com.hivemq.util.LocalPersistenceFileUtil;
+import com.hivemq.util.PhysicalMemoryUtil;
 import org.rocksdb.*;
 import org.slf4j.Logger;
 
 import java.io.File;
-import java.lang.management.ManagementFactory;
-import java.lang.management.OperatingSystemMXBean;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -42,7 +42,6 @@ public abstract class RocksDBLocalPersistence implements LocalPersistence, FileP
     protected final @NotNull RocksDB[] buckets;
     private final @NotNull LocalPersistenceFileUtil localPersistenceFileUtil;
     private final @NotNull PersistenceStartup persistenceStartup;
-    private final AtomicBoolean constructed = new AtomicBoolean(false);
     private final int bucketCount;
     private final int memtableSizePortion;
     private final int blockCacheSizePortion;
@@ -84,11 +83,6 @@ public abstract class RocksDBLocalPersistence implements LocalPersistence, FileP
     }
 
     protected void postConstruct() {
-
-        //Protect from multiple calls to post construct
-        if (constructed.getAndSet(true)) {
-            return;
-        }
         RocksDB.loadLibrary();
         if (enabled) {
             persistenceStartup.submitPersistenceStart(this);
@@ -104,17 +98,22 @@ public abstract class RocksDBLocalPersistence implements LocalPersistence, FileP
         final String version = getVersion();
         final Options options = getOptions();
         final Logger logger = getLogger();
-
         try {
             final File persistenceFolder = localPersistenceFileUtil.getVersionedLocalPersistenceFolder(name, version);
 
-            final long memtableSize = physicalMemory() / memtableSizePortion / bucketCount;
-            final LRUCache cache = new LRUCache(physicalMemory() / blockCacheSizePortion);
+            final long memtableSize = PhysicalMemoryUtil.physicalMemory() / memtableSizePortion / bucketCount;
+            final LRUCache cache = new LRUCache(PhysicalMemoryUtil.physicalMemory() / blockCacheSizePortion / bucketCount);
             final BlockBasedTableConfig tableConfig = new BlockBasedTableConfig();
             tableConfig.setBlockCache(cache);
             tableConfig.setBlockSize(blockSize);
             options.setTableFormatConfig(tableConfig);
             options.setWriteBufferSize(memtableSize);
+
+            options.setStatsPersistPeriodSec(InternalConfigurations.ROCKSDB_STATS_PERSIST_PERIOD);
+            options.setStatsDumpPeriodSec(InternalConfigurations.ROCKSDB_STATS_PERSIST_PERIOD);
+            options.setMaxLogFileSize(InternalConfigurations.ROCKSDB_MAX_LOG_FILE_SIZE);
+            options.setKeepLogFileNum(InternalConfigurations.ROCKSDB_LOG_FILE_NUMBER);
+            options.setStatsHistoryBufferSize(InternalConfigurations.ROCKSDB_STATS_HISTORY_BUFFER_SIZE);
 
             for (int i = 0; i < bucketCount; i++) {
                 final File persistenceFile = new File(persistenceFolder, name + "_" + i);
@@ -125,7 +124,7 @@ public abstract class RocksDBLocalPersistence implements LocalPersistence, FileP
         } catch (final RocksDBException e) {
             logger.error(
                     "An error occurred while opening the {} persistence. Is another HiveMQ instance running?", name);
-            logger.debug("Original Exception:", e);
+            logger.info("Original Exception:", e);
             throw new UnrecoverableException();
         }
 
@@ -141,15 +140,20 @@ public abstract class RocksDBLocalPersistence implements LocalPersistence, FileP
         final Logger logger = getLogger();
 
         try {
-
-            final long memtableSize = physicalMemory() / memtableSizePortion / bucketCount;
-            final long blockCacheMaxSize = physicalMemory() / blockCacheSizePortion;
+            final long memtableSize = PhysicalMemoryUtil.physicalMemory() / memtableSizePortion / bucketCount;
+            final long blockCacheMaxSize = PhysicalMemoryUtil.physicalMemory() / blockCacheSizePortion;
             final LRUCache cache = new LRUCache(blockCacheMaxSize);
             final BlockBasedTableConfig tableConfig = new BlockBasedTableConfig();
             tableConfig.setBlockCache(cache);
             tableConfig.setBlockSize(blockSize);
             options.setTableFormatConfig(tableConfig);
             options.setWriteBufferSize(memtableSize);
+
+            options.setStatsPersistPeriodSec(InternalConfigurations.ROCKSDB_STATS_PERSIST_PERIOD);
+            options.setStatsDumpPeriodSec(InternalConfigurations.ROCKSDB_STATS_PERSIST_PERIOD);
+            options.setMaxLogFileSize(InternalConfigurations.ROCKSDB_MAX_LOG_FILE_SIZE);
+            options.setKeepLogFileNum(InternalConfigurations.ROCKSDB_LOG_FILE_NUMBER);
+            options.setStatsHistoryBufferSize(InternalConfigurations.ROCKSDB_STATS_HISTORY_BUFFER_SIZE);
 
             final File persistenceFolder = localPersistenceFileUtil.getVersionedLocalPersistenceFolder(name, version);
             final CountDownLatch counter = new CountDownLatch(bucketCount);
@@ -165,7 +169,7 @@ public abstract class RocksDBLocalPersistence implements LocalPersistence, FileP
                         logger.error(
                                 "An error occurred while opening the {} persistence. Is another HiveMQ instance running?",
                                 name);
-                        logger.debug("Original Exception:", e);
+                        logger.info("Original Exception:", e);
                         throw new UnrecoverableException();
                     }
                 });
@@ -176,7 +180,7 @@ public abstract class RocksDBLocalPersistence implements LocalPersistence, FileP
         } catch (final Exception e) {
             logger.error(
                     "An error occurred while opening the {} persistence. Is another HiveMQ instance running?", name);
-            logger.debug("Original Exception:", e);
+            logger.info("Original Exception:", e);
             throw new UnrecoverableException();
         }
 
@@ -184,23 +188,6 @@ public abstract class RocksDBLocalPersistence implements LocalPersistence, FileP
 
     }
 
-    private long physicalMemory() {
-        final long heap = Runtime.getRuntime().maxMemory();
-        try {
-            final OperatingSystemMXBean operatingSystemMXBean = ManagementFactory.getOperatingSystemMXBean();
-            if (!(operatingSystemMXBean instanceof com.sun.management.OperatingSystemMXBean)) {
-                return (long) (heap * 1.5);
-            }
-            final long physicalMemory =
-                    ((com.sun.management.OperatingSystemMXBean) operatingSystemMXBean).getTotalPhysicalMemorySize();
-            if (physicalMemory > 0) {
-                return physicalMemory;
-            }
-            return (long) (heap * 1.5);
-        } catch (final Exception e) {
-            return (long) (heap * 1.5);
-        }
-    }
 
     protected abstract void init();
 
@@ -226,6 +213,12 @@ public abstract class RocksDBLocalPersistence implements LocalPersistence, FileP
     @NotNull
     protected RocksDB getRocksDb(final @NotNull String key) {
         return buckets[BucketUtils.getBucket(key, bucketCount)];
+    }
+
+
+    @NotNull
+    protected int getBucketIndex(final @NotNull String key) {
+        return BucketUtils.getBucket(key, bucketCount);
     }
 
     protected void checkBucketIndex(final int bucketIndex) {

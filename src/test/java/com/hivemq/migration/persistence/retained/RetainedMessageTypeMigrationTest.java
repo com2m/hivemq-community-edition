@@ -16,6 +16,7 @@
 package com.hivemq.migration.persistence.retained;
 
 import com.codahale.metrics.MetricRegistry;
+import com.google.common.collect.ImmutableSet;
 import com.google.inject.Injector;
 import com.hivemq.bootstrap.ioc.GuiceBootstrap;
 import com.hivemq.configuration.ConfigurationBootstrap;
@@ -24,6 +25,7 @@ import com.hivemq.configuration.info.SystemInformation;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.lifecycle.LifecycleModule;
 import com.hivemq.migration.MigrationUnit;
 import com.hivemq.migration.Migrations;
 import com.hivemq.migration.logging.PayloadExceptionLogging;
@@ -158,7 +160,8 @@ public class RetainedMessageTypeMigrationTest {
         final Injector persistenceInjector = GuiceBootstrap.persistenceInjector(systemInformation,
                 new MetricRegistry(),
                 new HivemqId(),
-                configurationService);
+                configurationService,
+                new LifecycleModule());
         final PersistenceStartup persistenceStartup = persistenceInjector.getInstance(PersistenceStartup.class);
         persistenceStartup.finish();
 
@@ -174,7 +177,7 @@ public class RetainedMessageTypeMigrationTest {
                     BucketUtils.getBucket("topic" + i, xodus.getBucketCount()));
         }
 
-        Migrations.migrate(persistenceInjector, migrations);
+        Migrations.migrate(persistenceInjector, migrations, ImmutableSet.of());
 
         final RetainedMessageRocksDBLocalPersistence persistence =
                 persistenceInjector.getInstance(RetainedMessageRocksDBLocalPersistence.class);
@@ -209,7 +212,8 @@ public class RetainedMessageTypeMigrationTest {
         final Injector persistenceInjector = GuiceBootstrap.persistenceInjector(systemInformation,
                 new MetricRegistry(),
                 new HivemqId(),
-                configurationService);
+                configurationService,
+                new LifecycleModule());
         final PersistenceStartup persistenceStartup = persistenceInjector.getInstance(PersistenceStartup.class);
         persistenceStartup.finish();
 
@@ -225,7 +229,7 @@ public class RetainedMessageTypeMigrationTest {
                     BucketUtils.getBucket("topic" + i, rocks.getBucketCount()));
         }
 
-        Migrations.migrate(persistenceInjector, migrations);
+        Migrations.migrate(persistenceInjector, migrations, ImmutableSet.of());
 
         final RetainedMessageXodusLocalPersistence xodus =
                 persistenceInjector.getInstance(RetainedMessageXodusLocalPersistence.class);
@@ -265,7 +269,8 @@ public class RetainedMessageTypeMigrationTest {
         final Injector persistenceInjector = GuiceBootstrap.persistenceInjector(systemInformation,
                 new MetricRegistry(),
                 new HivemqId(),
-                configurationService);
+                configurationService,
+                new LifecycleModule());
         final PersistenceStartup persistenceStartup = persistenceInjector.getInstance(PersistenceStartup.class);
         persistenceStartup.finish();
 
@@ -281,7 +286,7 @@ public class RetainedMessageTypeMigrationTest {
                     BucketUtils.getBucket("topic" + i, xodus.getBucketCount()));
         }
 
-        Migrations.migrate(persistenceInjector, migrations);
+        Migrations.migrate(persistenceInjector, migrations, ImmutableSet.of());
         Migrations.afterMigration(systemInformation);
 
         persistenceStartup.run();
@@ -291,7 +296,6 @@ public class RetainedMessageTypeMigrationTest {
         assertEquals(RetainedMessageXodusLocalPersistence.PERSISTENCE_VERSION,
                 metaInformation.getRetainedMessagesPersistenceVersion());
         InternalConfigurations.RETAINED_MESSAGE_PERSISTENCE_TYPE.set(PersistenceType.FILE_NATIVE);
-
     }
 
     @NotNull

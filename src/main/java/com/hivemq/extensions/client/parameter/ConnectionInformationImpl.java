@@ -20,7 +20,7 @@ import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.extension.sdk.api.client.parameter.*;
 import com.hivemq.extension.sdk.api.packets.general.MqttVersion;
-import com.hivemq.extensions.PluginInformationUtil;
+import com.hivemq.extensions.ExtensionInformationUtil;
 import com.hivemq.util.ChannelUtils;
 import io.netty.channel.Channel;
 
@@ -37,14 +37,14 @@ public class ConnectionInformationImpl implements ConnectionInformation {
     private final @NotNull ConnectionAttributeStore connectionAttributeStore;
     private final @Nullable InetAddress inetAddress;
     private final @Nullable Listener listener;
-    private final @Nullable TlsInformation tlsInformation;
+    private final @Nullable ClientTlsInformation tlsInformation;
 
     public ConnectionInformationImpl(final @NotNull Channel channel) {
         Preconditions.checkNotNull(channel);
-        this.mqttVersion = PluginInformationUtil.mqttVersionFromChannel(channel);
+        this.mqttVersion = ExtensionInformationUtil.mqttVersionFromChannel(channel);
         this.inetAddress = ChannelUtils.getChannelAddress(channel).orNull();
-        this.listener = PluginInformationUtil.getPluginListenerFromChannel(channel);
-        this.tlsInformation = PluginInformationUtil.getTlsInformationFromChannel(channel);
+        this.listener = ExtensionInformationUtil.getListenerFromChannel(channel);
+        this.tlsInformation = ExtensionInformationUtil.getTlsInformationFromChannel(channel);
         this.connectionAttributeStore = new ConnectionAttributeStoreImpl(channel);
 
     }
@@ -79,6 +79,14 @@ public class ConnectionInformationImpl implements ConnectionInformation {
 
     @Override
     public @NotNull Optional<TlsInformation> getTlsInformation() {
+        if (tlsInformation != null && tlsInformation.getClientCertificate().isPresent() && tlsInformation.getClientCertificateChain().isPresent()) {
+            return Optional.of((TlsInformation) tlsInformation);
+        }
+        return Optional.empty();
+    }
+
+    @Override
+    public @NotNull Optional<ClientTlsInformation> getClientTlsInformation() {
         return Optional.ofNullable(tlsInformation);
     }
 }

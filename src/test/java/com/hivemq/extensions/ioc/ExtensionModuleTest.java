@@ -36,15 +36,16 @@ import com.hivemq.extension.sdk.api.services.builder.RetainedPublishBuilder;
 import com.hivemq.extension.sdk.api.services.builder.TopicSubscriptionBuilder;
 import com.hivemq.extension.sdk.api.services.publish.RetainedMessageStore;
 import com.hivemq.extension.sdk.api.services.subscription.SubscriptionStore;
+import com.hivemq.extensions.ExtensionBootstrap;
 import com.hivemq.extensions.HiveMQExtensions;
-import com.hivemq.extensions.PluginBootstrap;
 import com.hivemq.extensions.ioc.annotation.PluginStartStop;
 import com.hivemq.extensions.loader.*;
 import com.hivemq.extensions.services.auth.Authenticators;
 import com.hivemq.limitation.TopicAliasLimiter;
 import com.hivemq.metrics.MetricsHolder;
 import com.hivemq.metrics.gauges.OpenConnectionsGauge;
-import com.hivemq.metrics.handler.GlobalTrafficCounter;
+import com.hivemq.mqtt.handler.connack.MqttConnacker;
+import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnector;
 import com.hivemq.mqtt.handler.publish.IncomingPublishService;
 import com.hivemq.mqtt.message.dropping.MessageDroppedService;
 import com.hivemq.mqtt.services.InternalPublishService;
@@ -107,7 +108,6 @@ public class ExtensionModuleTest {
                 bind(SharedSubscriptionService.class).toInstance(mock(SharedSubscriptionService.class));
                 bind(IncomingMessageFlowPersistence.class).toInstance(mock(IncomingMessageFlowPersistence.class));
                 bind(ChannelGroup.class).toInstance(mock(ChannelGroup.class));
-                bind(GlobalTrafficCounter.class).toInstance(mock(GlobalTrafficCounter.class));
                 bind(GlobalTrafficShapingHandler.class).toInstance(mock(GlobalTrafficShapingHandler.class));
                 bind(MetricsHolder.class).toInstance(metricsHolder);
                 bind(PublishPayloadPersistence.class).toInstance(mock(PublishPayloadPersistence.class));
@@ -122,6 +122,8 @@ public class ExtensionModuleTest {
                 bind(ListenerConfigurationService.class).toInstance(mock(ListenerConfigurationService.class));
                 bind(OpenConnectionsGauge.class).toInstance(mock(OpenConnectionsGauge.class));
                 bindScope(LazySingleton.class, LazySingletonScope.get());
+                bind(MqttServerDisconnector.class).toInstance(mock(MqttServerDisconnector.class));
+                bind(MqttConnacker.class).toInstance(mock(MqttConnacker.class));
             }
         });
     }
@@ -137,8 +139,8 @@ public class ExtensionModuleTest {
 
     @Test(timeout = 5000)
     public void test_bootstrap_is_singleton() {
-        final PluginBootstrap instance1 = injector.getInstance(PluginBootstrap.class);
-        final PluginBootstrap instance2 = injector.getInstance(PluginBootstrap.class);
+        final ExtensionBootstrap instance1 = injector.getInstance(ExtensionBootstrap.class);
+        final ExtensionBootstrap instance2 = injector.getInstance(ExtensionBootstrap.class);
 
         assertNotNull(instance1);
         assertSame(instance1, instance2);
@@ -146,8 +148,8 @@ public class ExtensionModuleTest {
 
     @Test(timeout = 5000)
     public void test_initializer_is_singleton() {
-        final PluginStaticInitializer instance1 = injector.getInstance(PluginStaticInitializer.class);
-        final PluginStaticInitializer instance2 = injector.getInstance(PluginStaticInitializer.class);
+        final ExtensionStaticInitializer instance1 = injector.getInstance(ExtensionStaticInitializer.class);
+        final ExtensionStaticInitializer instance2 = injector.getInstance(ExtensionStaticInitializer.class);
 
         assertNotNull(instance1);
         assertSame(instance1, instance2);
@@ -155,8 +157,8 @@ public class ExtensionModuleTest {
 
     @Test(timeout = 5000)
     public void test_plugin_factory_is_singleton() {
-        final HiveMQPluginFactory instance1 = injector.getInstance(HiveMQPluginFactory.class);
-        final HiveMQPluginFactory instance2 = injector.getInstance(HiveMQPluginFactory.class);
+        final HiveMQExtensionFactory instance1 = injector.getInstance(HiveMQExtensionFactory.class);
+        final HiveMQExtensionFactory instance2 = injector.getInstance(HiveMQExtensionFactory.class);
 
         assertNotNull(instance1);
         assertSame(instance1, instance2);
@@ -164,8 +166,8 @@ public class ExtensionModuleTest {
 
     @Test(timeout = 5000)
     public void test_loader_is_singleton() {
-        final PluginLoader instance1 = injector.getInstance(PluginLoader.class);
-        final PluginLoader instance2 = injector.getInstance(PluginLoader.class);
+        final ExtensionLoader instance1 = injector.getInstance(ExtensionLoader.class);
+        final ExtensionLoader instance2 = injector.getInstance(ExtensionLoader.class);
 
         assertNotNull(instance1);
         assertSame(instance1, instance2);
@@ -173,8 +175,8 @@ public class ExtensionModuleTest {
 
     @Test(timeout = 5000)
     public void test_service_dependencies_is_singleton() {
-        final PluginServicesDependencies instance1 = injector.getInstance(PluginServicesDependencies.class);
-        final PluginServicesDependencies instance2 = injector.getInstance(PluginServicesDependencies.class);
+        final ExtensionServicesDependencies instance1 = injector.getInstance(ExtensionServicesDependencies.class);
+        final ExtensionServicesDependencies instance2 = injector.getInstance(ExtensionServicesDependencies.class);
 
         assertNotNull(instance1);
         assertSame(instance1, instance2);
@@ -182,8 +184,8 @@ public class ExtensionModuleTest {
 
     @Test(timeout = 5000)
     public void test_builder_dependencies_is_singleton() {
-        final PluginBuilderDependencies instance1 = injector.getInstance(PluginBuilderDependencies.class);
-        final PluginBuilderDependencies instance2 = injector.getInstance(PluginBuilderDependencies.class);
+        final ExtensionBuilderDependencies instance1 = injector.getInstance(ExtensionBuilderDependencies.class);
+        final ExtensionBuilderDependencies instance2 = injector.getInstance(ExtensionBuilderDependencies.class);
 
         assertNotNull(instance1);
         assertSame(instance1, instance2);
@@ -227,8 +229,8 @@ public class ExtensionModuleTest {
 
     @Test(timeout = 5000)
     public void test_lifecycle_handler_is_singleton() {
-        final PluginLifecycleHandler instance1 = injector.getInstance(PluginLifecycleHandler.class);
-        final PluginLifecycleHandler instance2 = injector.getInstance(PluginLifecycleHandler.class);
+        final ExtensionLifecycleHandler instance1 = injector.getInstance(ExtensionLifecycleHandler.class);
+        final ExtensionLifecycleHandler instance2 = injector.getInstance(ExtensionLifecycleHandler.class);
 
         assertNotNull(instance1);
         assertSame(instance1, instance2);

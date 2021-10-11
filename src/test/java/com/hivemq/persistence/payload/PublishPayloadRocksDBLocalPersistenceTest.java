@@ -26,12 +26,12 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import util.LogbackCapturingAppender;
 
 import java.util.Arrays;
 import java.util.List;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
+import static org.junit.Assert.*;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.when;
 
@@ -47,7 +47,10 @@ public class PublishPayloadRocksDBLocalPersistenceTest {
     @Mock
     LocalPersistenceFileUtil localPersistenceFileUtil;
 
+    private PersistenceStartup persistenceStartup;
     private PublishPayloadRocksDBLocalPersistence persistence;
+    private LogbackCapturingAppender capturingAppender;
+
 
     @Before
     public void before() throws Exception {
@@ -55,15 +58,21 @@ public class PublishPayloadRocksDBLocalPersistenceTest {
 
         InternalConfigurations.PAYLOAD_PERSISTENCE_BUCKET_COUNT.set(8);
         when(localPersistenceFileUtil.getVersionedLocalPersistenceFolder(anyString(), anyString())).thenReturn(temporaryFolder.newFolder());
-
-        persistence = new PublishPayloadRocksDBLocalPersistence(localPersistenceFileUtil, new PersistenceStartup());
+        InternalConfigurations.PAYLOAD_PERSISTENCE_MEMTABLE_SIZE_PORTION.set(1024);
+        InternalConfigurations.PAYLOAD_PERSISTENCE_BLOCK_CACHE_SIZE_PORTION.set(16);
+        persistenceStartup = new PersistenceStartup();
+        persistence = new PublishPayloadRocksDBLocalPersistence(localPersistenceFileUtil, persistenceStartup);
         persistence.start();
+        capturingAppender = LogbackCapturingAppender.Factory.weaveInto(PublishPayloadRocksDBLocalPersistence.log);
     }
 
     @After
-    public void cleanUp() {
+    public void cleanUp() throws InterruptedException {
+        LogbackCapturingAppender.Factory.cleanUp();
         InternalConfigurations.PAYLOAD_PERSISTENCE_BUCKET_COUNT.set(64);
+        InternalConfigurations.PUBLISH_PAYLOAD_FORCE_FLUSH.set(true);
         persistence.closeDB();
+        persistenceStartup.finish();
     }
 
     @Test
@@ -150,5 +159,61 @@ public class PublishPayloadRocksDBLocalPersistenceTest {
         assertEquals(2, allIds.size());
         assertEquals(false, allIds.contains(1L));
     }
+
+
+    @Test(timeout = 10_000)
+    public void put_bigPayloads_memtableFlushed() {
+        final long memtableSize = persistence.getMemtableSize();
+        long bytesPuttedIn = 0L;
+        final byte[] payload1 = "payload".getBytes();
+        while (bytesPuttedIn < memtableSize) {
+            for (final long memTableSize : persistence.getRocksdbToMemTableSize()) {
+                //skip the empty entries
+                if (memTableSize == 0) {
+                    continue;
+                }
+                assertEquals(bytesPuttedIn, memTableSize);
+            }
+            persistence.put(0L, payload1);
+            bytesPuttedIn += payload1.length;
+        }
+        //after flush memTable must be empty (all -  because the others were empty already)
+        for (final long memTableSize : persistence.getRocksdbToMemTableSize()) {
+            assertEquals(0L, memTableSize);
+        }
+        assertTrue(capturingAppender.getLastCapturedLog().getMessage().contains("Hard flushing memTable due to exceeding memTable limit"));
+    }
+
+    @Test
+    public void put_bigPayloads_default_flushing() throws InterruptedException {
+        persistenceStartup.finish();
+        persistence.closeDB();
+        persistenceStartup = new PersistenceStartup();
+        InternalConfigurations.PUBLISH_PAYLOAD_FORCE_FLUSH.set(false);
+        persistence = new PublishPayloadRocksDBLocalPersistence(localPersistenceFileUtil, persistenceStartup);
+        persistence.start();
+
+        final long memtableSize = persistence.getMemtableSize();
+        long bytesPuttedIn = 0L;
+        final byte[] payload1 = "payload".getBytes();
+        int counter = 0;
+        while (bytesPuttedIn < memtableSize) {
+            for (final long memTableSize : persistence.getRocksdbToMemTableSize()) {
+                //skip the empty entries
+                if (memTableSize == 0) {
+                    continue;
+                }
+                assertEquals(bytesPuttedIn, memTableSize);
+            }
+            persistence.put(counter++, payload1);
+            bytesPuttedIn += payload1.length;
+        }
+        //after flush memTable must be empty (all -  because the others were empty already)
+        for (final long memTableSize : persistence.getRocksdbToMemTableSize()) {
+            assertEquals(0L, memTableSize);
+        }
+        assertNull(capturingAppender.getLastCapturedLog());
+    }
+
 
 }

@@ -23,7 +23,7 @@ import com.hivemq.extension.sdk.api.auth.parameter.TopicPermission;
 import com.hivemq.extension.sdk.api.services.intializer.ClientInitializer;
 import com.hivemq.extensions.HiveMQExtension;
 import com.hivemq.extensions.HiveMQExtensions;
-import com.hivemq.extensions.classloader.IsolatedPluginClassloader;
+import com.hivemq.extensions.classloader.IsolatedExtensionClassloader;
 import com.hivemq.extensions.client.parameter.ServerInformationImpl;
 import com.hivemq.extensions.executor.PluginTaskExecutorService;
 import com.hivemq.extensions.executor.PluginTaskExecutorServiceImpl;
@@ -41,9 +41,7 @@ import com.hivemq.mqtt.message.mqtt5.Mqtt5UserProperties;
 import com.hivemq.mqtt.message.reason.Mqtt5ConnAckReasonCode;
 import com.hivemq.persistence.clientsession.ClientSessionPersistence;
 import com.hivemq.util.ChannelAttributes;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelPromise;
+import io.netty.channel.*;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.util.concurrent.ImmediateEventExecutor;
 import org.jboss.shrinkwrap.api.ShrinkWrap;
@@ -93,16 +91,19 @@ public class PluginInitializerHandlerTest {
     private ChannelPromise channelPromise;
 
     @Mock
+    private ChannelPipeline channelPipeline;
+
+    @Mock
     private InitializersImpl initializers;
 
     @Mock
-    private IsolatedPluginClassloader classloader1;
+    private IsolatedExtensionClassloader classloader1;
 
     @Mock
     private HiveMQExtensions hiveMQExtensions;
 
     @Mock
-    private HiveMQExtension plugin;
+    private HiveMQExtension hiveMQExtension;
 
     @Mock
     private ClientSessionPersistence clientSessionPersistence;
@@ -122,12 +123,17 @@ public class PluginInitializerHandlerTest {
         executor1 = new PluginTaskExecutor(new AtomicLong());
         executor1.postConstruct();
 
+
         embeddedChannel = new EmbeddedChannel();
         embeddedChannel.attr(ChannelAttributes.CLIENT_ID).set("test_client");
         embeddedChannel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
 
         when(channelHandlerContext.channel()).thenReturn(embeddedChannel);
+        when(channelHandlerContext.pipeline()).thenReturn(channelPipeline);
         when(channelHandlerContext.executor()).thenReturn(ImmediateEventExecutor.INSTANCE);
+
+        when(hiveMQExtensions.getExtensionForClassloader(any(ClassLoader.class))).thenReturn(hiveMQExtension);
+        when(hiveMQExtension.getExtensionClassloader()).thenReturn(classloader1);
 
         pluginTaskExecutorService = new PluginTaskExecutorServiceImpl(() -> executor1, mock(ShutdownHooks.class));
         pluginInitializerHandler = new PluginInitializerHandler(initializers, pluginTaskExecutorService,
@@ -196,6 +202,7 @@ public class PluginInitializerHandlerTest {
 
         verify(initializers, timeout(5000).times(1)).getClientInitializerMap();
         verify(channelHandlerContext, timeout(5000)).writeAndFlush(any(Object.class), eq(channelPromise));
+        verify(channelPipeline).remove(any(ChannelHandler.class));
 
     }
 
@@ -238,6 +245,7 @@ public class PluginInitializerHandlerTest {
         verify(mqttConnacker, timeout(5000)).connackError(any(Channel.class), anyString(), anyString(),
                 eq(Mqtt5ConnAckReasonCode.NOT_AUTHORIZED), anyString(), eq(Mqtt5UserProperties.NO_USER_PROPERTIES), eq(true));
 
+        verify(channelPipeline).remove(any(ChannelHandler.class));
         assertEquals(true, embeddedChannel.attr(ChannelAttributes.PREVENT_LWT).get());
     }
 
@@ -269,6 +277,7 @@ public class PluginInitializerHandlerTest {
 
         verify(channelHandlerContext).writeAndFlush(any(Object.class), eq(channelPromise));
 
+        verify(channelPipeline).remove(any(ChannelHandler.class));
         assertNull(embeddedChannel.attr(ChannelAttributes.PREVENT_LWT).get());
     }
 
@@ -282,7 +291,7 @@ public class PluginInitializerHandlerTest {
         javaArchive.as(ZipExporter.class).exportTo(jarFile, true);
 
         //This classloader contains the classes from the jar file
-        final IsolatedPluginClassloader cl = new IsolatedPluginClassloader(new URL[]{jarFile.toURI().toURL()}, this.getClass().getClassLoader());
+        final IsolatedExtensionClassloader cl = new IsolatedExtensionClassloader(new URL[]{jarFile.toURI().toURL()}, this.getClass().getClassLoader());
 
         final Class<?> classOne = cl.loadClass("com.hivemq.extensions.services.initializer.InitializersImplTest$TestClientInitializerOne");
 
@@ -292,7 +301,7 @@ public class PluginInitializerHandlerTest {
         javaArchive.as(ZipExporter.class).exportTo(jarFile2, true);
 
         //This classloader contains the classes from the jar file
-        final IsolatedPluginClassloader cl2 = new IsolatedPluginClassloader(new URL[]{jarFile2.toURI().toURL()}, this.getClass().getClassLoader());
+        final IsolatedExtensionClassloader cl2 = new IsolatedExtensionClassloader(new URL[]{jarFile2.toURI().toURL()}, this.getClass().getClassLoader());
 
         final Class<?> classTwo = cl2.loadClass("com.hivemq.extensions.services.initializer.InitializersImplTest$TestClientInitializerTwo");
 

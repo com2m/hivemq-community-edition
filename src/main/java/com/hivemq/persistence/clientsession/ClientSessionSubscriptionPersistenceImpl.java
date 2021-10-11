@@ -17,15 +17,20 @@ package com.hivemq.persistence.clientsession;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.hivemq.bootstrap.ioc.lazysingleton.LazySingleton;
+import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extensions.iteration.ChunkCursor;
+import com.hivemq.extensions.iteration.Chunker;
+import com.hivemq.extensions.iteration.MultipleChunkResult;
 import com.hivemq.logging.EventLog;
+import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnector;
 import com.hivemq.mqtt.message.QoS;
+import com.hivemq.mqtt.message.reason.Mqtt5DisconnectReasonCode;
 import com.hivemq.mqtt.message.subscribe.Topic;
 import com.hivemq.mqtt.services.PublishPollService;
 import com.hivemq.mqtt.topic.SubscriptionFlags;
@@ -39,9 +44,8 @@ import com.hivemq.persistence.clientsession.SharedSubscriptionServiceImpl.Shared
 import com.hivemq.persistence.clientsession.callback.SubscriptionResult;
 import com.hivemq.persistence.local.ClientSessionLocalPersistence;
 import com.hivemq.persistence.local.ClientSessionSubscriptionLocalPersistence;
-import com.hivemq.persistence.local.xodus.BucketChunkResult;
-import com.hivemq.persistence.local.xodus.MultipleChunkResult;
 import com.hivemq.util.ChannelAttributes;
+import com.hivemq.util.ReasonStrings;
 import io.netty.channel.Channel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,8 +56,6 @@ import java.util.Map;
 import java.util.Set;
 
 import static com.google.common.base.Preconditions.checkNotNull;
-import static com.hivemq.configuration.service.InternalConfigurations.PERSISTENCE_BUCKET_COUNT;
-import static com.hivemq.configuration.service.InternalConfigurations.PERSISTENCE_SUBSCRIPTIONS_MAX_CHUNK_SIZE;
 
 /**
  * @author Dominik Obermaier
@@ -72,6 +74,8 @@ public class ClientSessionSubscriptionPersistenceImpl extends AbstractPersistenc
     private final @NotNull EventLog eventLog;
     private final @NotNull ClientSessionLocalPersistence clientSessionLocalPersistence;
     private final @NotNull PublishPollService publishPollService;
+    private final @NotNull Chunker chunker;
+    private final @NotNull MqttServerDisconnector mqttServerDisconnector;
 
     @Inject
     ClientSessionSubscriptionPersistenceImpl(final @NotNull ClientSessionSubscriptionLocalPersistence localPersistence,
@@ -81,7 +85,9 @@ public class ClientSessionSubscriptionPersistenceImpl extends AbstractPersistenc
                                              final @NotNull ChannelPersistence channelPersistence,
                                              final @NotNull EventLog eventLog,
                                              final @NotNull ClientSessionLocalPersistence clientSessionLocalPersistence,
-                                             final @NotNull PublishPollService publishPollService) {
+                                             final @NotNull PublishPollService publishPollService,
+                                             final @NotNull Chunker chunker,
+                                             final @NotNull MqttServerDisconnector mqttServerDisconnector) {
 
         this.localPersistence = localPersistence;
         this.topicTree = topicTree;
@@ -91,6 +97,8 @@ public class ClientSessionSubscriptionPersistenceImpl extends AbstractPersistenc
         this.eventLog = eventLog;
         this.clientSessionLocalPersistence = clientSessionLocalPersistence;
         this.publishPollService = publishPollService;
+        this.chunker = chunker;
+        this.mqttServerDisconnector = mqttServerDisconnector;
     }
 
     @NotNull
@@ -116,15 +124,17 @@ public class ClientSessionSubscriptionPersistenceImpl extends AbstractPersistenc
                 return Futures.immediateFuture(null);
             }
 
-            final ListenableFuture<Void> invalidateCacheFuture;
             final boolean subscriberExisted;
             //parse topic for shared flag
             final SharedSubscription sharedSubscription = sharedSubscriptionService.checkForSharedSubscription(topic.getTopic());
+            final ListenableFuture<Void> persistFuture;
             if (sharedSubscription == null) {
                 //not a shared subscription
                 subscriberExisted = topicTree.addTopic(client, topic, SubscriptionFlags.getDefaultFlags(false, topic.isRetainAsPublished(), topic.isNoLocal()), null);
-                //not needed for non shared subscriptions
-                invalidateCacheFuture = Futures.immediateFuture(null);
+                persistFuture = singleWriter.submit(client, (bucketIndex, queueBuckets, queueIndex) -> {
+                    localPersistence.addSubscription(client, topic, timestamp, bucketIndex);
+                    return null;
+                });
             } else {
                 if (sharedSubscription.getTopicFilter().isEmpty()) {
                     disconnectSharedSubscriberWithEmptyTopic(client);
@@ -143,23 +153,17 @@ public class ClientSessionSubscriptionPersistenceImpl extends AbstractPersistenc
 
                 final Subscription subscription = new Subscription(sharedTopic, SubscriptionFlags.getDefaultFlags(true, topic.isRetainAsPublished(), topic.isNoLocal()), sharedSubscription.getShareName());
 
-                invalidateSharedSubscriptionCacheAndPoll(client, ImmutableSet.of(subscription));
+                persistFuture = singleWriter.submit(client, (bucketIndex, queueBuckets, queueIndex) -> {
+                    localPersistence.addSubscription(client, topic, timestamp, bucketIndex);
+                    invalidateSharedSubscriptionCacheAndPoll(client, ImmutableSet.of(subscription));
+                    return null;
+                });
             }
-
-            final ListenableFuture<Void> persistFuture = singleWriter.submit(client, (bucketIndex, queueBuckets, queueIndex) -> {
-                localPersistence.addSubscription(client, topic, timestamp, bucketIndex);
-                return null;
-            });
 
             //set future result when local persistence future and topic tree future return;
-            if (sharedSubscription == null) {
-                return Futures.whenAllComplete(persistFuture).call(() -> new SubscriptionResult(topic, subscriberExisted, null),
-                        MoreExecutors.directExecutor());
-            } else {
-                return Futures.whenAllComplete(persistFuture)
-                        .call(() -> new SubscriptionResult(new Topic(sharedSubscription.getTopicFilter(), topic.getQoS()), subscriberExisted, sharedSubscription.getShareName()),
-                                MoreExecutors.directExecutor());
-            }
+            return Futures.whenAllComplete(persistFuture)
+                    .call(() -> new SubscriptionResult(topic, subscriberExisted, sharedSubscription == null ? null : sharedSubscription.getShareName()),
+                    MoreExecutors.directExecutor());
 
         } catch (final Throwable throwable) {
             return Futures.immediateFailedFuture(throwable);
@@ -347,7 +351,7 @@ public class ClientSessionSubscriptionPersistenceImpl extends AbstractPersistenc
                 final Topic topic = sharedSub.getTopic();
 
                 final String sharedSubId = sharedSub.getSharedGroup() + "/" + topic.getTopic();
-                publishPollService.pollSharedPublishesForClient(clientId, sharedSubId, topic.getQoS().getQosNumber(), topic.getSubscriptionIdentifier(), channel);
+                publishPollService.pollSharedPublishesForClient(clientId, sharedSubId, topic.getQoS().getQosNumber(), topic.isRetainAsPublished(), topic.getSubscriptionIdentifier(), channel);
                 sharedSubscriptionService.invalidateSharedSubscriptionCache(clientId);
                 sharedSubscriptionService.invalidateSharedSubscriberCache(sharedSubId);
                 channel.attr(ChannelAttributes.NO_SHARED_SUBSCRIPTION).set(false);
@@ -358,40 +362,15 @@ public class ClientSessionSubscriptionPersistenceImpl extends AbstractPersistenc
 
     @NotNull
     public ListenableFuture<MultipleChunkResult<Map<String, ImmutableSet<Topic>>>> getAllLocalSubscribersChunk(@NotNull final ChunkCursor cursor) {
-        try {
-            checkNotNull(cursor, "Cursor must not be null");
-
-            final ImmutableList.Builder<ListenableFuture<@NotNull BucketChunkResult<Map<String, ImmutableSet<Topic>>>>> builder = ImmutableList.builder();
-
-            final int bucketCount = PERSISTENCE_BUCKET_COUNT.get();
-            final int maxResults = PERSISTENCE_SUBSCRIPTIONS_MAX_CHUNK_SIZE / (bucketCount - cursor.getFinishedBuckets().size());
-            for (int i = 0; i < bucketCount; i++) {
-                //skip already finished buckets
-                if (!cursor.getFinishedBuckets().contains(i)) {
-                    final String lastKey = cursor.getLastKeys().get(i);
-                    builder.add(singleWriter.submit(i, (bucketIndex, queueBuckets, queueIndex) -> localPersistence.getAllSubscribersChunk(bucketIndex, lastKey, maxResults)));
-                }
-            }
-
-            return Futures.transform(Futures.allAsList(builder.build()), allBucketsResult -> {
-                Preconditions.checkNotNull(allBucketsResult, "Iteration result from all bucket cannot be null");
-
-                final ImmutableMap.Builder<Integer, BucketChunkResult<Map<String, ImmutableSet<Topic>>>> resultBuilder = ImmutableMap.builder();
-                for (final BucketChunkResult<Map<String, ImmutableSet<Topic>>> bucketResult : allBucketsResult) {
-                    resultBuilder.put(bucketResult.getBucketIndex(), bucketResult);
-                }
-
-                for (final Integer finishedBucketId : cursor.getFinishedBuckets()) {
-                    resultBuilder.put(finishedBucketId, new BucketChunkResult<>(Map.of(), true, cursor.getLastKeys().get(finishedBucketId), finishedBucketId));
-                }
-
-                return new MultipleChunkResult<>(resultBuilder.build());
-
-            }, MoreExecutors.directExecutor());
-
-        } catch (final Throwable throwable) {
-            return Futures.immediateFailedFuture(throwable);
-        }
+        return chunker.getAllLocalChunk(cursor, InternalConfigurations.PERSISTENCE_SUBSCRIPTIONS_MAX_CHUNK_SIZE,
+                // Chunker.SingleWriterCall interface
+                (bucket, lastKey, maxResults) -> singleWriter.submit(bucket,
+                        // actual single writer call
+                        (bucketIndex, ignored1, ignored2) ->
+                                localPersistence.getAllSubscribersChunk(
+                                        bucketIndex,
+                                        lastKey,
+                                        maxResults)));
     }
 
     @NotNull
@@ -425,11 +404,16 @@ public class ClientSessionSubscriptionPersistenceImpl extends AbstractPersistenc
     }
 
     private void disconnectSharedSubscriberWithEmptyTopic(final @NotNull String clientId) {
-        log.debug("Client {} sent a shared subscription with empty topic.");
         final Channel channel = channelPersistence.get(clientId);
         if (channel != null) {
-            eventLog.clientWasDisconnected(channel, "Sent shared subscription with empty topic");
-            channel.close();
+            mqttServerDisconnector.disconnect(channel,
+                    "A client (IP: {}) sent a shared subscription with an empty topic. Disconnecting client.",
+                    "Sent shared subscription with empty topic",
+                    Mqtt5DisconnectReasonCode.TOPIC_FILTER_INVALID,
+                    ReasonStrings.DISCONNECT_TOPIC_NAME_INVALID_SHARED_EMPTY);
+        } else {
+            //at least log if that happens
+            log.debug("Client {} sent a shared subscription with empty topic.", clientId);
         }
     }
 

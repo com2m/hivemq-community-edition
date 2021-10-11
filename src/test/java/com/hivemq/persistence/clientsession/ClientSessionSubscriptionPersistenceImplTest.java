@@ -16,18 +16,22 @@
 package com.hivemq.persistence.clientsession;
 
 import com.google.common.collect.ImmutableSet;
+import com.hivemq.extensions.iteration.Chunker;
 import com.hivemq.logging.EventLog;
+import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnector;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.mqtt5.Mqtt5RetainHandling;
 import com.hivemq.mqtt.message.subscribe.Topic;
 import com.hivemq.mqtt.services.PublishPollService;
 import com.hivemq.mqtt.topic.tree.LocalTopicTree;
 import com.hivemq.persistence.ChannelPersistence;
+import com.hivemq.persistence.SingleWriterService;
 import com.hivemq.persistence.clientsession.callback.SubscriptionResult;
 import com.hivemq.persistence.local.ClientSessionLocalPersistence;
 import com.hivemq.persistence.local.ClientSessionSubscriptionLocalPersistence;
 import io.netty.channel.Channel;
 import io.netty.channel.embedded.EmbeddedChannel;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -53,6 +57,8 @@ import static org.mockito.Mockito.*;
  */
 @SuppressWarnings("NullabilityAnnotations")
 public class ClientSessionSubscriptionPersistenceImplTest {
+
+    private AutoCloseable closeableMock;
 
     @Rule
     public InitFutureUtilsExecutorRule initFutureUtilsExecutorRule = new InitFutureUtilsExecutorRule();
@@ -80,11 +86,21 @@ public class ClientSessionSubscriptionPersistenceImplTest {
 
     private ClientSessionSubscriptionPersistenceImpl persistence;
 
+    private SingleWriterService singleWriterService;
+
     @Before
     public void setUp() throws Exception {
-        MockitoAnnotations.initMocks(this);
+        closeableMock = MockitoAnnotations.openMocks(this);
         when(topicTree.addTopic(anyString(), any(Topic.class), anyByte(), anyString())).thenReturn(true);
-        persistence = new ClientSessionSubscriptionPersistenceImpl(localPersistence, topicTree, sharedSubscriptionService, TestSingleWriterFactory.defaultSingleWriter(), channelPersistence, eventLog, clientSessionLocalPersistence, publishPollService);
+        singleWriterService = TestSingleWriterFactory.defaultSingleWriter();
+        persistence = new ClientSessionSubscriptionPersistenceImpl(localPersistence, topicTree, sharedSubscriptionService, singleWriterService, channelPersistence, eventLog, clientSessionLocalPersistence, publishPollService, new Chunker(), mock(MqttServerDisconnector.class));
+    }
+
+    @After
+    public void tearDown() throws Exception {
+        persistence.closeDB();
+        singleWriterService.stop();
+        closeableMock.close();
     }
 
     @Test(timeout = 60000)
@@ -130,7 +146,7 @@ public class ClientSessionSubscriptionPersistenceImplTest {
         when(channelPersistence.get("client")).thenReturn(null);
         persistence.invalidateSharedSubscriptionCacheAndPoll("client", ImmutableSet.of());
 
-        verify(publishPollService, never()).pollSharedPublishesForClient(anyString(), anyString(), anyInt(), anyInt(), any(Channel.class));
+        verify(publishPollService, never()).pollSharedPublishesForClient(anyString(), anyString(), anyInt(), anyBoolean(), anyInt(), any(Channel.class));
 
     }
 
@@ -143,7 +159,7 @@ public class ClientSessionSubscriptionPersistenceImplTest {
         when(channelPersistence.get("client")).thenReturn(embeddedChannel);
         persistence.invalidateSharedSubscriptionCacheAndPoll("client", ImmutableSet.of());
 
-        verify(publishPollService, never()).pollSharedPublishesForClient(anyString(), anyString(), anyInt(), anyInt(), any(Channel.class));
+        verify(publishPollService, never()).pollSharedPublishesForClient(anyString(), anyString(), anyInt(), anyBoolean(), anyInt(), any(Channel.class));
 
     }
 
@@ -155,7 +171,7 @@ public class ClientSessionSubscriptionPersistenceImplTest {
         when(channelPersistence.get("client")).thenReturn(embeddedChannel);
         persistence.invalidateSharedSubscriptionCacheAndPoll("client", ImmutableSet.of());
 
-        verify(publishPollService, never()).pollSharedPublishesForClient(anyString(), anyString(), anyInt(), anyInt(), any(Channel.class));
+        verify(publishPollService, never()).pollSharedPublishesForClient(anyString(), anyString(), anyInt(), anyBoolean(), anyInt(), any(Channel.class));
 
         embeddedChannel.close();
 
@@ -169,7 +185,7 @@ public class ClientSessionSubscriptionPersistenceImplTest {
         when(channelPersistence.get("client")).thenReturn(embeddedChannel);
         persistence.invalidateSharedSubscriptionCacheAndPoll("client", ImmutableSet.of(new Subscription(new Topic("topic", QoS.AT_LEAST_ONCE), (byte) 2, "group")));
 
-        verify(publishPollService).pollSharedPublishesForClient(anyString(), anyString(), anyInt(), any(), any(Channel.class));
+        verify(publishPollService).pollSharedPublishesForClient(anyString(), anyString(), anyInt(), anyBoolean(), any(), any(Channel.class));
         verify(sharedSubscriptionService).invalidateSharedSubscriberCache("group/topic");
         verify(sharedSubscriptionService).invalidateSharedSubscriptionCache("client");
 

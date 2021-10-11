@@ -20,10 +20,9 @@ import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.client.parameter.ClientInformation;
 import com.hivemq.extension.sdk.api.client.parameter.ConnectionInformation;
 import com.hivemq.extension.sdk.api.interceptor.unsuback.UnsubackOutboundInterceptor;
+import com.hivemq.extensions.ExtensionInformationUtil;
 import com.hivemq.extensions.HiveMQExtension;
 import com.hivemq.extensions.HiveMQExtensions;
-import com.hivemq.extensions.PluginInformationUtil;
-import com.hivemq.extensions.classloader.IsolatedPluginClassloader;
 import com.hivemq.extensions.client.ClientContextImpl;
 import com.hivemq.extensions.executor.PluginOutPutAsyncer;
 import com.hivemq.extensions.executor.PluginTaskExecutorService;
@@ -50,8 +49,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @author Silvio Giebl
  */
 @Singleton
-@ChannelHandler.Sharable
-public class UnsubackOutboundInterceptorHandler extends ChannelOutboundHandlerAdapter {
+public class UnsubackOutboundInterceptorHandler {
 
     private static final Logger log = LoggerFactory.getLogger(UnsubackOutboundInterceptorHandler.class);
 
@@ -73,20 +71,7 @@ public class UnsubackOutboundInterceptorHandler extends ChannelOutboundHandlerAd
         this.executorService = executorService;
     }
 
-    @Override
-    public void write(
-            final @NotNull ChannelHandlerContext ctx,
-            final @NotNull Object msg,
-            final @NotNull ChannelPromise promise) {
-
-        if (!(msg instanceof UNSUBACK)) {
-            ctx.write(msg, promise);
-            return;
-        }
-        handleOutboundUnsuback(ctx, (UNSUBACK) msg, promise);
-    }
-
-    private void handleOutboundUnsuback(
+    public void handleOutboundUnsuback(
             final @NotNull ChannelHandlerContext ctx,
             final @NotNull UNSUBACK unsuback,
             final @NotNull ChannelPromise promise) {
@@ -97,7 +82,7 @@ public class UnsubackOutboundInterceptorHandler extends ChannelOutboundHandlerAd
             return;
         }
 
-        final ClientContextImpl clientContext = channel.attr(ChannelAttributes.PLUGIN_CLIENT_CONTEXT).get();
+        final ClientContextImpl clientContext = channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).get();
         if (clientContext == null) {
             ctx.write(unsuback, promise);
             return;
@@ -108,8 +93,8 @@ public class UnsubackOutboundInterceptorHandler extends ChannelOutboundHandlerAd
             return;
         }
 
-        final ClientInformation clientInfo = PluginInformationUtil.getAndSetClientInformation(channel, clientId);
-        final ConnectionInformation connectionInfo = PluginInformationUtil.getAndSetConnectionInformation(channel);
+        final ClientInformation clientInfo = ExtensionInformationUtil.getAndSetClientInformation(channel, clientId);
+        final ConnectionInformation connectionInfo = ExtensionInformationUtil.getAndSetConnectionInformation(channel);
 
         final UnsubackPacketImpl packet = new UnsubackPacketImpl(unsuback);
         final UnsubackOutboundInputImpl input = new UnsubackOutboundInputImpl(clientInfo, connectionInfo, packet);
@@ -126,8 +111,7 @@ public class UnsubackOutboundInterceptorHandler extends ChannelOutboundHandlerAd
 
         for (final UnsubackOutboundInterceptor interceptor : interceptors) {
 
-            final HiveMQExtension extension = hiveMQExtensions.getExtensionForClassloader(
-                    (IsolatedPluginClassloader) interceptor.getClass().getClassLoader());
+            final HiveMQExtension extension = hiveMQExtensions.getExtensionForClassloader(interceptor.getClass().getClassLoader());
             if (extension == null) {
                 context.finishInterceptor();
                 continue;

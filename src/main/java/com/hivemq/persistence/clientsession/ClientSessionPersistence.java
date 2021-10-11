@@ -19,9 +19,10 @@ import com.google.common.util.concurrent.ListenableFuture;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.codec.encoder.mqtt5.UnsignedDataTypes;
+import com.hivemq.extensions.iteration.ChunkCursor;
+import com.hivemq.extensions.iteration.MultipleChunkResult;
 import com.hivemq.mqtt.message.connect.MqttWillPublish;
 import com.hivemq.mqtt.message.reason.Mqtt5DisconnectReasonCode;
-import com.hivemq.persistence.local.xodus.MultipleChunkResult;
 
 import java.util.Map;
 import java.util.Set;
@@ -44,10 +45,12 @@ public interface ClientSessionPersistence {
      * @param client                The client ID
      * @param cleanStart            clean start or use previous session
      * @param sessionExpiryInterval The session expiry interval for this client
+     * @param queueLimit for this session specifically
      * @return The state of incomplete outgoing message transmissions for this client
      */
     @NotNull
-    ListenableFuture<Void> clientConnected(final @NotNull String client, final boolean cleanStart, final long sessionExpiryInterval, @Nullable MqttWillPublish willPublish);
+    ListenableFuture<Void> clientConnected(final @NotNull String client, final boolean cleanStart, final long sessionExpiryInterval,
+                                           @Nullable MqttWillPublish willPublish, @Nullable Long queueLimit);
 
     /**
      * Close the persistence.

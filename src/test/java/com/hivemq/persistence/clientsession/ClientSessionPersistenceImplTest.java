@@ -19,20 +19,22 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
+import com.hivemq.extensions.iteration.Chunker;
 import com.hivemq.logging.EventLog;
-import com.hivemq.mqtt.handler.disconnect.Mqtt3ServerDisconnector;
-import com.hivemq.mqtt.handler.disconnect.Mqtt5ServerDisconnector;
+import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnector;
 import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.connect.MqttWillPublish;
 import com.hivemq.mqtt.message.reason.Mqtt5DisconnectReasonCode;
 import com.hivemq.persistence.ChannelPersistenceImpl;
+import com.hivemq.persistence.SingleWriterService;
 import com.hivemq.persistence.clientqueue.ClientQueuePersistence;
 import com.hivemq.persistence.local.ClientSessionLocalPersistence;
 import com.hivemq.persistence.payload.PublishPayloadPersistence;
 import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.Channel;
 import io.netty.channel.embedded.EmbeddedChannel;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -58,6 +60,8 @@ import static org.mockito.Mockito.when;
  */
 public class ClientSessionPersistenceImplTest {
 
+    private AutoCloseable closeableMock;
+
     @Rule
     public InitFutureUtilsExecutorRule initFutureUtilsExecutorRule = new InitFutureUtilsExecutorRule();
 
@@ -75,20 +79,28 @@ public class ClientSessionPersistenceImplTest {
     @Mock
     private PendingWillMessages pendingWillMessages;
     @Mock
-    private Mqtt5ServerDisconnector mqtt5ServerDisconnector;
-    @Mock
-    private Mqtt3ServerDisconnector mqtt3ServerDisconnector;
+    private MqttServerDisconnector mqttServerDisconnector;
     @Mock
     private ChannelPersistenceImpl channelPersistence;
 
     private ClientSessionPersistenceImpl clientSessionPersistence;
 
+    private SingleWriterService singleWriterService;
+
     @Before
     public void setUp() throws Exception {
-        MockitoAnnotations.initMocks(this);
+        closeableMock = MockitoAnnotations.openMocks(this);
+        singleWriterService = TestSingleWriterFactory.defaultSingleWriter();
         clientSessionPersistence = new ClientSessionPersistenceImpl(localPersistence, subscriptionPersistence, clientQueuePersistence,
-                TestSingleWriterFactory.defaultSingleWriter(), channelPersistence, eventLog, publishPayloadPersistence, pendingWillMessages,
-                mqtt5ServerDisconnector, mqtt3ServerDisconnector);
+                singleWriterService, channelPersistence, eventLog, publishPayloadPersistence, pendingWillMessages,
+                mqttServerDisconnector, new Chunker());
+    }
+
+    @After
+    public void tearDown() throws Exception {
+        singleWriterService.stop();
+        clientSessionPersistence.closeDB();
+        closeableMock.close();
     }
 
     @Test
@@ -128,9 +140,9 @@ public class ClientSessionPersistenceImplTest {
         when(clientQueuePersistence.clear("client", false)).thenReturn(Futures.immediateFuture(null));
 
         final MqttWillPublish willPublish = createWillPublish();
-        clientSessionPersistence.clientConnected("client", true, 0, willPublish).get();
+        clientSessionPersistence.clientConnected("client", true, 0, willPublish, 123L).get();
 
-        verify(publishPayloadPersistence).add(any(byte[].class), eq(1L));
+        verify(publishPayloadPersistence).add(any(byte[].class), eq(1L), anyLong());
         verify(localPersistence).put(eq("client"), any(ClientSession.class), anyLong(), anyInt());
     }
 
@@ -161,7 +173,7 @@ public class ClientSessionPersistenceImplTest {
         final Boolean result = future.get();
         assertTrue(result);
         verify(pendingWillMessages).cancelWill("client");
-        verify(mqtt5ServerDisconnector).disconnect(any(Channel.class), anyString(), anyString(), eq(Mqtt5DisconnectReasonCode.ADMINISTRATIVE_ACTION), any());
+        verify(mqttServerDisconnector).disconnect(any(Channel.class), anyString(), anyString(), eq(Mqtt5DisconnectReasonCode.ADMINISTRATIVE_ACTION), any());
     }
 
     @Test
@@ -175,7 +187,7 @@ public class ClientSessionPersistenceImplTest {
         final Boolean result = future.get();
         assertTrue(result);
         verify(pendingWillMessages).cancelWill("client");
-        verify(mqtt5ServerDisconnector).disconnect(any(Channel.class), anyString(), anyString(), eq(Mqtt5DisconnectReasonCode.SESSION_TAKEN_OVER), eq("reason-string"));
+        verify(mqttServerDisconnector).disconnect(any(Channel.class), anyString(), anyString(), eq(Mqtt5DisconnectReasonCode.SESSION_TAKEN_OVER), eq("reason-string"));
     }
 
     @Test

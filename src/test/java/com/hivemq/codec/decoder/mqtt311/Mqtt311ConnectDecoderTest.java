@@ -22,11 +22,11 @@ import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.configuration.service.SecurityConfigurationService;
 import com.hivemq.logging.EventLog;
 import com.hivemq.mqtt.handler.connack.MqttConnacker;
-import com.hivemq.mqtt.handler.disconnect.Mqtt3ServerDisconnector;
-import com.hivemq.mqtt.handler.disconnect.MqttDisconnectUtil;
 import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.connect.CONNECT;
+import com.hivemq.mqtt.message.reason.Mqtt5ConnAckReasonCode;
+import com.hivemq.util.ClientIds;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
@@ -68,6 +68,7 @@ public class Mqtt311ConnectDecoderTest {
     private Mqtt311ConnectDecoder decoder;
 
     private static final byte fixedHeader = 0b0001_0000;
+    private HivemqId hiveMQId;
 
     @Before
     public void setUp() throws Exception {
@@ -77,11 +78,11 @@ public class Mqtt311ConnectDecoderTest {
         when(fullConfiguration.securityConfiguration()).thenReturn(securityConfigurationService);
         when(securityConfigurationService.validateUTF8()).thenReturn(true);
 
+        hiveMQId = new HivemqId();
         decoder = new Mqtt311ConnectDecoder(connacker,
-                new Mqtt3ServerDisconnector(new MqttDisconnectUtil(eventLog)),
-                eventLog,
+                new ClientIds(hiveMQId),
                 new TestConfigurationBootstrap().getFullConfigurationService(),
-                new HivemqId());
+                hiveMQId);
     }
 
     @Test
@@ -292,8 +293,8 @@ public class Mqtt311ConnectDecoderTest {
 
         final CONNECT connectPacket = decoder.decode(channel, buf, fixedHeader);
 
-        assertFalse(channel.isActive());
-        verify(eventLog).clientWasDisconnected(any(Channel.class), anyString());
+        assertNull(connectPacket);
+        verify(connacker).connackError(any(Channel.class), isNull(), anyString(), eq(Mqtt5ConnAckReasonCode.MALFORMED_PACKET), anyString());
     }
 
     @Test
@@ -412,8 +413,8 @@ public class Mqtt311ConnectDecoderTest {
 
         final CONNECT connectPacket = decoder.decode(channel, buf, fixedHeader);
 
-        assertTrue(connectPacket.getClientIdentifier().length() > 0);
-        assertEquals("gen-", connectPacket.getClientIdentifier().substring(0, 4));
+        assertTrue(connectPacket.getClientIdentifier().length() > 9);
+        assertEquals("hmq_" + hiveMQId.get(), connectPacket.getClientIdentifier().substring(0, 9));
     }
 
     @Test

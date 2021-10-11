@@ -29,7 +29,7 @@ import com.hivemq.extension.sdk.api.interceptor.connack.parameter.ConnackOutboun
 import com.hivemq.extension.sdk.api.interceptor.connack.parameter.ConnackOutboundProviderInput;
 import com.hivemq.extensions.HiveMQExtension;
 import com.hivemq.extensions.HiveMQExtensions;
-import com.hivemq.extensions.classloader.IsolatedPluginClassloader;
+import com.hivemq.extensions.classloader.IsolatedExtensionClassloader;
 import com.hivemq.extensions.executor.PluginOutPutAsyncer;
 import com.hivemq.extensions.executor.PluginOutputAsyncerImpl;
 import com.hivemq.extensions.executor.PluginTaskExecutorService;
@@ -40,6 +40,9 @@ import com.hivemq.logging.EventLog;
 import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.mqtt.message.connack.CONNACK;
 import com.hivemq.util.ChannelAttributes;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.jboss.shrinkwrap.api.ShrinkWrap;
 import org.jboss.shrinkwrap.api.exporter.ZipExporter;
@@ -60,7 +63,6 @@ import java.time.Duration;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -120,7 +122,12 @@ public class ConnackOutboundInterceptorHandlerTest {
         pluginTaskExecutorService = new PluginTaskExecutorServiceImpl(() -> executor1, mock(ShutdownHooks.class));
 
         handler = new ConnackOutboundInterceptorHandler(configurationService, asyncer, hiveMQExtensions, pluginTaskExecutorService, interceptors, serverInformation, eventLog);
-        channel.pipeline().addFirst(handler);
+        channel.pipeline().addLast("test", new ChannelOutboundHandlerAdapter() {
+            @Override
+            public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+                handler.handleOutboundConnack(ctx, ((CONNACK) msg), promise);
+            }
+        });
     }
 
     @Test(timeout = 5000)
@@ -128,10 +135,17 @@ public class ConnackOutboundInterceptorHandlerTest {
 
         channel.attr(ChannelAttributes.CLIENT_ID).set(null);
 
-        channel.writeOutbound(testConnack());
+        final CONNACK initial = testConnack();
+        channel.writeOutbound(initial);
         channel.runPendingTasks();
+        CONNACK connack = channel.readOutbound();
+        while (connack == null) {
+            channel.runPendingTasks();
+            channel.runScheduledPendingTasks();
+            connack = channel.readOutbound();
+        }
 
-        assertNull(channel.readOutbound());
+        assertEquals(initial, connack);
     }
 
     @Test(timeout = 5000)
@@ -265,7 +279,7 @@ public class ConnackOutboundInterceptorHandlerTest {
         javaArchive.as(ZipExporter.class).exportTo(jarFile, true);
 
         //This classloader contains the classes from the jar file
-        final IsolatedPluginClassloader cl = new IsolatedPluginClassloader(new URL[]{jarFile.toURI().toURL()}, this.getClass().getClassLoader());
+        final IsolatedExtensionClassloader cl = new IsolatedExtensionClassloader(new URL[]{jarFile.toURI().toURL()}, this.getClass().getClassLoader());
 
         final Class<?> providerClass = cl.loadClass("com.hivemq.extensions.handler.ConnackOutboundInterceptorHandlerTest$" + name);
 

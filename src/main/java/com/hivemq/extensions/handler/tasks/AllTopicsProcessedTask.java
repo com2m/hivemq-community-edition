@@ -18,16 +18,12 @@ package com.hivemq.extensions.handler.tasks;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
-import com.hivemq.bootstrap.netty.ChannelHandlerNames;
-import com.hivemq.mqtt.handler.disconnect.Mqtt3ServerDisconnector;
-import com.hivemq.mqtt.handler.disconnect.Mqtt5ServerDisconnector;
-import com.hivemq.mqtt.handler.subscribe.SubscribeHandler;
-import com.hivemq.mqtt.message.ProtocolVersion;
+import com.hivemq.extensions.auth.parameter.SubscriptionAuthorizerOutputImpl;
+import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnector;
+import com.hivemq.mqtt.handler.subscribe.IncomingSubscribeService;
 import com.hivemq.mqtt.message.reason.Mqtt5DisconnectReasonCode;
 import com.hivemq.mqtt.message.reason.Mqtt5SubAckReasonCode;
 import com.hivemq.mqtt.message.subscribe.SUBSCRIBE;
-import com.hivemq.extensions.auth.parameter.SubscriptionAuthorizerOutputImpl;
-import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.ChannelHandlerContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,21 +40,21 @@ public class AllTopicsProcessedTask implements Runnable {
     private final @NotNull SUBSCRIBE msg;
     private final @NotNull List<ListenableFuture<SubscriptionAuthorizerOutputImpl>> listenableFutures;
     private final @NotNull ChannelHandlerContext ctx;
-    private final @NotNull Mqtt5ServerDisconnector mqtt5ServerDisconnector;
-    private final @NotNull Mqtt3ServerDisconnector mqtt3ServerDisconnector;
+    private final @NotNull MqttServerDisconnector mqttServerDisconnector;
+    private final @NotNull IncomingSubscribeService incomingSubscribeService;
 
     public AllTopicsProcessedTask(
             final @NotNull SUBSCRIBE msg,
             final @NotNull List<ListenableFuture<SubscriptionAuthorizerOutputImpl>> listenableFutures,
             final @NotNull ChannelHandlerContext ctx,
-            final @NotNull Mqtt5ServerDisconnector mqtt5ServerDisconnector,
-            final @NotNull Mqtt3ServerDisconnector mqtt3ServerDisconnector) {
+            final @NotNull MqttServerDisconnector mqttServerDisconnector,
+            final @NotNull IncomingSubscribeService incomingSubscribeService) {
 
         this.msg = msg;
         this.listenableFutures = listenableFutures;
         this.ctx = ctx;
-        this.mqtt5ServerDisconnector = mqtt5ServerDisconnector;
-        this.mqtt3ServerDisconnector = mqtt3ServerDisconnector;
+        this.mqttServerDisconnector = mqttServerDisconnector;
+        this.incomingSubscribeService = incomingSubscribeService;
     }
 
     @Override
@@ -108,10 +104,9 @@ public class AllTopicsProcessedTask implements Runnable {
                 }
             }
 
-            final SubscribeHandler handler = (SubscribeHandler) ctx.pipeline().get(ChannelHandlerNames.MQTT_SUBSCRIBE_HANDLER);
             final boolean finalAuthorizersPresent = authorizersPresent;
-            if (handler != null && ctx.channel().isActive()) {
-                ctx.executor().execute(() -> handler.processSubscribe(ctx, msg, answerCodes, reasonStrings, finalAuthorizersPresent));
+            if (ctx.channel().isActive()) {
+                ctx.executor().execute(() -> incomingSubscribeService.processSubscribe(ctx, msg, answerCodes, reasonStrings, finalAuthorizersPresent));
             }
 
         } catch (final Exception e) {
@@ -124,18 +119,10 @@ public class AllTopicsProcessedTask implements Runnable {
         final String logMessage = "A client (IP: {}) sent a SUBSCRIBE with an unauthorized subscription for topic '" + msg.getTopics().get(topicIndex).getTopic() + "'. This is not allowed. Disconnecting client.";
         final String eventLogMessage = "Sent a SUBSCRIBE with an unauthorized subscription for topic '" + msg.getTopics().get(topicIndex).getTopic() + "'";
 
-        if (ctx.channel().attr(ChannelAttributes.MQTT_VERSION).get() == ProtocolVersion.MQTTv5) {
-            mqtt5ServerDisconnector.disconnect(ctx.channel(),
-                    logMessage,
-                    eventLogMessage,
-                    Mqtt5DisconnectReasonCode.from(output.getDisconnectReasonCode()),
-                    output.getReasonString());
-        } else {
-            mqtt3ServerDisconnector.disconnect(ctx.channel(),
-                    logMessage,
-                    eventLogMessage,
-                    null,
-                    null);
-        }
+        mqttServerDisconnector.disconnect(ctx.channel(),
+                logMessage,
+                eventLogMessage,
+                Mqtt5DisconnectReasonCode.from(output.getDisconnectReasonCode()),
+                output.getReasonString());
     }
 }

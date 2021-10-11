@@ -16,12 +16,15 @@
 package com.hivemq.bootstrap.netty.initializer;
 
 import com.hivemq.bootstrap.netty.ChannelDependencies;
+import com.hivemq.configuration.HivemqId;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.configuration.service.MqttConfigurationService;
 import com.hivemq.configuration.service.RestrictionsConfigurationService;
 import com.hivemq.configuration.service.entity.Listener;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.logging.EventLog;
+import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnector;
+import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnectorImpl;
 import com.hivemq.security.exception.SslException;
 import io.netty.channel.*;
 import io.netty.channel.embedded.EmbeddedChannel;
@@ -43,7 +46,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static com.hivemq.bootstrap.netty.ChannelHandlerNames.*;
-import static com.hivemq.bootstrap.netty.initializer.AbstractChannelInitializer.FIRST_ABSTRACT_HANDLER;
 import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.*;
@@ -82,6 +84,7 @@ public class AbstractChannelInitializerTest {
 
         when(socketChannel.pipeline()).thenReturn(pipeline);
         when(socketChannel.attr(any(AttributeKey.class))).thenReturn(attribute);
+        when(socketChannel.isActive()).thenReturn(true);
 
         when(channelDependencies.getGlobalTrafficShapingHandler())
                 .thenReturn(new GlobalTrafficShapingHandler(Executors.newSingleThreadScheduledExecutor(), 1000L));
@@ -92,20 +95,38 @@ public class AbstractChannelInitializerTest {
         when(channelDependencies.getRestrictionsConfigurationService()).thenReturn(restrictionsConfigurationService);
 
         when(restrictionsConfigurationService.noConnectIdleTimeout()).thenReturn(500L);
+        when(restrictionsConfigurationService.incomingLimit()).thenReturn(0L);
+
+        final MqttServerDisconnector mqttServerDisconnector = new MqttServerDisconnectorImpl(eventLog, new HivemqId());
+
+        when(channelDependencies.getMqttServerDisconnector()).thenReturn(mqttServerDisconnector);
 
         abstractChannelInitializer = new TestAbstractChannelInitializer(channelDependencies);
     }
 
     @Test
-    public void test_init_channel() throws Exception {
+    public void test_init_channel_no_throttling() throws Exception {
 
         abstractChannelInitializer.initChannel(socketChannel);
 
-        verify(pipeline).addLast(eq(FIRST_ABSTRACT_HANDLER), any(ChannelHandler.class));
+        verify(pipeline, never()).addLast(eq(GLOBAL_THROTTLING_HANDLER), any(ChannelHandler.class));
         verify(pipeline).addLast(eq(MQTT_MESSAGE_DECODER), any(ChannelHandler.class));
         verify(pipeline).addLast(eq(MQTT_MESSAGE_BARRIER), any(ChannelHandler.class));
-        verify(pipeline).addLast(eq(MQTT_SUBSCRIBE_MESSAGE_BARRIER), any(ChannelHandler.class));
-        verify(pipeline).addLast(eq(CHANNEL_INACTIVE_HANDLER), any(ChannelHandler.class));
+
+    }
+
+    @Test
+    public void test_init_channel_with_throttling() throws Exception {
+
+        when(restrictionsConfigurationService.incomingLimit()).thenReturn(1000L);
+        final MqttServerDisconnector mqttServerDisconnector = new MqttServerDisconnectorImpl(eventLog, new HivemqId());
+        when(channelDependencies.getMqttServerDisconnector()).thenReturn(mqttServerDisconnector);
+        abstractChannelInitializer = new TestAbstractChannelInitializer(channelDependencies);
+
+        abstractChannelInitializer.initChannel(socketChannel);
+
+        verify(pipeline).addLast(eq(GLOBAL_THROTTLING_HANDLER), any(ChannelHandler.class));
+        verify(pipeline).addLast(eq(MQTT_MESSAGE_DECODER), any(ChannelHandler.class));
 
     }
 
@@ -187,7 +208,7 @@ public class AbstractChannelInitializerTest {
                     return "listener";
                 }
 
-            }, eventLog);
+            });
         }
 
         @Override
@@ -219,7 +240,7 @@ public class AbstractChannelInitializerTest {
                 public @NotNull String getName() {
                     return "listener";
                 }
-            }, eventLog);
+            });
         }
 
         @Override

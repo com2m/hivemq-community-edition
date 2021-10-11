@@ -29,20 +29,20 @@ import com.hivemq.extension.sdk.api.auth.SimpleAuthenticator;
 import com.hivemq.extension.sdk.api.services.auth.provider.AuthenticatorProvider;
 import com.hivemq.extension.sdk.api.services.auth.provider.EnhancedAuthenticatorProvider;
 import com.hivemq.extensions.HiveMQExtensions;
-import com.hivemq.extensions.classloader.IsolatedPluginClassloader;
+import com.hivemq.extensions.auth.parameter.ModifiableClientSettingsImpl;
+import com.hivemq.extensions.classloader.IsolatedExtensionClassloader;
 import com.hivemq.extensions.client.parameter.ServerInformationImpl;
 import com.hivemq.extensions.executor.PluginOutPutAsyncer;
 import com.hivemq.extensions.executor.PluginTaskExecutorService;
 import com.hivemq.extensions.executor.task.PluginInOutTask;
 import com.hivemq.extensions.executor.task.PluginInOutTaskContext;
 import com.hivemq.extensions.services.auth.Authenticators;
-import com.hivemq.extensions.auth.parameter.ModifiableClientSettingsImpl;
 import com.hivemq.extensions.services.auth.WrappedAuthenticatorProvider;
 import com.hivemq.mqtt.handler.auth.AuthInProgressMessageHandler;
 import com.hivemq.mqtt.handler.auth.MqttAuthSender;
 import com.hivemq.mqtt.handler.connack.MqttConnacker;
 import com.hivemq.mqtt.handler.connect.ConnectHandler;
-import com.hivemq.mqtt.handler.disconnect.Mqtt5ServerDisconnector;
+import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnector;
 import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.mqtt.message.auth.AUTH;
 import com.hivemq.mqtt.message.connect.CONNECT;
@@ -79,7 +79,7 @@ public class PluginAuthenticatorServiceImplTest {
     @Mock
     private MqttConnacker mqttConnacker;
     @Mock
-    private Mqtt5ServerDisconnector mqttDisconnectUtil;
+    private MqttServerDisconnector mqttServerDisconnector;
     @Mock
     private FullConfigurationService configurationService;
     @Mock
@@ -108,9 +108,9 @@ public class PluginAuthenticatorServiceImplTest {
 
 
     @Mock
-    private IsolatedPluginClassloader classloader1;
+    private IsolatedExtensionClassloader classloader1;
     @Mock
-    private IsolatedPluginClassloader classloader2;
+    private IsolatedExtensionClassloader classloader2;
 
     private PluginAuthenticatorService pluginAuthenticatorService;
     private SecurityConfigurationServiceImpl securityConfig;
@@ -138,7 +138,7 @@ public class PluginAuthenticatorServiceImplTest {
         pluginAuthenticatorService = new PluginAuthenticatorServiceImpl(
                 connectHandler,
                 mqttConnacker,
-                mqttDisconnectUtil,
+                mqttServerDisconnector,
                 mqttAuthSender,
                 configurationService,
                 authenticators,
@@ -160,7 +160,7 @@ public class PluginAuthenticatorServiceImplTest {
         when(authenticators.getAuthenticatorProviderMap()).thenReturn(Collections.emptyMap());
         InternalConfigurations.AUTH_DENY_UNAUTHENTICATED_CONNECTIONS.set(true);
         final CONNECT fullMqtt5Connect = TestMessageUtil.createFullMqtt5Connect();
-        final ModifiableClientSettingsImpl clientSettings = new ModifiableClientSettingsImpl(fullMqtt5Connect.getReceiveMaximum());
+        final ModifiableClientSettingsImpl clientSettings = new ModifiableClientSettingsImpl(fullMqtt5Connect.getReceiveMaximum(), null);
 
         pluginAuthenticatorService.authenticateConnect(channelHandlerContext, fullMqtt5Connect, clientSettings);
 
@@ -173,7 +173,7 @@ public class PluginAuthenticatorServiceImplTest {
         when(authenticators.getAuthenticatorProviderMap()).thenReturn(Collections.emptyMap());
         InternalConfigurations.AUTH_DENY_UNAUTHENTICATED_CONNECTIONS.set(false);
         final CONNECT fullMqtt5Connect = TestMessageUtil.createFullMqtt5Connect();
-        final ModifiableClientSettingsImpl clientSettings = new ModifiableClientSettingsImpl(fullMqtt5Connect.getReceiveMaximum());
+        final ModifiableClientSettingsImpl clientSettings = new ModifiableClientSettingsImpl(fullMqtt5Connect.getReceiveMaximum(), null);
 
         pluginAuthenticatorService.authenticateConnect(channelHandlerContext, fullMqtt5Connect, clientSettings);
 
@@ -187,7 +187,7 @@ public class PluginAuthenticatorServiceImplTest {
         when(authenticators.getAuthenticatorProviderMap()).thenReturn(createSimple());
         InternalConfigurations.AUTH_DENY_UNAUTHENTICATED_CONNECTIONS.set(false);
         final CONNECT fullMqtt5Connect = TestMessageUtil.createFullMqtt5Connect();
-        final ModifiableClientSettingsImpl clientSettings = new ModifiableClientSettingsImpl(fullMqtt5Connect.getReceiveMaximum());
+        final ModifiableClientSettingsImpl clientSettings = new ModifiableClientSettingsImpl(fullMqtt5Connect.getReceiveMaximum(), null);
 
         pluginAuthenticatorService.authenticateConnect(channelHandlerContext, fullMqtt5Connect, clientSettings);
 
@@ -201,7 +201,7 @@ public class PluginAuthenticatorServiceImplTest {
         when(authenticators.getAuthenticatorProviderMap()).thenReturn(createEnhanced());
         InternalConfigurations.AUTH_DENY_UNAUTHENTICATED_CONNECTIONS.set(false);
         final CONNECT fullMqtt5Connect = TestMessageUtil.createFullMqtt5Connect();
-        final ModifiableClientSettingsImpl clientSettings = new ModifiableClientSettingsImpl(fullMqtt5Connect.getReceiveMaximum());
+        final ModifiableClientSettingsImpl clientSettings = new ModifiableClientSettingsImpl(fullMqtt5Connect.getReceiveMaximum(), null);
 
         pluginAuthenticatorService.authenticateConnect(channelHandlerContext, fullMqtt5Connect, clientSettings);
 
@@ -215,7 +215,7 @@ public class PluginAuthenticatorServiceImplTest {
         when(authenticators.getAuthenticatorProviderMap()).thenReturn(createMulti());
         InternalConfigurations.AUTH_DENY_UNAUTHENTICATED_CONNECTIONS.set(false);
         final CONNECT fullMqtt5Connect = TestMessageUtil.createFullMqtt5Connect();
-        final ModifiableClientSettingsImpl clientSettings = new ModifiableClientSettingsImpl(fullMqtt5Connect.getReceiveMaximum());
+        final ModifiableClientSettingsImpl clientSettings = new ModifiableClientSettingsImpl(fullMqtt5Connect.getReceiveMaximum(), null);
 
         pluginAuthenticatorService.authenticateConnect(channelHandlerContext, fullMqtt5Connect, clientSettings);
 
@@ -233,14 +233,15 @@ public class PluginAuthenticatorServiceImplTest {
 
         pluginAuthenticatorService.authenticateReAuth(channelHandlerContext, auth);
 
-        verify(mqttDisconnectUtil).disconnect(
+        verify(mqttServerDisconnector).disconnect(
                 embeddedChannel,
                 RE_AUTH_FAILED_LOG,
                 ReasonStrings.RE_AUTH_FAILED_NO_AUTHENTICATOR,
                 Mqtt5DisconnectReasonCode.NOT_AUTHORIZED,
                 ReasonStrings.RE_AUTH_FAILED_NO_AUTHENTICATOR,
                 Mqtt5UserProperties.NO_USER_PROPERTIES,
-                true);
+                true,
+                false);
 
     }
 
@@ -254,14 +255,15 @@ public class PluginAuthenticatorServiceImplTest {
 
         pluginAuthenticatorService.authenticateReAuth(channelHandlerContext, auth);
 
-        verify(mqttDisconnectUtil).disconnect(
+        verify(mqttServerDisconnector).disconnect(
                 embeddedChannel,
                 RE_AUTH_FAILED_LOG,
                 ReasonStrings.RE_AUTH_FAILED_NO_AUTHENTICATOR,
                 Mqtt5DisconnectReasonCode.NOT_AUTHORIZED,
                 ReasonStrings.RE_AUTH_FAILED_NO_AUTHENTICATOR,
                 Mqtt5UserProperties.NO_USER_PROPERTIES,
-                true);
+                true,
+                false);
 
     }
 
@@ -273,12 +275,13 @@ public class PluginAuthenticatorServiceImplTest {
 
         pluginAuthenticatorService.authenticateReAuth(channelHandlerContext, auth);
 
-        verify(mqttDisconnectUtil).disconnect(
+        verify(mqttServerDisconnector).disconnect(
                 embeddedChannel, DISCONNECT_BAD_AUTHENTICATION_METHOD_LOG_STATEMENT, "Different auth method",
                 Mqtt5DisconnectReasonCode.BAD_AUTHENTICATION_METHOD,
                 String.format(ReasonStrings.DISCONNECT_PROTOCOL_ERROR_AUTH_METHOD, auth.getType().name()),
                 Mqtt5UserProperties.NO_USER_PROPERTIES,
-                true);
+                true,
+                false);
 
     }
 

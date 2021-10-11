@@ -23,10 +23,10 @@ import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.exceptions.UnrecoverableException;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.annotations.Nullable;
+import com.hivemq.extensions.iteration.BucketChunkResult;
 import com.hivemq.mqtt.message.subscribe.Topic;
 import com.hivemq.persistence.PersistenceStartup;
 import com.hivemq.persistence.local.ClientSessionSubscriptionLocalPersistence;
-import com.hivemq.persistence.local.xodus.BucketChunkResult;
 import com.hivemq.persistence.local.xodus.EnvironmentUtil;
 import com.hivemq.persistence.local.xodus.XodusLocalPersistence;
 import com.hivemq.persistence.local.xodus.bucket.Bucket;
@@ -43,7 +43,6 @@ import javax.annotation.PostConstruct;
 import javax.inject.Inject;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static com.google.common.base.Preconditions.*;
@@ -111,24 +110,14 @@ public class ClientSessionSubscriptionXodusLocalPersistence extends XodusLocalPe
         try {
             for (int i = 0; i < bucketCount; i++) {
                 final Bucket bucket = buckets[i];
-                final Map<String, Long> timestampsInBucket = new ConcurrentSkipListMap<>();
 
                 bucket.getEnvironment().executeInReadonlyTransaction(txn -> {
                     try (final Cursor cursor = bucket.getStore().openCursor(txn)) {
-
                         while (cursor.getNext()) {
-                            final String clientId = serializer.deserializeKey(byteIterableToBytes(cursor.getKey()));
-                            final long timestamp = serializer.deserializeTimestamp(byteIterableToBytes(cursor.getValue()));
                             final long id = serializer.deserializeId(byteIterableToBytes(cursor.getValue()));
                             if (nextId.get() < id) {
                                 nextId.set(id);
                             }
-
-                            final Long currentTimestamp = timestampsInBucket.get(clientId);
-                            if (currentTimestamp == null || currentTimestamp < timestamp) {
-                                timestampsInBucket.put(clientId, timestamp);
-                            }
-
                         }
                     }
                 });
@@ -258,34 +247,14 @@ public class ClientSessionSubscriptionXodusLocalPersistence extends XodusLocalPe
         checkNotNull(client, "Clientid must not be null");
         checkNotNull(topic, "Topic must not be null");
         checkState(timestamp > 0, "Timestamp must not be 0");
-
-        final Bucket bucket = buckets[bucketIndex];
-        bucket.getEnvironment().executeInTransaction(txn -> {
-
-            try (final Cursor cursor = bucket.getStore().openCursor(txn)) {
-
-                final ByteIterable clientByteIterable = bytesToByteIterable(serializer.serializeKey(client));
-                final ByteIterable topicByteIterable = bytesToByteIterable(serializer.serializeTopic(topic));
-
-                while (cursor.getSearchBothRange(clientByteIterable, topicByteIterable) != null) {
-
-                    final ByteIterable byteIterable = cursor.getValue();
-
-                    final Topic value = serializer.deserializeValue(byteIterable);
-
-                    if (value.getTopic().equals(topic)) {
-                        cursor.deleteCurrent();
-                    } else {
-                        return;
-                    }
-                }
-            }
-        });
+        removeSubscriptions(client, ImmutableSet.of(topic), timestamp, bucketIndex);
     }
 
     @Override
     @NotNull
-    public BucketChunkResult<Map<String, ImmutableSet<Topic>>> getAllSubscribersChunk(final int bucketIndex, @Nullable final String lastClientId, final int maxResults) {
+    public BucketChunkResult<Map<String, ImmutableSet<Topic>>> getAllSubscribersChunk(final int bucketIndex,
+                                                                                      @Nullable final String lastClientId,
+                                                                                      final int maxResults) {
         checkArgument(maxResults > 0, "max results must be greater than 0");
 
         final ImmutableMap.Builder<String, ImmutableSet<Topic>> resultBuilder = ImmutableMap.builder();

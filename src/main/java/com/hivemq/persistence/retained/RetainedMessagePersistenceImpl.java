@@ -18,8 +18,13 @@ package com.hivemq.persistence.retained;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.bootstrap.ioc.lazysingleton.LazySingleton;
+import com.hivemq.configuration.service.InternalConfigurations;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extensions.iteration.ChunkCursor;
+import com.hivemq.extensions.iteration.Chunker;
+import com.hivemq.extensions.iteration.MultipleChunkResult;
+import com.hivemq.extensions.services.publish.RetainedPublishImpl;
 import com.hivemq.mqtt.topic.TopicMatcher;
 import com.hivemq.persistence.AbstractPersistence;
 import com.hivemq.persistence.ProducerQueues;
@@ -31,6 +36,7 @@ import com.hivemq.persistence.util.FutureUtils;
 import javax.inject.Inject;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -46,13 +52,15 @@ public class RetainedMessagePersistenceImpl extends AbstractPersistence implemen
     private final @NotNull TopicMatcher topicMatcher;
     private final @NotNull PublishPayloadPersistence payloadPersistence;
     private final @NotNull ProducerQueues singleWriter;
+    private final @NotNull Chunker chunker;
 
     @Inject
     RetainedMessagePersistenceImpl(
             final @NotNull RetainedMessageLocalPersistence localPersistence,
             final @NotNull TopicMatcher topicMatcher,
             final @NotNull PublishPayloadPersistence payloadPersistence,
-            final @NotNull SingleWriterService singleWriterService) {
+            final @NotNull SingleWriterService singleWriterService,
+            final @NotNull Chunker chunker) {
 
         this.localPersistence = localPersistence;
         this.topicMatcher = topicMatcher;
@@ -60,6 +68,7 @@ public class RetainedMessagePersistenceImpl extends AbstractPersistence implemen
 
         singleWriter = singleWriterService.getRetainedMessageQueue();
 
+        this.chunker = chunker;
     }
 
     @NotNull
@@ -77,8 +86,7 @@ public class RetainedMessagePersistenceImpl extends AbstractPersistence implemen
                 if (retainedMessage == null) {
                     return null;
                 }
-                final long payloadId = payloadPersistence.add(retainedMessage.getMessage(), 1);
-                retainedMessage.setPayloadId(payloadId);
+                payloadPersistence.add(retainedMessage.getMessage(), 1, retainedMessage.getPublishId());
                 return retainedMessage;
             });
 
@@ -114,10 +122,7 @@ public class RetainedMessagePersistenceImpl extends AbstractPersistence implemen
             checkNotNull(topic, "Topic must not be null");
             checkNotNull(retainedMessage, "Retained message must not be null");
 
-            if (retainedMessage.getPayloadId() == null) {
-                final long payloadId = payloadPersistence.add(retainedMessage.getMessage(), 1);
-                retainedMessage.setPayloadId(payloadId);
-            }
+            payloadPersistence.add(retainedMessage.getMessage(), 1, retainedMessage.getPublishId());
 
             return singleWriter.submit(topic, (bucketIndex, queueBuckets, queueIndex) -> {
                 localPersistence.put(retainedMessage, topic, bucketIndex);
@@ -180,5 +185,18 @@ public class RetainedMessagePersistenceImpl extends AbstractPersistence implemen
                     return null;
                 });
         return FutureUtils.voidFutureFromList(ImmutableList.copyOf(futureList));
+    }
+
+    @Override
+    public @NotNull ListenableFuture<MultipleChunkResult<Map<String, @NotNull RetainedMessage>>> getAllLocalRetainedMessagesChunk(@NotNull ChunkCursor cursor) {
+        return chunker.getAllLocalChunk(cursor, InternalConfigurations.PERSISTENCE_RETAINED_MESSAGES_MAX_CHUNK_MEMORY,
+                // Chunker.SingleWriterCall interface
+                (bucket, lastKey, maxResults) ->
+                        // actual single writer call
+                        singleWriter.submit(bucket, (bucketIndex, ignored1, ignored2) ->
+                                localPersistence.getAllRetainedMessagesChunk(
+                                        bucketIndex,
+                                        lastKey,
+                                        maxResults)));
     }
 }

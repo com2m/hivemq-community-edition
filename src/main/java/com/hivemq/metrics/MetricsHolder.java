@@ -45,6 +45,9 @@ public class MetricsHolder {
 
     private final @NotNull Counter closedConnectionsCounter;
 
+    private final @NotNull Counter channelNotWritableCounter;
+
+
     public MetricsHolder(final MetricRegistry metricRegistry) {
 
         this.metricRegistry = metricRegistry;
@@ -62,6 +65,8 @@ public class MetricsHolder {
         closedConnectionsCounter = metricRegistry.counter(CONNECTIONS_CLOSED_COUNT.name());
 
         subscriptionCounter = metricRegistry.counter(SUBSCRIPTIONS_CURRENT.name());
+
+        channelNotWritableCounter = metricRegistry.counter(MQTT_CONNECTION_NOT_WRITABLE_CURRENT.name());
     }
 
     public @NotNull MetricRegistry getMetricRegistry() {
@@ -98,5 +103,9 @@ public class MetricsHolder {
 
     public @NotNull Counter getClosedConnectionsCounter() {
         return closedConnectionsCounter;
+    }
+
+    public @NotNull Counter getChannelNotWritableCounter() {
+        return channelNotWritableCounter;
     }
 }

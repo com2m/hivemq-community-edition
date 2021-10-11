@@ -30,7 +30,7 @@ public class ResultBufferTest {
     @Test
     public void test_fetch_once() {
 
-        final ResultBuffer<String, String> resultBuffer = prepareBuffer();
+        final ResultBuffer<String> resultBuffer = prepareBuffer();
 
         final List<String> values = new ArrayList<>();
         Collection<String> chunk = resultBuffer.getNextChunk();
@@ -44,7 +44,7 @@ public class ResultBufferTest {
 
     @Test
     public void test_clean() {
-        final ResultBuffer<String, String> resultBuffer = prepareBuffer();
+        final ResultBuffer<String> resultBuffer = prepareBuffer();
 
         resultBuffer.clean();
 
@@ -59,12 +59,12 @@ public class ResultBufferTest {
     }
 
     @SuppressWarnings("ConstantConditions")
-    private ResultBuffer<String, String> prepareBuffer() {
-        final Queue<ChunkResult<String, String>> items =
-                new ArrayDeque<>(List.of(new ChunkResult<>(List.of("1", "2"), "2", false),
-                        new ChunkResult<>(List.of("3", "4"), "4", true)));
+    private ResultBuffer<String> prepareBuffer() {
+        final Queue<ChunkResult<String>> items =
+                new ArrayDeque<>(List.of(new ChunkResult<>(List.of("1", "2"), new ChunkCursor(), false),
+                        new ChunkResult<>(List.of("3", "4"), new ChunkCursor(), true)));
 
-        final ResultBuffer<String, String> resultBuffer = new ResultBuffer<>((cursor, resultBuffer1) -> {
+        final ResultBuffer<String> resultBuffer = new ResultBuffer<>((cursor, resultBuffer1) -> {
             resultBuffer1.addChunk(items.poll());
         });
         resultBuffer.addChunk(items.poll());

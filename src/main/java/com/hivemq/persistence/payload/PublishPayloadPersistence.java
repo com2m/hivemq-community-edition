@@ -39,9 +39,10 @@ public interface PublishPayloadPersistence {
      *
      * @param payload        The payload that will be persisted.
      * @param referenceCount The initial amount of references for the payload.
-     * @return The id associated with the payload.
+     * @param payloadId      The publish ID is used a the payload ID
+     * @return true: payload may be removed from the publish, false: dont remove the payload
      */
-    long add(@NotNull byte[] payload, long referenceCount);
+    boolean add(@NotNull byte[] payload, long referenceCount, long payloadId);
 
     /**
      * Get the persisted payload for an id.
@@ -79,21 +80,6 @@ public interface PublishPayloadPersistence {
      * @param id The id associated with the payload.
      */
     void decrementReferenceCounter(long id);
-
-    /**
-     * Suspect that the reference of a payload is not used.
-     *
-     * @param id The id associated with the payload.
-     */
-    void suspect(final long id);
-
-    /**
-     * Returns the IDs of all payloads that currently exist in the persistence.
-     *
-     * @return A List off all IDs.
-     */
-    @NotNull
-    List<Long> getAllIds();
 
     /**
      * close the persistence with all buckets.

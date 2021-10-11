@@ -31,7 +31,7 @@ import static org.junit.Assert.assertEquals;
 @SuppressWarnings("NullabilityAnnotations")
 public class GlobalManagedExtensionExecutorServiceTest {
 
-    private GlobalManagedPluginExecutorService managedPluginExecutorService;
+    private GlobalManagedExtensionExecutorService managedPluginExecutorService;
 
     @Mock
     ShutdownHooks shutdownHooks;
@@ -43,7 +43,7 @@ public class GlobalManagedExtensionExecutorServiceTest {
         InternalConfigurations.MANAGED_PLUGIN_THREAD_POOL_KEEP_ALIVE_SECONDS.set(60);
         InternalConfigurations.MANAGED_PLUGIN_THREAD_POOL_SIZE.set(4);
 
-        managedPluginExecutorService = new GlobalManagedPluginExecutorService(shutdownHooks);
+        managedPluginExecutorService = new GlobalManagedExtensionExecutorService(shutdownHooks);
 
     }
 

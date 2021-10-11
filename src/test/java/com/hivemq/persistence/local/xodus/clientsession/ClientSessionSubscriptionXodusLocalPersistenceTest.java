@@ -20,10 +20,10 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.UnmodifiableIterator;
 import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extensions.iteration.BucketChunkResult;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.subscribe.Topic;
 import com.hivemq.persistence.PersistenceStartup;
-import com.hivemq.persistence.local.xodus.BucketChunkResult;
 import com.hivemq.persistence.local.xodus.EnvironmentUtil;
 import com.hivemq.persistence.local.xodus.bucket.Bucket;
 import com.hivemq.persistence.local.xodus.bucket.BucketUtils;
@@ -57,6 +57,8 @@ import static org.mockito.Mockito.when;
  */
 public class ClientSessionSubscriptionXodusLocalPersistenceTest {
 
+    private AutoCloseable closeableMock;
+
     @Rule
     public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
@@ -67,26 +69,30 @@ public class ClientSessionSubscriptionXodusLocalPersistenceTest {
 
     private final int bucketCount = 4;
 
+    private PersistenceStartup persistenceStartup;
+
     @Before
     public void before() throws Exception {
-        MockitoAnnotations.initMocks(this);
+        closeableMock = MockitoAnnotations.openMocks(this);
 
         InternalConfigurations.PERSISTENCE_CLOSE_RETRIES.set(3);
         InternalConfigurations.PERSISTENCE_CLOSE_RETRY_INTERVAL.set(5);
         InternalConfigurations.PERSISTENCE_BUCKET_COUNT.set(bucketCount);
         when(localPersistenceFileUtil.getVersionedLocalPersistenceFolder(anyString(), anyString())).thenReturn(temporaryFolder.newFolder());
 
+        persistenceStartup = new PersistenceStartup();
+
         persistence = new ClientSessionSubscriptionXodusLocalPersistence(localPersistenceFileUtil,
                 new EnvironmentUtil(),
-                new PersistenceStartup());
+                persistenceStartup);
         persistence.start();
     }
 
     @After
-    public void cleanUp() {
-        for (int i = 0; i < bucketCount; i++) {
-            persistence.closeDB(i);
-        }
+    public void cleanUp() throws Exception {
+        persistence.closeDB();
+        persistenceStartup.finish();
+        closeableMock.close();
     }
 
     @Test
