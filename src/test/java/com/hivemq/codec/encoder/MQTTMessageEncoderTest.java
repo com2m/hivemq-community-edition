@@ -38,6 +38,7 @@ import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
+import util.TestMessageEncoder;
 import util.TestMessageUtil;
 import util.encoder.TestMessageEncoder;
 

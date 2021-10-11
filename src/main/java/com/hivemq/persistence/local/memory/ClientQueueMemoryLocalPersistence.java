@@ -294,7 +294,7 @@ public class ClientQueueMemoryLocalPersistence implements ClientQueueLocalPersis
                 continue;
             }
 
-            if (PublishUtil.checkExpiry(publishWithRetained.getTimestamp(), publishWithRetained.getMessageExpiryInterval())) {
+            if (PublishUtil.checkExpiry(publishWithRetained)) {
                 iterator.remove();
                 payloadPersistence.decrementReferenceCounter(publishWithRetained.getPublishId());
                 if (publishWithRetained.retained) {
@@ -317,7 +317,7 @@ public class ClientQueueMemoryLocalPersistence implements ClientQueueLocalPersis
 
             // poll a qos 0 message
             final PUBLISH qos0Publish = pollQos0Message(messages);
-            if ((qos0Publish != null) && !PublishUtil.checkExpiry(qos0Publish.getTimestamp(), qos0Publish.getMessageExpiryInterval())) {
+            if ((qos0Publish != null) && !PublishUtil.checkExpiry(qos0Publish)) {
                 publishes.add(qos0Publish);
                 messageCount++;
                 bytes += qos0Publish.getEstimatedSizeInMemory();
@@ -340,7 +340,7 @@ public class ClientQueueMemoryLocalPersistence implements ClientQueueLocalPersis
             if (qos0Publish == null) {
                 break;
             }
-            if (!PublishUtil.checkExpiry(qos0Publish.getTimestamp(), qos0Publish.getMessageExpiryInterval())) {
+            if (!PublishUtil.checkExpiry(qos0Publish)) {
                 publishes.add(qos0Publish);
                 qos0MessagesFound++;
                 qos0Bytes += qos0Publish.getEstimatedSizeInMemory();
@@ -806,7 +806,7 @@ public class ClientQueueMemoryLocalPersistence implements ClientQueueLocalPersis
         final Iterator<PublishWithRetained> iterator = messages.qos0Messages.iterator();
         while (iterator.hasNext()) {
             final PublishWithRetained publishWithRetained = iterator.next();
-            if (PublishUtil.checkExpiry(publishWithRetained.getTimestamp(), publishWithRetained.getMessageExpiryInterval())) {
+            if (PublishUtil.checkExpiry(publishWithRetained)) {
                 increaseQos0MessagesMemory(-publishWithRetained.getEstimatedSize());
                 increaseClientQos0MessagesMemory(messages, -publishWithRetained.getEstimatedSize());
                 increaseMessagesMemory(-publishWithRetained.getEstimatedSize());
@@ -826,7 +826,7 @@ public class ClientQueueMemoryLocalPersistence implements ClientQueueLocalPersis
                 if (pubrel.getExpiryInterval() == null || pubrel.getPublishTimestamp() == null) {
                     continue;
                 }
-                if (!PublishUtil.checkExpiry(pubrel.getPublishTimestamp(), pubrel.getExpiryInterval())) {
+                if (!PublishUtil.checkExpiry(pubrel)) {
                     continue;
                 }
                 if (pubrel.retained) {

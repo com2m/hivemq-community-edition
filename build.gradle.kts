@@ -3,19 +3,20 @@ import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.gradle.api.tasks.testing.logging.TestLogEvent
 
 plugins {
-    java
-    `java-library`
-    `maven-publish`
-    signing
-    id("io.github.gradle-nexus.publish-plugin")
+    id("java")
+    id("java-library")
+    id("maven-publish")
     id("com.github.johnrengelman.shadow")
+    id("com.github.hierynomus.license")
+    id("org.owasp.dependencycheck")
     id("com.github.sgtsilvio.gradle.utf8")
     id("com.github.sgtsilvio.gradle.metadata")
     id("com.github.sgtsilvio.gradle.javadoc-links")
-    id("com.github.breadmoirai.github-release")
-    id("com.github.hierynomus.license")
-    id("org.owasp.dependencycheck")
     id("com.github.ben-manes.versions")
+
+    /* Publishing Plugins */
+    id("io.github.gradle-nexus.publish-plugin")
+    id("signing")
 
     /* Code Quality Plugins */
     id("jacoco")
@@ -59,6 +60,26 @@ metadata {
         register("SgtSilvio") {
             fullName.set("Silvio Giebl")
             email.set("silvio.giebl@hivemq.com")
+        }
+        developer {
+            id.set("cschaebe")
+            fullName.set("Christoph Schaebel")
+            email.set("christoph.schaebel@hivemq.com")
+        }
+        developer {
+            id.set("lbrandl")
+            fullName.set("Lukas Brandl")
+            email.set("lukas.brandl@hivemq.com")
+        }
+        developer {
+            id.set("flimpoeck")
+            fullName.set("Florian Limpoeck")
+            email.set("florian.limpoeck@hivemq.com")
+        }
+        developer {
+            id.set("sauroter")
+            fullName.set("Georg Held")
+            email.set("georg.held@hivemq.com")
         }
     }
     github {
@@ -145,6 +166,7 @@ dependencies {
     implementation("com.google.guava:guava:${property("guava.version")}") {
         exclude("org.checkerframework", "checker-qual")
         exclude("com.google.errorprone", "error_prone_annotations")
+        exclude("org.codehaus.mojo", "animal-sniffer-annotations")
     }
     // com.google.code.findbugs:jsr305 (transitive dependency of com.google.guava:guava) is used in imports
     implementation("net.openhft:zero-allocation-hashing:${property("zero-allocation-hashing.version")}")
@@ -166,9 +188,9 @@ dependencies {
     testImplementation("org.jboss.shrinkwrap:shrinkwrap-api:${property("shrinkwrap.version")}")
     testRuntimeOnly("org.jboss.shrinkwrap:shrinkwrap-impl-base:${property("shrinkwrap.version")}")
     testImplementation("net.bytebuddy:byte-buddy:${property("bytebuddy.version")}")
-    testImplementation("com.github.tomakehurst:wiremock-jre8-standalone:${property("wiremock.version")}")
     testImplementation("org.javassist:javassist:${property("javassist.version")}")
     testImplementation("org.awaitility:awaitility:${property("awaitility.version")}")
+    testImplementation("com.github.tomakehurst:wiremock-standalone:${property("wiremock.version")}")
     testImplementation("com.github.stefanbirkner:system-rules:${property("system-rules.version")}") {
         exclude("junit", "junit-dep")
     }
@@ -219,21 +241,25 @@ tasks.jar {
 }
 
 tasks.shadowJar {
+    archiveClassifier.set("shaded")
     mergeServiceFiles()
 }
 
 val hivemqZip by tasks.registering(Zip::class) {
-    group = "distribution"
+    group = "build"
 
     val name = "hivemq-ce-${project.version}"
 
+    destinationDirectory.set(buildDir.resolve("zip"))
     archiveFileName.set("$name.zip")
 
-    from("src/distribution") { exclude("**/.gitkeep") }
-    from("src/main/resources/config.xml") { into("conf") }
+    from(projectDir.resolve("src/distribution")) { exclude("**/.gitkeep") }
+    from(projectDir.resolve("src/main/resources/config.xml")) { into("conf") }
     from(tasks.shadowJar) { into("bin").rename { "hivemq.jar" } }
     into(name)
 }
+
+defaultTasks("hivemqZip")
 
 tasks.javadoc {
     (options as StandardJavadocDocletOptions).addStringOption("-html5")
@@ -242,7 +268,7 @@ tasks.javadoc {
 
     doLast {
         javaexec {
-            classpath("gradle/tools/javadoc-cleaner-1.0.jar")
+            args("$projectDir/gradle/tools/javadoc-cleaner-1.0.jar")
         }
     }
 
@@ -310,7 +336,7 @@ tasks.forbiddenApisTest { enabled = false }
 /* ******************** compliance ******************** */
 
 license {
-    header = file("HEADER")
+    header = projectDir.resolve("HEADER")
     mapping("java", "SLASHSTAR_STYLE")
 }
 
@@ -319,7 +345,6 @@ downloadLicenses {
         license("Apache License, Version 2.0", "https://opensource.org/licenses/Apache-2.0") to listOf(
             "Apache 2",
             "Apache 2.0",
-            "Apache-2.0",
             "Apache License 2.0",
             "Apache License, 2.0",
             "Apache License v2.0",
@@ -416,8 +441,9 @@ val updateThirdPartyLicenses by tasks.registering {
     dependsOn(tasks.downloadLicenses)
     doLast {
         javaexec {
-            classpath("gradle/tools/license-third-party-tool-2.0.jar")
+            main = "-jar"
             args(
+                "$projectDir/gradle/tools/license-third-party-tool-2.0.jar",
                 "$buildDir/reports/license/dependency-license.xml",
                 "$projectDir/src/distribution/third-party-licenses/licenses",
                 "$projectDir/src/distribution/third-party-licenses/licenses.html"
@@ -456,16 +482,4 @@ nexusPublishing {
     repositories {
         sonatype()
     }
-}
-
-githubRelease {
-    token(System.getenv("GITHUB_TOKEN"))
-    tagName(project.version.toString())
-    releaseAssets(hivemqZip)
-    allowUploadToExisting(true)
-}
-
-val javaComponent = components["java"] as AdhocComponentWithVariants
-javaComponent.withVariantsFromConfiguration(configurations.shadowRuntimeElements.get()) {
-    skip()
 }
