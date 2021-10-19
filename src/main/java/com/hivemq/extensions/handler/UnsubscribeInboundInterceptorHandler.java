@@ -22,10 +22,9 @@ import com.hivemq.extension.sdk.api.async.TimeoutFallback;
 import com.hivemq.extension.sdk.api.client.parameter.ClientInformation;
 import com.hivemq.extension.sdk.api.client.parameter.ConnectionInformation;
 import com.hivemq.extension.sdk.api.interceptor.unsubscribe.UnsubscribeInboundInterceptor;
+import com.hivemq.extensions.ExtensionInformationUtil;
 import com.hivemq.extensions.HiveMQExtension;
 import com.hivemq.extensions.HiveMQExtensions;
-import com.hivemq.extensions.PluginInformationUtil;
-import com.hivemq.extensions.classloader.IsolatedPluginClassloader;
 import com.hivemq.extensions.client.ClientContextImpl;
 import com.hivemq.extensions.executor.PluginOutPutAsyncer;
 import com.hivemq.extensions.executor.PluginTaskExecutorService;
@@ -58,8 +57,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @author Silvio Giebl
  */
 @Singleton
-@ChannelHandler.Sharable
-public class UnsubscribeInboundInterceptorHandler extends ChannelInboundHandlerAdapter {
+public class UnsubscribeInboundInterceptorHandler {
 
     private static final Logger log = LoggerFactory.getLogger(UnsubscribeInboundInterceptorHandler.class);
 
@@ -81,16 +79,8 @@ public class UnsubscribeInboundInterceptorHandler extends ChannelInboundHandlerA
         this.executorService = executorService;
     }
 
-    @Override
-    public void channelRead(final @NotNull ChannelHandlerContext ctx, final @NotNull Object msg) {
-        if (!(msg instanceof UNSUBSCRIBE)) {
-            ctx.fireChannelRead(msg);
-            return;
-        }
-        handleInboundUnsubscribe(ctx, (UNSUBSCRIBE) msg);
-    }
 
-    private void handleInboundUnsubscribe(
+    public void handleInboundUnsubscribe(
             final @NotNull ChannelHandlerContext ctx,
             final @NotNull UNSUBSCRIBE unsubscribe) {
 
@@ -100,7 +90,7 @@ public class UnsubscribeInboundInterceptorHandler extends ChannelInboundHandlerA
             return;
         }
 
-        final ClientContextImpl clientContext = channel.attr(ChannelAttributes.PLUGIN_CLIENT_CONTEXT).get();
+        final ClientContextImpl clientContext = channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).get();
         if (clientContext == null) {
             ctx.fireChannelRead(unsubscribe);
             return;
@@ -111,8 +101,8 @@ public class UnsubscribeInboundInterceptorHandler extends ChannelInboundHandlerA
             return;
         }
 
-        final ClientInformation clientInfo = PluginInformationUtil.getAndSetClientInformation(channel, clientId);
-        final ConnectionInformation connectionInfo = PluginInformationUtil.getAndSetConnectionInformation(channel);
+        final ClientInformation clientInfo = ExtensionInformationUtil.getAndSetClientInformation(channel, clientId);
+        final ConnectionInformation connectionInfo = ExtensionInformationUtil.getAndSetConnectionInformation(channel);
 
         final UnsubscribePacketImpl packet = new UnsubscribePacketImpl(unsubscribe);
         final UnsubscribeInboundInputImpl input = new UnsubscribeInboundInputImpl(clientInfo, connectionInfo, packet);
@@ -129,8 +119,7 @@ public class UnsubscribeInboundInterceptorHandler extends ChannelInboundHandlerA
 
         for (final UnsubscribeInboundInterceptor interceptor : interceptors) {
 
-            final HiveMQExtension extension = hiveMQExtensions.getExtensionForClassloader(
-                    (IsolatedPluginClassloader) interceptor.getClass().getClassLoader());
+            final HiveMQExtension extension = hiveMQExtensions.getExtensionForClassloader(interceptor.getClass().getClassLoader());
             if (extension == null) {
                 context.finishInterceptor();
                 continue;
@@ -208,7 +197,7 @@ public class UnsubscribeInboundInterceptorHandler extends ChannelInboundHandlerA
             for (int i = 0; i < size; i++) {
                 reasonCodesBuilder.add(Mqtt5UnsubAckReasonCode.UNSPECIFIED_ERROR);
             }
-            ctx.writeAndFlush(new UNSUBACK(
+            ctx.channel().writeAndFlush(new UNSUBACK(
                     output.getUnsubscribePacket().getPacketIdentifier(),
                     reasonCodesBuilder.build(),
                     ReasonStrings.UNSUBACK_EXTENSION_PREVENTED));

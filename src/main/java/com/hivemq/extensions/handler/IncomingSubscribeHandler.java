@@ -21,10 +21,9 @@ import com.hivemq.extension.sdk.api.async.TimeoutFallback;
 import com.hivemq.extension.sdk.api.client.parameter.ClientInformation;
 import com.hivemq.extension.sdk.api.client.parameter.ConnectionInformation;
 import com.hivemq.extension.sdk.api.interceptor.subscribe.SubscribeInboundInterceptor;
+import com.hivemq.extensions.ExtensionInformationUtil;
 import com.hivemq.extensions.HiveMQExtension;
 import com.hivemq.extensions.HiveMQExtensions;
-import com.hivemq.extensions.PluginInformationUtil;
-import com.hivemq.extensions.classloader.IsolatedPluginClassloader;
 import com.hivemq.extensions.client.ClientContextImpl;
 import com.hivemq.extensions.executor.PluginOutPutAsyncer;
 import com.hivemq.extensions.executor.PluginTaskExecutorService;
@@ -41,9 +40,7 @@ import com.hivemq.util.ChannelAttributes;
 import com.hivemq.util.Exceptions;
 import com.hivemq.util.ReasonStrings;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.SimpleChannelInboundHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -59,8 +56,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @since 4.1.0
  */
 @Singleton
-@ChannelHandler.Sharable
-public class IncomingSubscribeHandler extends SimpleChannelInboundHandler<SUBSCRIBE> {
+public class IncomingSubscribeHandler {
 
     private static final Logger log = LoggerFactory.getLogger(IncomingSubscribeHandler.class);
 
@@ -85,11 +81,6 @@ public class IncomingSubscribeHandler extends SimpleChannelInboundHandler<SUBSCR
         this.configurationService = configurationService;
     }
 
-    @Override
-    public void channelRead0(final @NotNull ChannelHandlerContext ctx, final @NotNull SUBSCRIBE msg) {
-        interceptOrDelegate(ctx, msg);
-    }
-
     /**
      * intercepts the subscribe message when the channel is active, the client id is set and interceptors are available,
      * otherwise delegates to authorizer
@@ -97,14 +88,14 @@ public class IncomingSubscribeHandler extends SimpleChannelInboundHandler<SUBSCR
      * @param ctx       the context of the channel handler
      * @param subscribe the subscribe to process
      */
-    private void interceptOrDelegate(final @NotNull ChannelHandlerContext ctx, final @NotNull SUBSCRIBE subscribe) {
+    public void interceptOrDelegate(final @NotNull ChannelHandlerContext ctx, final @NotNull SUBSCRIBE subscribe) {
         final Channel channel = ctx.channel();
         final String clientId = channel.attr(ChannelAttributes.CLIENT_ID).get();
         if (clientId == null) {
             return;
         }
 
-        final ClientContextImpl clientContext = channel.attr(ChannelAttributes.PLUGIN_CLIENT_CONTEXT).get();
+        final ClientContextImpl clientContext = channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).get();
         if (clientContext == null) {
             authorizerService.authorizeSubscriptions(ctx, subscribe);
             return;
@@ -115,8 +106,8 @@ public class IncomingSubscribeHandler extends SimpleChannelInboundHandler<SUBSCR
             return;
         }
 
-        final ClientInformation clientInfo = PluginInformationUtil.getAndSetClientInformation(channel, clientId);
-        final ConnectionInformation connectionInfo = PluginInformationUtil.getAndSetConnectionInformation(channel);
+        final ClientInformation clientInfo = ExtensionInformationUtil.getAndSetClientInformation(channel, clientId);
+        final ConnectionInformation connectionInfo = ExtensionInformationUtil.getAndSetConnectionInformation(channel);
 
         final SubscribePacketImpl packet = new SubscribePacketImpl(subscribe);
         final SubscribeInboundInputImpl input = new SubscribeInboundInputImpl(clientInfo, connectionInfo, packet);
@@ -133,8 +124,7 @@ public class IncomingSubscribeHandler extends SimpleChannelInboundHandler<SUBSCR
 
         for (final SubscribeInboundInterceptor interceptor : interceptors) {
 
-            final HiveMQExtension extension = hiveMQExtensions.getExtensionForClassloader(
-                    (IsolatedPluginClassloader) interceptor.getClass().getClassLoader());
+            final HiveMQExtension extension = hiveMQExtensions.getExtensionForClassloader(interceptor.getClass().getClassLoader());
             if (extension == null) { // disabled extension would be null
                 context.finishInterceptor();
                 continue;

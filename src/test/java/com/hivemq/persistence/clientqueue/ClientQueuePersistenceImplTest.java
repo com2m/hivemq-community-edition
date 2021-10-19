@@ -35,6 +35,7 @@ import com.hivemq.persistence.payload.PublishPayloadPersistence;
 import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.Channel;
 import io.netty.channel.embedded.EmbeddedChannel;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -48,7 +49,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.hivemq.configuration.service.MqttConfigurationService.QueuedMessagesStrategy;
 import static org.junit.Assert.assertEquals;
-import static org.mockito.Matchers.*;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyBoolean;
+import static org.mockito.Matchers.anyInt;
+import static org.mockito.Matchers.anyLong;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.*;
 
 /**
@@ -56,6 +62,8 @@ import static org.mockito.Mockito.*;
  */
 @SuppressWarnings("NullabilityAnnotations")
 public class ClientQueuePersistenceImplTest {
+
+    private AutoCloseable closeableMock;
 
     @Rule
     public InitFutureUtilsExecutorRule initFutureUtilsExecutorRule = new InitFutureUtilsExecutorRule();
@@ -87,10 +95,12 @@ public class ClientQueuePersistenceImplTest {
 
     final int bucketSize = 64;
 
+    private SingleWriterService singleWriterService;
+
     @Before
     public void setUp() throws Exception {
-        MockitoAnnotations.initMocks(this);
-        final SingleWriterService singleWriterService = TestSingleWriterFactory.defaultSingleWriter();
+        closeableMock = MockitoAnnotations.openMocks(this);
+        singleWriterService = TestSingleWriterFactory.defaultSingleWriter();
         when(mqttConfigurationService.maxQueuedMessages()).thenReturn(1000L);
         when(mqttConfigurationService.getQueuedMessagesStrategy()).thenReturn(QueuedMessagesStrategy.DISCARD);
         clientQueuePersistence =
@@ -99,9 +109,16 @@ public class ClientQueuePersistenceImplTest {
                         publishPollService);
     }
 
+    @After
+    public void tearDown() throws Exception {
+        clientQueuePersistence.closeDB();
+        singleWriterService.stop();
+        closeableMock.close();
+    }
+
     @Test(timeout = 5000)
     public void test_add() throws ExecutionException, InterruptedException {
-        clientQueuePersistence.add("client", false, createPublish(1, QoS.AT_LEAST_ONCE, "topic")).get();
+        clientQueuePersistence.add("client", false, createPublish(1, QoS.AT_LEAST_ONCE, "topic"), false, 1000L).get();
         verify(localPersistence).add(
                 eq("client"), eq(false), any(PUBLISH.class), eq(1000L), eq(QueuedMessagesStrategy.DISCARD),
                 anyBoolean(), anyInt());
@@ -110,7 +127,7 @@ public class ClientQueuePersistenceImplTest {
 
     @Test(timeout = 5000)
     public void test_add_shared() throws ExecutionException, InterruptedException {
-        clientQueuePersistence.add("name/topic", true, createPublish(1, QoS.AT_LEAST_ONCE, "topic")).get();
+        clientQueuePersistence.add("name/topic", true, createPublish(1, QoS.AT_LEAST_ONCE, "topic"), false, 1000L).get();
         verify(localPersistence).add(
                 eq("name/topic"), eq(true), any(PUBLISH.class), eq(1000L), eq(QueuedMessagesStrategy.DISCARD),
                 anyBoolean(), anyInt());
@@ -253,7 +270,7 @@ public class ClientQueuePersistenceImplTest {
         final ImmutableList<PUBLISH> publishes = ImmutableList.of(
                 createPublish(1, QoS.AT_LEAST_ONCE, "topic1"),
                 createPublish(2, QoS.AT_LEAST_ONCE, "topic2"));
-        clientQueuePersistence.add("client", false, publishes, false).get();
+        clientQueuePersistence.add("client", false, publishes, false, 1000L).get();
         verify(localPersistence).add(
                 eq("client"), eq(false), eq(publishes), eq(1000L), eq(QueuedMessagesStrategy.DISCARD),
                 anyBoolean(), anyInt());
@@ -268,7 +285,7 @@ public class ClientQueuePersistenceImplTest {
         final ImmutableList<PUBLISH> publishes = ImmutableList.of(
                 createPublish(1, QoS.AT_LEAST_ONCE, "topic1"),
                 createPublish(2, QoS.AT_LEAST_ONCE, "topic2"));
-        clientQueuePersistence.add("client", false, publishes, false).get();
+        clientQueuePersistence.add("client", false, publishes, false, 1000L).get();
         verify(localPersistence).add(
                 eq("client"), eq(false), eq(publishes), eq(1000L), eq(QueuedMessagesStrategy.DISCARD),
                 anyBoolean(), anyInt());
@@ -279,7 +296,7 @@ public class ClientQueuePersistenceImplTest {
     private PUBLISH createPublish(final int packetId, final QoS qos, final String topic) {
         return new PUBLISHFactory.Mqtt5Builder().withPacketIdentifier(packetId)
                 .withQoS(qos)
-                .withPayloadId(1L)
+                .withPublishId(1L)
                 .withPayload("message".getBytes())
                 .withTopic(topic)
                 .withHivemqId("hivemqId")

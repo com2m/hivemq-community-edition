@@ -15,13 +15,13 @@
  */
 package com.hivemq.extensions.services.executor;
 
-import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.configuration.service.InternalConfigurations;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.services.CompletableScheduledFuture;
 import com.hivemq.extensions.HiveMQExtension;
 import com.hivemq.extensions.HiveMQExtensions;
-import com.hivemq.extensions.classloader.IsolatedPluginClassloader;
+import com.hivemq.extensions.classloader.IsolatedExtensionClassloader;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -50,13 +50,13 @@ public class ManagedExecutorServicePerPluginTest {
 
     private ManagedExecutorServicePerExtension managedExecutorServicePerPlugin;
 
-    private GlobalManagedPluginExecutorService globalManagedPluginExecutorService;
+    private GlobalManagedExtensionExecutorService globalManagedPluginExecutorService;
 
     @Mock
     ShutdownHooks shutdownHooks;
 
     @Mock
-    IsolatedPluginClassloader classLoader;
+    IsolatedExtensionClassloader classLoader;
 
     @Mock
     HiveMQExtensions hiveMQExtensions;
@@ -73,7 +73,7 @@ public class ManagedExecutorServicePerPluginTest {
 
         when(hiveMQExtensions.getExtensionForClassloader(classLoader)).thenReturn(plugin);
 
-        globalManagedPluginExecutorService = new GlobalManagedPluginExecutorService(shutdownHooks);
+        globalManagedPluginExecutorService = new GlobalManagedExtensionExecutorService(shutdownHooks);
         globalManagedPluginExecutorService.postConstruct();
 
         managedExecutorServicePerPlugin =
@@ -609,7 +609,7 @@ public class ManagedExecutorServicePerPluginTest {
         final List<Callable<String>> callableList = Stream.generate((Supplier<Callable<String>>) () -> () -> {
             calledLatch.countDown();
             //force timeout
-            while(wait.get()){
+            while (wait.get()) {
                 Thread.sleep(25);
             }
             return "test";
@@ -629,7 +629,7 @@ public class ManagedExecutorServicePerPluginTest {
             });
 
             stringCompletableFuture.whenComplete((s, throwable) -> {
-                if(throwable.getCause() instanceof CancellationException){
+                if (throwable.getCause() instanceof CancellationException) {
                     canceledAllLatch.countDown();
                 }
             });

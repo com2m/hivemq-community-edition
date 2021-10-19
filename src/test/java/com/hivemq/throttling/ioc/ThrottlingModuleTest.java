@@ -22,7 +22,9 @@ import com.hivemq.bootstrap.ioc.lazysingleton.LazySingleton;
 import com.hivemq.bootstrap.ioc.lazysingleton.LazySingletonScope;
 import com.hivemq.configuration.info.SystemInformation;
 import com.hivemq.configuration.service.RestrictionsConfigurationService;
+import com.hivemq.mqtt.handler.connack.MqttConnacker;
 import io.netty.handler.traffic.GlobalTrafficShapingHandler;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.MockitoAnnotations;
@@ -32,12 +34,13 @@ import static org.mockito.Mockito.mock;
 
 public class ThrottlingModuleTest {
 
-    private Injector injector;
+    private AutoCloseable closeableMock;
 
+    private Injector injector;
 
     @Before
     public void setUp() throws Exception {
-        MockitoAnnotations.initMocks(this);
+        closeableMock = MockitoAnnotations.openMocks(this);
         injector = Guice.createInjector(new AbstractModule() {
             @Override
             protected void configure() {
@@ -45,8 +48,14 @@ public class ThrottlingModuleTest {
                 bind(SystemInformation.class).toInstance(mock(SystemInformation.class));
                 bind(RestrictionsConfigurationService.class).toInstance(mock(RestrictionsConfigurationService.class));
                 bindScope(LazySingleton.class, LazySingletonScope.get());
+                bind(MqttConnacker.class).toInstance(mock(MqttConnacker.class));
             }
         });
+    }
+
+    @After
+    public void tearDown() throws Exception {
+        closeableMock.close();
     }
 
     @Test

@@ -27,6 +27,7 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslHandler;
 import org.apache.commons.lang3.RandomStringUtils;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
@@ -76,6 +77,11 @@ public class SslFactoryTest {
         testKeyStoreGenerator = new TestKeyStoreGenerator();
     }
 
+    @After
+    public void tearDown() throws Exception {
+        LogbackCapturingAppender.Factory.cleanUp();
+    }
+
     @Test
     public void test_get_ssl_handler_default_config() throws Exception {
 
@@ -97,7 +103,8 @@ public class SslFactoryTest {
                 .build();
 
 
-        final SslHandler sslHandler = sslFactory.getSslHandler(socketChannel, tls);
+        final SslContext sslContext = sslFactory.getSslContext(tls);
+        final SslHandler sslHandler = sslFactory.getSslHandler(socketChannel, tls, sslContext);
 
         assertTrue(sslHandler.engine().getEnabledCipherSuites().length > 0);
         assertTrue(sslHandler.engine().getEnabledProtocols().length > 0);
@@ -125,7 +132,7 @@ public class SslFactoryTest {
 
 
         //Only check if the exception is really thrown and not caught somewhere by accident
-        sslFactory.getSslHandler(socketChannel, tls);
+        final SslContext sslContext = sslFactory.getSslContext(tls);
     }
 
     @Test(expected = SslException.class)
@@ -149,7 +156,7 @@ public class SslFactoryTest {
 
 
         //Only check if the exception is really thrown and not caught somewhere by accident
-        sslFactory.getSslHandler(socketChannel, tls);
+        final SslContext sslContext = sslFactory.getSslContext(tls);
     }
 
     @Test
@@ -181,7 +188,8 @@ public class SslFactoryTest {
                 .build();
 
 
-        final SslHandler sslHandler = sslFactory.getSslHandler(socketChannel, tls);
+        final SslContext sslContext = sslFactory.getSslContext(tls);
+        final SslHandler sslHandler = sslFactory.getSslHandler(socketChannel, tls, sslContext);
 
         assertEquals(1, sslHandler.engine().getEnabledCipherSuites().length);
         assertEquals(chosenCipher, sslHandler.engine().getEnabledCipherSuites()[0]);
@@ -214,8 +222,8 @@ public class SslFactoryTest {
                 .withHandshakeTimeout(12345)
                 .build();
 
-
-        final SslHandler sslHandler = sslFactory.getSslHandler(socketChannel, tls);
+        final SslContext sslContext = sslFactory.getSslContext(tls);
+        final SslHandler sslHandler = sslFactory.getSslHandler(socketChannel, tls, sslContext);
 
         assertEquals(1, sslHandler.engine().getEnabledProtocols().length);
         assertEquals(chosenProtocol, sslHandler.engine().getEnabledProtocols()[0]);
@@ -240,8 +248,8 @@ public class SslFactoryTest {
                 .withHandshakeTimeout(12345)
                 .build();
 
-
-        final SslHandler sslHandler = sslFactory.getSslHandler(socketChannel, tls);
+        final SslContext sslContext = sslFactory.getSslContext(tls);
+        final SslHandler sslHandler = sslFactory.getSslHandler(socketChannel, tls, sslContext);
 
         assertTrue(sslHandler.engine().getEnabledCipherSuites().length > 0);
         assertTrue(sslHandler.engine().getEnabledProtocols().length > 0);
@@ -269,7 +277,8 @@ public class SslFactoryTest {
                 .withHandshakeTimeout(10000)
                 .build();
 
-        final SslHandler sslHandler = sslFactory.getSslHandler(socketChannel, tls);
+        final SslContext sslContext = sslFactory.getSslContext(tls);
+        final SslHandler sslHandler = sslFactory.getSslHandler(socketChannel, tls, sslContext);
 
         assertFalse(sslHandler.engine().getNeedClientAuth());
         assertFalse(sslHandler.engine().getWantClientAuth());
@@ -294,7 +303,8 @@ public class SslFactoryTest {
                 .withHandshakeTimeout(10000)
                 .build();
 
-        final SslHandler sslHandler = sslFactory.getSslHandler(socketChannel, tls);
+        final SslContext sslContext = sslFactory.getSslContext(tls);
+        final SslHandler sslHandler = sslFactory.getSslHandler(socketChannel, tls, sslContext);
 
         assertFalse(sslHandler.engine().getNeedClientAuth());
         assertTrue(sslHandler.engine().getWantClientAuth());
@@ -321,7 +331,8 @@ public class SslFactoryTest {
                 .build();
 
 
-        final SslHandler sslHandler = sslFactory.getSslHandler(socketChannel, tls);
+        final SslContext sslContext = sslFactory.getSslContext(tls);
+        final SslHandler sslHandler = sslFactory.getSslHandler(socketChannel, tls, sslContext);
 
         assertTrue(sslHandler.engine().getNeedClientAuth());
         assertFalse(sslHandler.engine().getWantClientAuth());

@@ -25,7 +25,7 @@ import com.hivemq.extension.sdk.api.interceptor.disconnect.parameter.DisconnectO
 import com.hivemq.extension.sdk.api.packets.disconnect.ModifiableOutboundDisconnectPacket;
 import com.hivemq.extensions.HiveMQExtension;
 import com.hivemq.extensions.HiveMQExtensions;
-import com.hivemq.extensions.classloader.IsolatedPluginClassloader;
+import com.hivemq.extensions.classloader.IsolatedExtensionClassloader;
 import com.hivemq.extensions.client.ClientContextImpl;
 import com.hivemq.extensions.executor.PluginOutPutAsyncer;
 import com.hivemq.extensions.executor.PluginOutputAsyncerImpl;
@@ -37,6 +37,9 @@ import com.hivemq.mqtt.message.disconnect.DISCONNECT;
 import com.hivemq.mqtt.message.mqtt5.Mqtt5UserProperties;
 import com.hivemq.mqtt.message.reason.Mqtt5DisconnectReasonCode;
 import com.hivemq.util.ChannelAttributes;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.jboss.shrinkwrap.api.ShrinkWrap;
 import org.jboss.shrinkwrap.api.exporter.ZipExporter;
@@ -95,7 +98,7 @@ public class DisconnectOutboundInterceptorHandlerTest {
         channel = new EmbeddedChannel();
         channel.attr(ChannelAttributes.CLIENT_ID).set("client");
         channel.attr(ChannelAttributes.REQUEST_RESPONSE_INFORMATION).set(true);
-        channel.attr(ChannelAttributes.PLUGIN_CLIENT_CONTEXT).set(clientContext);
+        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
         when(extension.getId()).thenReturn("extension");
 
         configurationService = new TestConfigurationBootstrap().getFullConfigurationService();
@@ -104,7 +107,12 @@ public class DisconnectOutboundInterceptorHandlerTest {
 
         handler = new DisconnectInterceptorHandler(configurationService, asyncer, hiveMQExtensions,
                 pluginTaskExecutorService);
-        channel.pipeline().addFirst(handler);
+        channel.pipeline().addLast("test", new ChannelOutboundHandlerAdapter() {
+            @Override
+            public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+                handler.handleOutboundDisconnect(ctx, ((DISCONNECT) msg), promise);
+            }
+        });
     }
 
     @Test(timeout = 5000)
@@ -221,9 +229,9 @@ public class DisconnectOutboundInterceptorHandlerTest {
         final File jarFile = temporaryFolder.newFile();
         javaArchive.as(ZipExporter.class).exportTo(jarFile, true);
 
-        final IsolatedPluginClassloader
+        final IsolatedExtensionClassloader
                 cl =
-                new IsolatedPluginClassloader(new URL[]{jarFile.toURI().toURL()}, this.getClass().getClassLoader());
+                new IsolatedExtensionClassloader(new URL[]{jarFile.toURI().toURL()}, this.getClass().getClassLoader());
 
         final Class<?> interceptorClass =
                 cl.loadClass("com.hivemq.extensions.handler.DisconnectOutboundInterceptorHandlerTest$" + name);

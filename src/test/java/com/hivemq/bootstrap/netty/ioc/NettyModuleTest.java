@@ -37,7 +37,7 @@ import com.hivemq.extensions.services.auth.Authorizers;
 import com.hivemq.extensions.services.initializer.Initializers;
 import com.hivemq.limitation.TopicAliasLimiter;
 import com.hivemq.metrics.MetricsHolder;
-import com.hivemq.metrics.handler.GlobalTrafficCounter;
+import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnector;
 import com.hivemq.mqtt.message.dropping.MessageDroppedService;
 import com.hivemq.mqtt.services.InternalPublishService;
 import com.hivemq.mqtt.services.PublishPollService;
@@ -103,7 +103,6 @@ public class NettyModuleTest {
                 bind(SecurityConfigurationService.class).toInstance(mock(SecurityConfigurationService.class));
                 bind(Initializers.class).toInstance(mock(Initializers.class));
                 bind(MqttConfigurationService.class).toInstance(mock(MqttConfigurationService.class));
-                bind(GlobalTrafficCounter.class).toInstance(mock(GlobalTrafficCounter.class));
                 bind(GlobalTrafficShapingHandler.class).toInstance(mock(GlobalTrafficShapingHandler.class));
                 bind(InternalPublishService.class).toInstance(mock(InternalPublishService.class));
                 bind(PublishPollService.class).toInstance(mock(PublishPollService.class));
@@ -111,6 +110,7 @@ public class NettyModuleTest {
                 bind(LocalTopicTree.class).toInstance(mock(TopicTreeImpl.class));
                 bind(SharedSubscriptionService.class).toInstance(mock(SharedSubscriptionService.class));
                 bindScope(LazySingleton.class, LazySingletonScope.get());
+                bind(MqttServerDisconnector.class).toInstance(mock(MqttServerDisconnector.class));
             }
         });
 

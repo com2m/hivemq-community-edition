@@ -28,6 +28,7 @@ import com.hivemq.mqtt.handler.publish.PublishReturnCode;
 import com.hivemq.mqtt.message.publish.PUBLISH;
 import com.hivemq.mqtt.topic.SubscriberWithIdentifiers;
 import com.hivemq.mqtt.topic.tree.LocalTopicTree;
+import com.hivemq.mqtt.topic.tree.TopicSubscribers;
 import com.hivemq.persistence.RetainedMessage;
 import com.hivemq.persistence.retained.RetainedMessagePersistence;
 import com.hivemq.persistence.util.FutureUtils;
@@ -37,7 +38,6 @@ import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -71,7 +71,7 @@ public class InternalPublishServiceImpl implements InternalPublishService {
     }
 
     @NotNull
-    public ListenableFuture<PublishReturnCode> publish(@NotNull final PUBLISH publish, @NotNull final ExecutorService executorService, @Nullable final String sender) {
+    public ListenableFuture<PublishReturnCode> publish(final @NotNull PUBLISH publish, final @NotNull ExecutorService executorService, final @Nullable String sender) {
 
         Preconditions.checkNotNull(publish, "PUBLISH can not be null");
         Preconditions.checkNotNull(executorService, "executorService can not be null");
@@ -94,7 +94,7 @@ public class InternalPublishServiceImpl implements InternalPublishService {
             final ListenableFuture<Void> persistFuture;
             if (publish.getPayload().length > 0) {
                 //pass payloadId null here, because we don't know yet if the message must be stored in the payload persistence
-                final RetainedMessage retainedMessage = new RetainedMessage(publish, null, publish.getMessageExpiryInterval());
+                final RetainedMessage retainedMessage = new RetainedMessage(publish, publish.getMessageExpiryInterval());
                 log.trace("Adding retained message on topic {}", publish.getTopic());
                 persistFuture = retainedMessagePersistence.persist(publish.getTopic(), retainedMessage);
 
@@ -109,12 +109,12 @@ public class InternalPublishServiceImpl implements InternalPublishService {
 
                 Futures.addCallback(persistFuture, new FutureCallback<>() {
                     @Override
-                    public void onSuccess(@Nullable final Void aVoid) {
+                    public void onSuccess(final @Nullable Void aVoid) {
                         persistSettableFuture.set(null);
                     }
 
                     @Override
-                    public void onFailure(@NotNull final Throwable throwable) {
+                    public void onFailure(final @NotNull Throwable throwable) {
                         Exceptions.rethrowError("Unable able to store retained message for topic " + publish.getTopic()
                                 + " with message id " + publish.getUniqueId() + ".", throwable);
                         persistSettableFuture.set(null);
@@ -130,33 +130,36 @@ public class InternalPublishServiceImpl implements InternalPublishService {
     }
 
     @NotNull
-    private ListenableFuture<PublishReturnCode> handlePublish(@NotNull final PUBLISH publish, @NotNull final ExecutorService executorService, @Nullable final String sender) {
+    private ListenableFuture<PublishReturnCode> handlePublish(final @NotNull PUBLISH publish, final @NotNull ExecutorService executorService, final @Nullable String sender) {
 
-        final ImmutableSet<SubscriberWithIdentifiers> subscribers = topicTree.getSubscribers(publish.getTopic());
+        final TopicSubscribers topicSubscribers = topicTree.findTopicSubscribers(publish.getTopic());
+        final ImmutableSet<SubscriberWithIdentifiers> subscribers = topicSubscribers.getSubscribers();
+        final ImmutableSet<String> sharedSubscriptions = topicSubscribers.getSharedSubscriptions();
 
-        if (subscribers.size() < 1) {
+        if (subscribers.isEmpty() && sharedSubscriptions.isEmpty()) {
             return Futures.immediateFuture(PublishReturnCode.NO_MATCHING_SUBSCRIBERS);
         }
 
 
         if (!acknowledgeAfterPersist) {
-            deliverPublish(subscribers, sender, publish, executorService, null);
+            deliverPublish(topicSubscribers, sender, publish, executorService, null);
             return Futures.immediateFuture(PublishReturnCode.DELIVERED);
         }
+
         final SettableFuture<PublishReturnCode> returnCodeFuture = SettableFuture.create();
-        deliverPublish(subscribers, sender, publish, executorService, returnCodeFuture);
+        deliverPublish(topicSubscribers, sender, publish, executorService, returnCodeFuture);
         return returnCodeFuture;
     }
 
-    private void deliverPublish(final ImmutableSet<SubscriberWithIdentifiers> subscribers,
-                                @Nullable final String sender,
-                                @NotNull final PUBLISH publish,
-                                @NotNull final ExecutorService executorService,
-                                @Nullable final SettableFuture<PublishReturnCode> returnCodeFuture) {
-        Set<String> sharedSubscriptions = null;
-        final Map<String, SubscriberWithIdentifiers> notSharedSubscribers = new HashMap<>(subscribers.size());
+    private void deliverPublish(final @NotNull TopicSubscribers topicSubscribers,
+                                final @Nullable String sender,
+                                final @NotNull PUBLISH publish,
+                                final @NotNull ExecutorService executorService,
+                                final @Nullable SettableFuture<PublishReturnCode> returnCodeFuture) {
+        final Set<String> sharedSubscriptions = topicSubscribers.getSharedSubscriptions();
+        final Map<String, SubscriberWithIdentifiers> notSharedSubscribers = new HashMap<>(topicSubscribers.getSubscribers().size());
 
-        for (final SubscriberWithIdentifiers subscriber : subscribers) {
+        for (final SubscriberWithIdentifiers subscriber : topicSubscribers.getSubscribers()) {
             if (!subscriber.isSharedSubscription()) {
 
                 if (subscriber.isNoLocal() && sender != null && sender.equals(subscriber.getSubscriber())) {
@@ -165,15 +168,7 @@ public class InternalPublishServiceImpl implements InternalPublishService {
                 }
 
                 notSharedSubscribers.put(subscriber.getSubscriber(), subscriber);
-                continue;
             }
-
-            //only instantiate list if shared subscribers are available
-            if (sharedSubscriptions == null) {
-                sharedSubscriptions = new HashSet<>(subscribers.size());
-            }
-
-            sharedSubscriptions.add(subscriber.getSharedName() + "/" + subscriber.getTopicFilter());
         }
 
         //Send out the messages to the channel of the subscribers
@@ -189,14 +184,14 @@ public class InternalPublishServiceImpl implements InternalPublishService {
 
         Futures.addCallback(FutureUtils.mergeVoidFutures(publishFinishedFutureNonShared, publishFinishedFutureShared), new FutureCallback<>() {
             @Override
-            public void onSuccess(@Nullable final Void result) {
+            public void onSuccess(final @Nullable Void result) {
                 if (returnCodeFuture != null) {
                     returnCodeFuture.set(PublishReturnCode.DELIVERED);
                 }
             }
 
             @Override
-            public void onFailure(@NotNull final Throwable throwable) {
+            public void onFailure(final @NotNull Throwable throwable) {
                 Exceptions.rethrowError("Unable to publish message for topic " + publish.getTopic() + " with message id" + publish.getUniqueId() + ".", throwable);
                 if (returnCodeFuture != null) {
                     returnCodeFuture.set(PublishReturnCode.FAILED);

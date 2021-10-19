@@ -18,10 +18,12 @@ package com.hivemq.persistence.local.memory;
 import com.codahale.metrics.Gauge;
 import com.codahale.metrics.MetricRegistry;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableMap;
 import com.hivemq.annotations.ExecuteInSingleWriter;
 import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.annotations.Nullable;
+import com.hivemq.extensions.iteration.BucketChunkResult;
 import com.hivemq.metrics.HiveMQMetrics;
 import com.hivemq.persistence.RetainedMessage;
 import com.hivemq.persistence.local.xodus.PublishTopicTree;
@@ -34,9 +36,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -59,14 +59,11 @@ public class RetainedMessageMemoryLocalPersistence implements RetainedMessageLoc
     final PublishTopicTree[] topicTrees;
 
     final private @NotNull Map<String, RetainedMessage>[] buckets;
-    private final @NotNull PublishPayloadPersistence payloadPersistence;
 
     private final int bucketCount;
 
     @Inject
-    public RetainedMessageMemoryLocalPersistence(
-            @NotNull final PublishPayloadPersistence payloadPersistence, @NotNull final MetricRegistry metricRegistry) {
-        this.payloadPersistence = payloadPersistence;
+    public RetainedMessageMemoryLocalPersistence(@NotNull final MetricRegistry metricRegistry) {
         bucketCount = InternalConfigurations.PERSISTENCE_BUCKET_COUNT.get();
 
         //noinspection unchecked
@@ -101,7 +98,6 @@ public class RetainedMessageMemoryLocalPersistence implements RetainedMessageLoc
 
         final Map<String, RetainedMessage> bucket = buckets[bucketIndex];
         for (final RetainedMessage retainedMessage : bucket.values()) {
-            payloadPersistence.decrementReferenceCounter(retainedMessage.getPayloadId());
             currentMemorySize.addAndGet(-retainedMessage.getEstimatedSizeInMemory());
         }
         bucket.clear();
@@ -118,7 +114,6 @@ public class RetainedMessageMemoryLocalPersistence implements RetainedMessageLoc
         final RetainedMessage retainedMessage = bucket.remove(topic);
         if (retainedMessage != null) {
             currentMemorySize.addAndGet(-retainedMessage.getEstimatedSizeInMemory());
-            payloadPersistence.decrementReferenceCounter(retainedMessage.getPayloadId());
         }
     }
 
@@ -133,20 +128,12 @@ public class RetainedMessageMemoryLocalPersistence implements RetainedMessageLoc
         if (retainedMessage == null) {
             return null;
         }
-        final byte[] payload = payloadPersistence.getPayloadOrNull(retainedMessage.getPayloadId());
-        if (payload == null) {
-            log.warn(
-                    "Payload with ID '{}' for retained messages on topic '{}' not found.",
-                    retainedMessage.getPayloadId(),
-                    topic);
-            return null;
-        }
-        if (PublishUtil.isExpired(retainedMessage.getTimestamp(), retainedMessage.getMessageExpiryInterval())) {
+
+        if (PublishUtil.checkExpiry(retainedMessage.getTimestamp(), retainedMessage.getMessageExpiryInterval())) {
             return null;
         }
         final RetainedMessage copy = retainedMessage.copyWithoutPayload();
-        copy.setMessage(payload);
-        return copy;
+        return retainedMessage;
     }
 
     @ExecuteInSingleWriter
@@ -157,14 +144,12 @@ public class RetainedMessageMemoryLocalPersistence implements RetainedMessageLoc
         checkNotNull(retainedMessage, "Retained message must not be null");
         ThreadPreConditions.startsWith(SINGLE_WRITER_THREAD_PREFIX);
 
-        final RetainedMessage copy = retainedMessage.copyWithoutPayload();
         final Map<String, RetainedMessage> bucket = buckets[bucketIndex];
-        final RetainedMessage previousMessage = bucket.put(topic, copy);
+        final RetainedMessage previousMessage = bucket.put(topic, retainedMessage);
         if (previousMessage != null) {
-            payloadPersistence.decrementReferenceCounter(previousMessage.getPayloadId());
             currentMemorySize.addAndGet(-previousMessage.getEstimatedSizeInMemory());
         }
-        currentMemorySize.addAndGet(copy.getEstimatedSizeInMemory());
+        currentMemorySize.addAndGet(retainedMessage.getEstimatedSizeInMemory());
         topicTrees[bucketIndex].add(topic);
     }
 
@@ -191,8 +176,7 @@ public class RetainedMessageMemoryLocalPersistence implements RetainedMessageLoc
             }
             final RetainedMessage retainedMessage = entry.getValue();
             final String topic = entry.getKey();
-            if (PublishUtil.isExpired(retainedMessage.getTimestamp(), retainedMessage.getMessageExpiryInterval())) {
-                payloadPersistence.decrementReferenceCounter(retainedMessage.getPayloadId());
+            if (PublishUtil.checkExpiry(retainedMessage.getTimestamp(), retainedMessage.getMessageExpiryInterval())) {
                 currentMemorySize.addAndGet(-retainedMessage.getEstimatedSizeInMemory());
                 topicTrees[bucketIndex].remove(topic);
                 return true;
@@ -201,10 +185,47 @@ public class RetainedMessageMemoryLocalPersistence implements RetainedMessageLoc
         });
     }
 
+    // in contrast to the file persistence method we already have everything in memory. The sizing and pagination are ignored.
+    @Override
+    public @NotNull BucketChunkResult<Map<String, @NotNull RetainedMessage>> getAllRetainedMessagesChunk(final int bucketIndex,
+                                                                                                         final @Nullable String ignored,
+                                                                                                         final int alsoIgnored) {
+
+        final ImmutableMap<String, RetainedMessage> collectedRetainedMessages = buckets[bucketIndex].entrySet()
+                .stream()
+                .map(entry -> {
+                    final String topic = entry.getKey();
+                    final RetainedMessage retainedMessage = entry.getValue();
+
+                    // ignore messages with exceeded message expiry interval
+                    if (PublishUtil.checkExpiry(retainedMessage.getTimestamp(), retainedMessage.getMessageExpiryInterval())) {
+                        return null;
+                    }
+
+                    final Long payloadId = retainedMessage.getPublishId();
+                    if (payloadId == null) {
+                        log.warn("Could not dereference payload for retained message on topic \"{}\" as payload was null.", topic);
+                        return null;
+                    }
+
+                    return new AbstractMap.SimpleEntry<>(topic, retainedMessage);
+
+                })
+                .filter(entry -> !Objects.isNull(entry))
+                .collect(ImmutableMap.toImmutableMap(Map.Entry::getKey, Map.Entry::getValue));
+
+        return new BucketChunkResult<>(collectedRetainedMessages, true, null, bucketIndex);
+    }
+
     @Override
     public void iterate(@NotNull final ItemCallback callback) {
         throw new UnsupportedOperationException(
                 "Iterate is only used for migrations which are not needed for memory persistences");
+    }
+
+    @Override
+    public void bootstrapPayloads() {
+        // noop
     }
 
     @Override

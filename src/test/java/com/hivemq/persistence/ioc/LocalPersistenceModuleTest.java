@@ -27,12 +27,14 @@ import com.hivemq.configuration.service.*;
 import com.hivemq.configuration.service.impl.RestrictionsConfigurationServiceImpl;
 import com.hivemq.logging.EventLog;
 import com.hivemq.metrics.MetricsHolder;
+import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnector;
 import com.hivemq.mqtt.ioc.MQTTServiceModule;
 import com.hivemq.mqtt.message.MessageIDPools;
 import com.hivemq.mqtt.message.dropping.MessageDroppedService;
 import com.hivemq.mqtt.topic.TopicMatcher;
 import com.hivemq.persistence.PersistenceStartup;
 import com.hivemq.persistence.SingleWriterService;
+import com.hivemq.persistence.SingleWriterServiceImpl;
 import com.hivemq.persistence.clientqueue.ClientQueueLocalPersistence;
 import com.hivemq.persistence.clientqueue.ClientQueueXodusLocalPersistence;
 import com.hivemq.persistence.ioc.annotation.PayloadPersistence;
@@ -86,7 +88,7 @@ public class LocalPersistenceModuleTest {
     private FullConfigurationService configurationService;
 
     @Mock
-    private SingleWriterService singleWriterService;
+    private SingleWriterServiceImpl singleWriterServiceImpl;
 
     @Mock
     private EventLog eventLog;
@@ -129,8 +131,10 @@ public class LocalPersistenceModuleTest {
         when(persistenceInjector.getInstance(PublishPayloadXodusLocalPersistence.class)).thenReturn(mock(
                 PublishPayloadXodusLocalPersistence.class));
 
-        when(persistenceInjector.getInstance(PersistenceStartup.class)).thenReturn(Mockito.mock(PersistenceStartup.class));
+        when(persistenceInjector.getInstance(PublishPayloadNoopPersistenceImpl.class)).thenReturn(new PublishPayloadNoopPersistenceImpl());
 
+        when(persistenceInjector.getInstance(PersistenceStartup.class)).thenReturn(Mockito.mock(PersistenceStartup.class));
+        when(persistenceInjector.getInstance(PersistenceConfigurationService.class)).thenReturn(persistenceConfigurationService);
         when(persistenceConfigurationService.getMode()).thenReturn(PersistenceMode.FILE);
 
     }
@@ -195,7 +199,6 @@ public class LocalPersistenceModuleTest {
         final Injector injector =
                 createInjector(new LocalPersistenceModule(persistenceInjector, persistenceConfigurationService));
 
-        assertTrue(injector.getInstance(PublishPayloadLocalPersistence.class) instanceof PublishPayloadMemoryLocalPersistence);
         assertTrue(injector.getInstance(RetainedMessageLocalPersistence.class) instanceof RetainedMessageMemoryLocalPersistence);
     }
 
@@ -220,11 +223,12 @@ public class LocalPersistenceModuleTest {
                         bind(MessageIDPools.class).toInstance(messageIDProducers);
                         bind(MetricsHolder.class).toInstance(metricsHolder);
                         bind(MetricRegistry.class).toInstance(new MetricRegistry());
-                        bind(SingleWriterService.class).toInstance(singleWriterService);
+                        bind(SingleWriterService.class).toInstance(singleWriterServiceImpl);
                         bind(EventLog.class).toInstance(eventLog);
                         bind(MessageDroppedService.class).toInstance(messageDroppedService);
                         bind(RestrictionsConfigurationService.class).toInstance(new RestrictionsConfigurationServiceImpl());
                         bind(MqttConfigurationService.class).toInstance(mqttConfigurationService);
+                        bind(MqttServerDisconnector.class).toInstance(mock(MqttServerDisconnector.class));
                     }
                 });
     }

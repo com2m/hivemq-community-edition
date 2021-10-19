@@ -16,9 +16,9 @@
 package com.hivemq.extensions.handler;
 
 import com.google.common.collect.ImmutableList;
-import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.configuration.service.FullConfigurationService;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.interceptor.unsuback.UnsubackOutboundInterceptor;
 import com.hivemq.extension.sdk.api.interceptor.unsuback.parameter.UnsubackOutboundInput;
 import com.hivemq.extension.sdk.api.interceptor.unsuback.parameter.UnsubackOutboundOutput;
@@ -26,7 +26,7 @@ import com.hivemq.extension.sdk.api.packets.unsuback.ModifiableUnsubackPacket;
 import com.hivemq.extension.sdk.api.packets.unsuback.UnsubackReasonCode;
 import com.hivemq.extensions.HiveMQExtension;
 import com.hivemq.extensions.HiveMQExtensions;
-import com.hivemq.extensions.classloader.IsolatedPluginClassloader;
+import com.hivemq.extensions.classloader.IsolatedExtensionClassloader;
 import com.hivemq.extensions.client.ClientContextImpl;
 import com.hivemq.extensions.executor.PluginOutPutAsyncer;
 import com.hivemq.extensions.executor.PluginOutputAsyncerImpl;
@@ -39,6 +39,9 @@ import com.hivemq.mqtt.message.mqtt5.Mqtt5UserProperties;
 import com.hivemq.mqtt.message.reason.Mqtt5UnsubAckReasonCode;
 import com.hivemq.mqtt.message.unsuback.UNSUBACK;
 import com.hivemq.util.ChannelAttributes;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.jboss.shrinkwrap.api.ShrinkWrap;
 import org.jboss.shrinkwrap.api.exporter.ZipExporter;
@@ -65,24 +68,19 @@ import static org.mockito.MockitoAnnotations.initMocks;
  */
 public class UnsubackOutboundInterceptorHandlerTest {
 
+    public static AtomicBoolean isTriggered = new AtomicBoolean();
     @Rule
     public TemporaryFolder temporaryFolder = new TemporaryFolder();
-
     @Mock
     private HiveMQExtension extension;
-
     @Mock
     private HiveMQExtensions extensions;
-
     @Mock
     private ClientContextImpl clientContext;
-
     @Mock
     private FullConfigurationService configurationService;
-
     private PluginTaskExecutor executor;
     private EmbeddedChannel channel;
-    public static AtomicBoolean isTriggered = new AtomicBoolean();
 
     @Before
     public void setUp() throws Exception {
@@ -94,7 +92,7 @@ public class UnsubackOutboundInterceptorHandlerTest {
         channel = new EmbeddedChannel();
         channel.attr(ChannelAttributes.CLIENT_ID).set("client");
         channel.attr(ChannelAttributes.REQUEST_RESPONSE_INFORMATION).set(true);
-        channel.attr(ChannelAttributes.PLUGIN_CLIENT_CONTEXT).set(clientContext);
+        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
         when(extension.getId()).thenReturn("extension");
 
         configurationService = new TestConfigurationBootstrap().getFullConfigurationService();
@@ -104,7 +102,12 @@ public class UnsubackOutboundInterceptorHandlerTest {
         final UnsubackOutboundInterceptorHandler handler =
                 new UnsubackOutboundInterceptorHandler(configurationService, asyncer,
                         extensions, pluginTaskExecutorService);
-        channel.pipeline().addFirst(handler);
+        channel.pipeline().addLast("test", new ChannelOutboundHandlerAdapter() {
+            @Override
+            public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+                handler.handleOutboundUnsuback(ctx, ((UNSUBACK) msg), promise);
+            }
+        });
     }
 
     @After
@@ -120,10 +123,10 @@ public class UnsubackOutboundInterceptorHandlerTest {
         final UnsubackOutboundInterceptor interceptor = getIsolatedOutboundInterceptor("TestSimpleUnsubackInterceptor");
         clientContext.addUnsubackOutboundInterceptor(interceptor);
 
-        channel.attr(ChannelAttributes.PLUGIN_CLIENT_CONTEXT).set(clientContext);
+        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
         channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1);
 
-        when(extensions.getExtensionForClassloader(any(IsolatedPluginClassloader.class))).thenReturn(extension);
+        when(extensions.getExtensionForClassloader(any(IsolatedExtensionClassloader.class))).thenReturn(extension);
 
         channel.writeOutbound(testUnsuback());
         UNSUBACK unsuback = channel.readOutbound();
@@ -143,10 +146,10 @@ public class UnsubackOutboundInterceptorHandlerTest {
         final UnsubackOutboundInterceptor interceptor = getIsolatedOutboundInterceptor("TestModifyUnsubackInterceptor");
         clientContext.addUnsubackOutboundInterceptor(interceptor);
 
-        channel.attr(ChannelAttributes.PLUGIN_CLIENT_CONTEXT).set(clientContext);
+        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
         channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1);
 
-        when(extensions.getExtensionForClassloader(any(IsolatedPluginClassloader.class))).thenReturn(extension);
+        when(extensions.getExtensionForClassloader(any(IsolatedExtensionClassloader.class))).thenReturn(extension);
 
         channel.writeOutbound(testUnsuback());
         UNSUBACK unsuback = channel.readOutbound();
@@ -168,10 +171,10 @@ public class UnsubackOutboundInterceptorHandlerTest {
                 getIsolatedOutboundInterceptor("TestExceptionUnsubackInterceptor");
         clientContext.addUnsubackOutboundInterceptor(interceptor);
 
-        channel.attr(ChannelAttributes.PLUGIN_CLIENT_CONTEXT).set(clientContext);
+        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
         channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1);
 
-        when(extensions.getExtensionForClassloader(any(IsolatedPluginClassloader.class))).thenReturn(extension);
+        when(extensions.getExtensionForClassloader(any(IsolatedExtensionClassloader.class))).thenReturn(extension);
 
         channel.writeOutbound(testUnsuback());
         UNSUBACK unsuback = channel.readOutbound();
@@ -195,9 +198,9 @@ public class UnsubackOutboundInterceptorHandlerTest {
         final File jarFile = temporaryFolder.newFile();
         javaArchive.as(ZipExporter.class).exportTo(jarFile, true);
 
-        final IsolatedPluginClassloader
+        final IsolatedExtensionClassloader
                 cl =
-                new IsolatedPluginClassloader(new URL[]{jarFile.toURI().toURL()}, this.getClass().getClassLoader());
+                new IsolatedExtensionClassloader(new URL[]{jarFile.toURI().toURL()}, this.getClass().getClassLoader());
 
         final Class<?> interceptorClass =
                 cl.loadClass("com.hivemq.extensions.handler.UnsubackOutboundInterceptorHandlerTest$" + name);

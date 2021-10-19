@@ -21,10 +21,9 @@ import com.hivemq.extension.sdk.api.client.parameter.ClientInformation;
 import com.hivemq.extension.sdk.api.client.parameter.ConnectionInformation;
 import com.hivemq.extension.sdk.api.interceptor.pubrel.PubrelInboundInterceptor;
 import com.hivemq.extension.sdk.api.interceptor.pubrel.PubrelOutboundInterceptor;
+import com.hivemq.extensions.ExtensionInformationUtil;
 import com.hivemq.extensions.HiveMQExtension;
 import com.hivemq.extensions.HiveMQExtensions;
-import com.hivemq.extensions.PluginInformationUtil;
-import com.hivemq.extensions.classloader.IsolatedPluginClassloader;
 import com.hivemq.extensions.client.ClientContextImpl;
 import com.hivemq.extensions.executor.PluginOutPutAsyncer;
 import com.hivemq.extensions.executor.PluginTaskExecutorService;
@@ -53,8 +52,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @author Silvio Giebl
  */
 @Singleton
-@ChannelHandler.Sharable
-public class PubrelInterceptorHandler extends ChannelDuplexHandler {
+public class PubrelInterceptorHandler {
 
     private static final Logger log = LoggerFactory.getLogger(PubrelInterceptorHandler.class);
 
@@ -76,36 +74,16 @@ public class PubrelInterceptorHandler extends ChannelDuplexHandler {
         this.executorService = executorService;
     }
 
-    @Override
-    public void channelRead(final @NotNull ChannelHandlerContext ctx, final @NotNull Object msg) {
-        if (!(msg instanceof PUBREL)) {
-            ctx.fireChannelRead(msg);
-            return;
-        }
-        handleInboundPubrel(ctx, (PUBREL) msg);
-    }
 
-    @Override
-    public void write(
-            final @NotNull ChannelHandlerContext ctx,
-            final @NotNull Object msg,
-            final @NotNull ChannelPromise promise) {
 
-        if (!(msg instanceof PUBREL)) {
-            ctx.write(msg, promise);
-            return;
-        }
-        handleOutboundPubrel(ctx, (PUBREL) msg, promise);
-    }
-
-    private void handleInboundPubrel(final @NotNull ChannelHandlerContext ctx, final @NotNull PUBREL pubrel) {
+    public void handleInboundPubrel(final @NotNull ChannelHandlerContext ctx, final @NotNull PUBREL pubrel) {
         final Channel channel = ctx.channel();
         final String clientId = channel.attr(ChannelAttributes.CLIENT_ID).get();
         if (clientId == null) {
             return;
         }
 
-        final ClientContextImpl clientContext = channel.attr(ChannelAttributes.PLUGIN_CLIENT_CONTEXT).get();
+        final ClientContextImpl clientContext = channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).get();
         if (clientContext == null) {
             ctx.fireChannelRead(pubrel);
             return;
@@ -116,8 +94,8 @@ public class PubrelInterceptorHandler extends ChannelDuplexHandler {
             return;
         }
 
-        final ClientInformation clientInfo = PluginInformationUtil.getAndSetClientInformation(channel, clientId);
-        final ConnectionInformation connectionInfo = PluginInformationUtil.getAndSetConnectionInformation(channel);
+        final ClientInformation clientInfo = ExtensionInformationUtil.getAndSetClientInformation(channel, clientId);
+        final ConnectionInformation connectionInfo = ExtensionInformationUtil.getAndSetConnectionInformation(channel);
 
         final PubrelPacketImpl packet = new PubrelPacketImpl(pubrel);
         final PubrelInboundInputImpl input = new PubrelInboundInputImpl(clientInfo, connectionInfo, packet);
@@ -133,8 +111,7 @@ public class PubrelInterceptorHandler extends ChannelDuplexHandler {
 
         for (final PubrelInboundInterceptor interceptor : interceptors) {
 
-            final HiveMQExtension extension = hiveMQExtensions.getExtensionForClassloader(
-                    (IsolatedPluginClassloader) interceptor.getClass().getClassLoader());
+            final HiveMQExtension extension = hiveMQExtensions.getExtensionForClassloader(interceptor.getClass().getClassLoader());
             if (extension == null) { // disabled extension would be null
                 context.finishInterceptor();
                 continue;
@@ -145,7 +122,7 @@ public class PubrelInterceptorHandler extends ChannelDuplexHandler {
         }
     }
 
-    private void handleOutboundPubrel(
+    public void handleOutboundPubrel(
             final @NotNull ChannelHandlerContext ctx,
             final @NotNull PUBREL pubrel,
             final @NotNull ChannelPromise promise) {
@@ -156,7 +133,7 @@ public class PubrelInterceptorHandler extends ChannelDuplexHandler {
             return;
         }
 
-        final ClientContextImpl clientContext = channel.attr(ChannelAttributes.PLUGIN_CLIENT_CONTEXT).get();
+        final ClientContextImpl clientContext = channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).get();
         if (clientContext == null) {
             ctx.write(pubrel, promise);
             return;
@@ -167,8 +144,8 @@ public class PubrelInterceptorHandler extends ChannelDuplexHandler {
             return;
         }
 
-        final ClientInformation clientInfo = PluginInformationUtil.getAndSetClientInformation(channel, clientId);
-        final ConnectionInformation connectionInfo = PluginInformationUtil.getAndSetConnectionInformation(channel);
+        final ClientInformation clientInfo = ExtensionInformationUtil.getAndSetClientInformation(channel, clientId);
+        final ConnectionInformation connectionInfo = ExtensionInformationUtil.getAndSetConnectionInformation(channel);
 
         final PubrelPacketImpl packet = new PubrelPacketImpl(pubrel);
         final PubrelOutboundInputImpl input = new PubrelOutboundInputImpl(clientInfo, connectionInfo, packet);
@@ -184,8 +161,7 @@ public class PubrelInterceptorHandler extends ChannelDuplexHandler {
 
         for (final PubrelOutboundInterceptor interceptor : interceptors) {
 
-            final HiveMQExtension extension = hiveMQExtensions.getExtensionForClassloader(
-                    (IsolatedPluginClassloader) interceptor.getClass().getClassLoader());
+            final HiveMQExtension extension = hiveMQExtensions.getExtensionForClassloader(interceptor.getClass().getClassLoader());
             if (extension == null) { // disabled extension would be null
                 context.finishInterceptor();
                 continue;

@@ -30,7 +30,7 @@ import com.hivemq.extension.sdk.api.interceptor.connect.parameter.ConnectInbound
 import com.hivemq.extension.sdk.api.interceptor.connect.parameter.ConnectInboundProviderInput;
 import com.hivemq.extensions.HiveMQExtension;
 import com.hivemq.extensions.HiveMQExtensions;
-import com.hivemq.extensions.classloader.IsolatedPluginClassloader;
+import com.hivemq.extensions.classloader.IsolatedExtensionClassloader;
 import com.hivemq.extensions.executor.PluginOutPutAsyncer;
 import com.hivemq.extensions.executor.PluginOutputAsyncerImpl;
 import com.hivemq.extensions.executor.PluginTaskExecutorService;
@@ -43,6 +43,8 @@ import com.hivemq.mqtt.message.connect.CONNECT;
 import com.hivemq.mqtt.message.reason.Mqtt5ConnAckReasonCode;
 import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.jboss.shrinkwrap.api.ShrinkWrap;
 import org.jboss.shrinkwrap.api.exporter.ZipExporter;
@@ -75,37 +77,25 @@ import static org.mockito.Mockito.*;
 @SuppressWarnings("NullabilityAnnotations")
 public class ConnectInboundInterceptorHandlerTest {
 
+    private final HivemqId hivemqId = new HivemqId();
     @Rule
     public TemporaryFolder temporaryFolder = new TemporaryFolder();
-
     @Mock
     private HiveMQExtensions hiveMQExtensions;
-
     @Mock
     private HiveMQExtension plugin;
-
     @Mock
     private Interceptors interceptors;
-
     @Mock
     private ServerInformation serverInformation;
-
     @Mock
     private MqttConnacker connacker;
-
     private PluginOutPutAsyncer asyncer;
-
     private FullConfigurationService configurationService;
-
     private PluginTaskExecutor executor1;
-
     private EmbeddedChannel channel;
-
     private PluginTaskExecutorService pluginTaskExecutorService;
-
     private ConnectInboundInterceptorHandler handler;
-
-    private final HivemqId hivemqId = new HivemqId();
 
     @Before
     public void setUp() throws Exception {
@@ -125,7 +115,13 @@ public class ConnectInboundInterceptorHandlerTest {
         handler = new ConnectInboundInterceptorHandler(configurationService, asyncer, hiveMQExtensions,
                 pluginTaskExecutorService,
                 hivemqId, interceptors, serverInformation, connacker);
-        channel.pipeline().addFirst(handler);
+
+        channel.pipeline().addLast("test2", new ChannelInboundHandlerAdapter() {
+            @Override
+            public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+                handler.handleInboundConnect(ctx, ((CONNECT) msg));
+            }
+        });
     }
 
     @Test(timeout = 5000)
@@ -243,7 +239,7 @@ public class ConnectInboundInterceptorHandlerTest {
         javaArchive.as(ZipExporter.class).exportTo(jarFile, true);
 
         //This classloader contains the classes from the jar file
-        final IsolatedPluginClassloader cl = new IsolatedPluginClassloader(new URL[]{jarFile.toURI().toURL()}, this.getClass().getClassLoader());
+        final IsolatedExtensionClassloader cl = new IsolatedExtensionClassloader(new URL[]{jarFile.toURI().toURL()}, this.getClass().getClassLoader());
 
         final Class<?> providerClass = cl.loadClass("com.hivemq.extensions.handler.ConnectInboundInterceptorHandlerTest$" + name);
 

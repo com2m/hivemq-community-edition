@@ -23,6 +23,7 @@ import com.hivemq.configuration.service.MqttConfigurationService;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.extension.sdk.api.annotations.ThreadSafe;
+import com.hivemq.extensions.iteration.BucketChunkResult;
 import com.hivemq.logging.EventLog;
 import com.hivemq.persistence.NoSessionException;
 import com.hivemq.persistence.PersistenceEntry;
@@ -32,7 +33,6 @@ import com.hivemq.persistence.clientsession.ClientSessionWill;
 import com.hivemq.persistence.clientsession.PendingWillMessages;
 import com.hivemq.persistence.exception.InvalidSessionExpiryIntervalException;
 import com.hivemq.persistence.local.ClientSessionLocalPersistence;
-import com.hivemq.persistence.local.xodus.BucketChunkResult;
 import com.hivemq.persistence.local.xodus.EnvironmentUtil;
 import com.hivemq.persistence.local.xodus.XodusLocalPersistence;
 import com.hivemq.persistence.local.xodus.bucket.Bucket;
@@ -43,6 +43,7 @@ import com.hivemq.util.LocalPersistenceFileUtil;
 import com.hivemq.util.ThreadPreConditions;
 import jetbrains.exodus.ByteIterable;
 import jetbrains.exodus.env.Cursor;
+import jetbrains.exodus.env.Store;
 import jetbrains.exodus.env.StoreConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -136,11 +137,19 @@ public class ClientSessionXodusLocalPersistence extends XodusLocalPersistence im
         for (int i = 0; i < bucketCount; i++) {
             final Bucket bucket = buckets[i];
             bucket.getEnvironment().executeInReadonlyTransaction(txn -> {
+                final Store store = bucket.getStore();
                 final Cursor cursor = bucket.getStore().openCursor(txn);
                 while (cursor.getNext()) {
-                    final ClientSession clientSession = serializer.deserializeValue(byteIterableToBytes(cursor.getValue()));
+                    final byte[] bytes = byteIterableToBytes(cursor.getValue());
+                    final ClientSession clientSession = serializer.deserializeValue(bytes);
                     if (persistent(clientSession)) {
                         sessionsCount.incrementAndGet();
+                    }
+                    if (clientSession.getWillPublish() != null) {
+                        clientSession.setWillPublish(null);
+                        final long timestamp = serializer.deserializeTimestamp(bytes);
+                        final byte[] sessionsWithoutWill = serializer.serializeValue(clientSession, timestamp);
+                        store.put(txn, cursor.getKey(), bytesToByteIterable(sessionsWithoutWill));
                     }
                 }
             });
@@ -629,7 +638,7 @@ public class ClientSessionXodusLocalPersistence extends XodusLocalPersistence im
         if (willPublish == null) {
             return;
         }
-        payloadPersistence.decrementReferenceCounter(willPublish.getPayloadId());
+        payloadPersistence.decrementReferenceCounter(willPublish.getPublishId());
     }
 
     private void dereferenceWillPayload(final ClientSession clientSession) {
@@ -640,11 +649,10 @@ public class ClientSessionXodusLocalPersistence extends XodusLocalPersistence im
         if (willPublish.getPayload() != null) {
             return;
         }
-        final Long payloadId = willPublish.getPayloadId();
-        final byte[] payload = payloadPersistence.getPayloadOrNull(payloadId);
+        final byte[] payload = payloadPersistence.getPayloadOrNull(willPublish.getPublishId());
         if (payload == null) {
             clientSession.setWillPublish(null);
-            log.warn("Will Payload for payloadid {} not found", payloadId);
+            log.warn("Will Payload for payloadid {} not found", willPublish.getPublishId());
             return;
         }
         willPublish.getMqttWillPublish().setPayload(payload);

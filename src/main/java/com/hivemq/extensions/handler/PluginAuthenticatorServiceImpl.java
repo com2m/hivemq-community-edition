@@ -18,7 +18,6 @@ package com.hivemq.extensions.handler;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.inject.Inject;
-import com.google.inject.Singleton;
 import com.hivemq.bootstrap.netty.ChannelDependencies;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.configuration.service.InternalConfigurations;
@@ -26,8 +25,8 @@ import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.auth.parameter.AuthenticatorProviderInput;
 import com.hivemq.extension.sdk.api.client.parameter.ServerInformation;
 import com.hivemq.extension.sdk.api.packets.auth.ModifiableDefaultPermissions;
+import com.hivemq.extensions.ExtensionPriorityComparator;
 import com.hivemq.extensions.HiveMQExtensions;
-import com.hivemq.extensions.PluginPriorityComparator;
 import com.hivemq.extensions.auth.*;
 import com.hivemq.extensions.auth.parameter.AuthenticatorProviderInputImpl;
 import com.hivemq.extensions.auth.parameter.ModifiableClientSettingsImpl;
@@ -41,7 +40,7 @@ import com.hivemq.extensions.services.auth.WrappedAuthenticatorProvider;
 import com.hivemq.mqtt.handler.auth.MqttAuthSender;
 import com.hivemq.mqtt.handler.connack.MqttConnacker;
 import com.hivemq.mqtt.handler.connect.ConnectHandler;
-import com.hivemq.mqtt.handler.disconnect.Mqtt5ServerDisconnector;
+import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnector;
 import com.hivemq.mqtt.message.auth.AUTH;
 import com.hivemq.mqtt.message.connect.CONNECT;
 import com.hivemq.mqtt.message.mqtt5.Mqtt5UserProperties;
@@ -52,6 +51,7 @@ import com.hivemq.util.ReasonStrings;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 
+import javax.inject.Singleton;
 import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
 
@@ -78,14 +78,14 @@ public class PluginAuthenticatorServiceImpl implements PluginAuthenticatorServic
 
     private final @NotNull ConnectHandler connectHandler;
     private final @NotNull MqttConnacker connacker;
-    private final @NotNull Mqtt5ServerDisconnector disconnector;
+    private final @NotNull MqttServerDisconnector disconnector;
     private final @NotNull MqttAuthSender authSender;
     private final @NotNull Authenticators authenticators;
     private final @NotNull ChannelDependencies channelDependencies;
     private final @NotNull PluginOutPutAsyncer asyncer;
     private final @NotNull PluginTaskExecutorService pluginTaskExecutorService;
     private final @NotNull ServerInformation serverInformation;
-    private final @NotNull PluginPriorityComparator priorityComparator;
+    private final @NotNull ExtensionPriorityComparator priorityComparator;
     private final boolean validateUTF8;
     private final int timeout;
 
@@ -93,7 +93,7 @@ public class PluginAuthenticatorServiceImpl implements PluginAuthenticatorServic
     public PluginAuthenticatorServiceImpl(
             final @NotNull ConnectHandler connectHandler,
             final @NotNull MqttConnacker connacker,
-            final @NotNull Mqtt5ServerDisconnector disconnector,
+            final @NotNull MqttServerDisconnector disconnector,
             final @NotNull MqttAuthSender authSender,
             final @NotNull FullConfigurationService configurationService,
             final @NotNull Authenticators authenticators,
@@ -111,7 +111,7 @@ public class PluginAuthenticatorServiceImpl implements PluginAuthenticatorServic
         this.asyncer = asyncer;
         this.pluginTaskExecutorService = pluginTaskExecutorService;
         this.authSender = authSender;
-        this.priorityComparator = new PluginPriorityComparator(extensions);
+        this.priorityComparator = new ExtensionPriorityComparator(extensions);
         this.serverInformation = serverInformation;
         this.timeout = InternalConfigurations.AUTH_PROCESS_TIMEOUT.get();
         this.validateUTF8 = configurationService.securityConfiguration().validateUTF8();
@@ -265,7 +265,8 @@ public class PluginAuthenticatorServiceImpl implements PluginAuthenticatorServic
                     Mqtt5DisconnectReasonCode.BAD_AUTHENTICATION_METHOD,
                     reasonString,
                     Mqtt5UserProperties.NO_USER_PROPERTIES,
-                    true);
+                    true,
+                    false);
         } else {
             connacker.connackError(
                     ctx.channel(),
@@ -287,7 +288,8 @@ public class PluginAuthenticatorServiceImpl implements PluginAuthenticatorServic
                     Mqtt5DisconnectReasonCode.NOT_AUTHORIZED,
                     ReasonStrings.RE_AUTH_FAILED_NO_AUTHENTICATOR,
                     Mqtt5UserProperties.NO_USER_PROPERTIES,
-                    true);
+                    true,
+                    false);
         } else {
             connacker.connackError(
                     ctx.channel(),
@@ -303,14 +305,15 @@ public class PluginAuthenticatorServiceImpl implements PluginAuthenticatorServic
     private @NotNull ModifiableClientSettingsImpl getSettingsFromChannel(final @NotNull Channel channel) {
         final Integer receiveMax = channel.attr(ChannelAttributes.CLIENT_RECEIVE_MAXIMUM).get();
         Preconditions.checkNotNull(receiveMax, "Receive maximum must not be null here");
-        return new ModifiableClientSettingsImpl(receiveMax);
+        final Long queueSizeMaximum = channel.attr(ChannelAttributes.QUEUE_SIZE_MAXIMUM).get();
+        return new ModifiableClientSettingsImpl(receiveMax, queueSizeMaximum);
     }
 
     private @NotNull ClientAuthenticators getClientAuthenticators(final @NotNull ChannelHandlerContext ctx) {
-        ClientAuthenticators clientAuthenticators = ctx.channel().attr(ChannelAttributes.PLUGIN_CLIENT_AUTHENTICATORS).get();
+        ClientAuthenticators clientAuthenticators = ctx.channel().attr(ChannelAttributes.EXTENSION_CLIENT_AUTHENTICATORS).get();
         if (clientAuthenticators == null) {
             clientAuthenticators = new ClientAuthenticatorsImpl(priorityComparator);
-            ctx.channel().attr(ChannelAttributes.PLUGIN_CLIENT_AUTHENTICATORS).set(clientAuthenticators);
+            ctx.channel().attr(ChannelAttributes.EXTENSION_CLIENT_AUTHENTICATORS).set(clientAuthenticators);
         }
         return clientAuthenticators;
     }

@@ -16,8 +16,8 @@
 package com.hivemq.util;
 
 import com.google.common.util.concurrent.SettableFuture;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.configuration.service.entity.Listener;
-import com.hivemq.extension.sdk.api.auth.parameter.OverloadProtectionThrottlingLevel;
 import com.hivemq.extension.sdk.api.client.parameter.ClientInformation;
 import com.hivemq.extension.sdk.api.client.parameter.ConnectionInformation;
 import com.hivemq.extension.sdk.api.packets.auth.ModifiableDefaultPermissions;
@@ -68,6 +68,11 @@ public class ChannelAttributes {
     public static final AttributeKey<SettableFuture<Void>> DISCONNECT_FUTURE = AttributeKey.valueOf("MQTT.DisconnectFuture");
 
 
+
+    /**
+     * This contains the SNI hostname sent by the client if TLS SNI is used
+     */
+    public static final AttributeKey<String> AUTH_SNI_HOSTNAME = AttributeKey.valueOf("Auth.Sni.Hostname");
     public static final AttributeKey<SslClientCertificate> AUTH_CERTIFICATE = AttributeKey.valueOf("Auth.Certificate");
     public static final AttributeKey<String> AUTH_CIPHER_SUITE = AttributeKey.valueOf("Auth.Cipher.Suite");
     public static final AttributeKey<String> AUTH_PROTOCOL = AttributeKey.valueOf("Auth.Protocol");
@@ -87,15 +92,20 @@ public class ChannelAttributes {
 
     public static final AttributeKey<Long> MAX_PACKET_SIZE_SEND = AttributeKey.valueOf("Restriction.MaxPacketSize.Send");
 
-    public static final AttributeKey<ClientContextImpl> PLUGIN_CLIENT_CONTEXT = AttributeKey.valueOf("Extension.Client.Context");
-    public static final AttributeKey<ClientEventListeners> PLUGIN_CLIENT_EVENT_LISTENERS = AttributeKey.valueOf("Extension.Client.Event.Listeners");
-    public static final AttributeKey<Boolean> PLUGIN_CONNECT_EVENT_SENT = AttributeKey.valueOf("Extension.Connect.Event.Sent");
-    public static final AttributeKey<Boolean> PLUGIN_DISCONNECT_EVENT_SENT = AttributeKey.valueOf("Extension.Disconnect.Event.Sent");
-    public static final AttributeKey<ClientAuthenticators> PLUGIN_CLIENT_AUTHENTICATORS = AttributeKey.valueOf("Extension.Client.Authenticators");
-    public static final AttributeKey<ClientAuthorizers> PLUGIN_CLIENT_AUTHORIZERS = AttributeKey.valueOf("Extension.Client.Authorizers");
-    public static final AttributeKey<ClientInformation> PLUGIN_CLIENT_INFORMATION = AttributeKey.valueOf("Extension.Client.Information");
-    public static final AttributeKey<ConnectionInformation> PLUGIN_CONNECTION_INFORMATION = AttributeKey.valueOf("Extension.Connection.Information");
+    public static final AttributeKey<ClientContextImpl> EXTENSION_CLIENT_CONTEXT = AttributeKey.valueOf("Extension.Client.Context");
+    public static final AttributeKey<ClientEventListeners> EXTENSION_CLIENT_EVENT_LISTENERS = AttributeKey.valueOf("Extension.Client.Event.Listeners");
+    public static final AttributeKey<Boolean> EXTENSION_CONNECT_EVENT_SENT = AttributeKey.valueOf("Extension.Connect.Event.Sent");
+    public static final AttributeKey<Boolean> EXTENSION_DISCONNECT_EVENT_SENT = AttributeKey.valueOf("Extension.Disconnect.Event.Sent");
+    public static final AttributeKey<ClientAuthenticators> EXTENSION_CLIENT_AUTHENTICATORS = AttributeKey.valueOf("Extension.Client.Authenticators");
+    public static final AttributeKey<ClientAuthorizers> EXTENSION_CLIENT_AUTHORIZERS = AttributeKey.valueOf("Extension.Client.Authorizers");
+    public static final AttributeKey<ClientInformation> EXTENSION_CLIENT_INFORMATION = AttributeKey.valueOf("Extension.Client.Information");
+    public static final AttributeKey<ConnectionInformation> EXTENSION_CONNECTION_INFORMATION = AttributeKey.valueOf("Extension.Connection.Information");
 
+
+    /**
+     * The time at which the clients CONNECT message was received by the broker.
+     */
+    public static final AttributeKey<Long> CONNECT_RECEIVED_TIMESTAMP = AttributeKey.valueOf("Connect.Received.Timestamp");
 
     /**
      * This key contains the actual listener a client connected to
@@ -117,6 +127,10 @@ public class ChannelAttributes {
      */
     public static final AttributeKey<AtomicInteger> IN_FLIGHT_MESSAGES = AttributeKey.valueOf("Client.InFlightMessages");
 
+    /**
+     * Representation of information regarding the connection of a single client
+     */
+    public static final AttributeKey<ClientConnection> CLIENT_CONNECTION = AttributeKey.valueOf("Client.Connection");
 
     /* *****************
      *      MQTT 5     *
@@ -127,6 +141,8 @@ public class ChannelAttributes {
     public static final AttributeKey<Boolean> CLIENT_ID_ASSIGNED = AttributeKey.valueOf("Client.Identifier.Assigned");
 
     public static final AttributeKey<Integer> CLIENT_RECEIVE_MAXIMUM = AttributeKey.valueOf("Client.Receive.Maximum");
+
+    public static final AttributeKey<Long> QUEUE_SIZE_MAXIMUM = AttributeKey.valueOf("Client.QueueSize.Maximum");
 
     public static final AttributeKey<Boolean> DISCONNECT_EVENT_LOGGED = AttributeKey.valueOf("Disconnect.Event.Logged");
 

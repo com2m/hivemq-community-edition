@@ -42,6 +42,8 @@ import static org.mockito.Mockito.when;
  */
 public class PublishPayloadXodusLocalPersistenceTest {
 
+    private AutoCloseable closeableMock;
+
     @Rule
     public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
@@ -50,22 +52,28 @@ public class PublishPayloadXodusLocalPersistenceTest {
 
     private PublishPayloadXodusLocalPersistence persistence;
 
+    private PersistenceStartup persistenceStartup;
+
     @Before
     public void before() throws Exception {
-        MockitoAnnotations.initMocks(this);
+        closeableMock = MockitoAnnotations.openMocks(this);
 
         InternalConfigurations.PERSISTENCE_CLOSE_RETRIES.set(3);
         InternalConfigurations.PERSISTENCE_CLOSE_RETRY_INTERVAL.set(5);
         InternalConfigurations.PAYLOAD_PERSISTENCE_BUCKET_COUNT.set(8);
         when(localPersistenceFileUtil.getVersionedLocalPersistenceFolder(anyString(), anyString())).thenReturn(temporaryFolder.newFolder());
 
-        persistence = new PublishPayloadXodusLocalPersistence(localPersistenceFileUtil, new EnvironmentUtil(), new PersistenceStartup());
+        persistenceStartup = new PersistenceStartup();
+
+        persistence = new PublishPayloadXodusLocalPersistence(localPersistenceFileUtil, new EnvironmentUtil(), persistenceStartup);
         persistence.start();
     }
 
     @After
-    public void cleanUp() {
+    public void cleanUp() throws Exception {
         persistence.closeDB();
+        persistenceStartup.finish();
+        closeableMock.close();
     }
 
     @Test

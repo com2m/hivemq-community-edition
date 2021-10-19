@@ -17,8 +17,10 @@ package com.hivemq.bootstrap.netty.initializer;
 
 import com.hivemq.bootstrap.netty.ChannelDependencies;
 import com.hivemq.bootstrap.netty.FakeChannelPipeline;
+import com.hivemq.configuration.service.FullConfigurationService;
+import com.hivemq.configuration.service.RestrictionsConfigurationService;
 import com.hivemq.configuration.service.entity.WebsocketListener;
-import com.hivemq.logging.EventLog;
+import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnector;
 import com.hivemq.security.ssl.NonSslHandler;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
@@ -26,7 +28,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import util.DummyHandler;
 
 import javax.inject.Provider;
 
@@ -48,7 +49,13 @@ public class WebsocketChannelInitializerTest {
     private Provider<NonSslHandler> nonSslHandlerProvider;
 
     @Mock
-    private EventLog eventLog;
+    private MqttServerDisconnector disconnector;
+
+    @Mock
+    private FullConfigurationService fullConfigurationService;
+
+    @Mock
+    private RestrictionsConfigurationService restrictionsConfigurationService;
 
     private ChannelPipeline pipeline;
 
@@ -59,7 +66,10 @@ public class WebsocketChannelInitializerTest {
         pipeline = new FakeChannelPipeline();
 
         when(socketChannel.pipeline()).thenReturn(pipeline);
-        when(nonSslHandlerProvider.get()).thenReturn(new NonSslHandler(eventLog));
+        when(nonSslHandlerProvider.get()).thenReturn(new NonSslHandler(disconnector));
+        when(channelDependencies.getConfigurationService()).thenReturn(fullConfigurationService);
+        when(channelDependencies.getRestrictionsConfigurationService()).thenReturn(restrictionsConfigurationService);
+        when(restrictionsConfigurationService.incomingLimit()).thenReturn(0L);
     }
 
     @Test
@@ -70,15 +80,12 @@ public class WebsocketChannelInitializerTest {
                 .port(0)
                 .build();
 
-        final WebsocketChannelInitializer websocketChannelInitializer = new WebsocketChannelInitializer(channelDependencies, websocketListener, nonSslHandlerProvider, eventLog);
-
-        pipeline.addLast(AbstractChannelInitializer.FIRST_ABSTRACT_HANDLER, new DummyHandler());
+        final WebsocketChannelInitializer websocketChannelInitializer = new WebsocketChannelInitializer(channelDependencies, websocketListener, nonSslHandlerProvider);
 
         websocketChannelInitializer.addSpecialHandlers(socketChannel);
 
         assertEquals(NON_SSL_HANDLER, pipeline.names().get(0));
         assertEquals(HTTP_SERVER_CODEC, pipeline.names().get(1));
-        assertEquals(AbstractChannelInitializer.FIRST_ABSTRACT_HANDLER, pipeline.names().get(pipeline.names().size() - 1));
     }
 
 }

@@ -22,10 +22,9 @@ import com.hivemq.extension.sdk.api.client.parameter.ClientInformation;
 import com.hivemq.extension.sdk.api.client.parameter.ConnectionInformation;
 import com.hivemq.extension.sdk.api.interceptor.publish.PublishInboundInterceptor;
 import com.hivemq.extension.sdk.api.packets.publish.AckReasonCode;
+import com.hivemq.extensions.ExtensionInformationUtil;
 import com.hivemq.extensions.HiveMQExtension;
 import com.hivemq.extensions.HiveMQExtensions;
-import com.hivemq.extensions.PluginInformationUtil;
-import com.hivemq.extensions.classloader.IsolatedPluginClassloader;
 import com.hivemq.extensions.client.ClientContextImpl;
 import com.hivemq.extensions.executor.PluginOutPutAsyncer;
 import com.hivemq.extensions.executor.PluginTaskExecutorService;
@@ -35,7 +34,7 @@ import com.hivemq.extensions.interceptor.publish.parameter.PublishInboundInputIm
 import com.hivemq.extensions.interceptor.publish.parameter.PublishInboundOutputImpl;
 import com.hivemq.extensions.packets.publish.ModifiablePublishPacketImpl;
 import com.hivemq.extensions.packets.publish.PublishPacketImpl;
-import com.hivemq.mqtt.handler.disconnect.Mqtt3ServerDisconnector;
+import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnector;
 import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.mqtt.message.dropping.MessageDroppedService;
 import com.hivemq.mqtt.message.mqtt5.Mqtt5UserProperties;
@@ -43,14 +42,13 @@ import com.hivemq.mqtt.message.puback.PUBACK;
 import com.hivemq.mqtt.message.publish.PUBLISH;
 import com.hivemq.mqtt.message.publish.PUBLISHFactory;
 import com.hivemq.mqtt.message.pubrec.PUBREC;
+import com.hivemq.mqtt.message.reason.Mqtt5DisconnectReasonCode;
 import com.hivemq.mqtt.message.reason.Mqtt5PubAckReasonCode;
 import com.hivemq.mqtt.message.reason.Mqtt5PubRecReasonCode;
 import com.hivemq.util.ChannelAttributes;
 import com.hivemq.util.Exceptions;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.SimpleChannelInboundHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -81,8 +79,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @since 4.0.0
  */
 @Singleton
-@ChannelHandler.Sharable
-public class IncomingPublishHandler extends SimpleChannelInboundHandler<PUBLISH> {
+public class IncomingPublishHandler {
 
     private static final Logger log = LoggerFactory.getLogger(IncomingPublishHandler.class);
 
@@ -91,7 +88,7 @@ public class IncomingPublishHandler extends SimpleChannelInboundHandler<PUBLISH>
     private final @NotNull HiveMQExtensions hiveMQExtensions;
     private final @NotNull MessageDroppedService messageDroppedService;
     private final @NotNull PluginAuthorizerService authorizerService;
-    private final @NotNull Mqtt3ServerDisconnector mqttDisconnector;
+    private final @NotNull MqttServerDisconnector mqttDisconnector;
     private final @NotNull FullConfigurationService configurationService;
 
     @Inject
@@ -101,7 +98,7 @@ public class IncomingPublishHandler extends SimpleChannelInboundHandler<PUBLISH>
             final @NotNull HiveMQExtensions hiveMQExtensions,
             final @NotNull MessageDroppedService messageDroppedService,
             final @NotNull PluginAuthorizerService authorizerService,
-            final @NotNull Mqtt3ServerDisconnector mqttDisconnector,
+            final @NotNull MqttServerDisconnector mqttDisconnector,
             final @NotNull FullConfigurationService configurationService) {
 
         this.executorService = executorService;
@@ -113,11 +110,6 @@ public class IncomingPublishHandler extends SimpleChannelInboundHandler<PUBLISH>
         this.configurationService = configurationService;
     }
 
-    @Override
-    public void channelRead0(final @NotNull ChannelHandlerContext ctx, final @NotNull PUBLISH msg) {
-        interceptOrDelegate(ctx, msg);
-    }
-
     /**
      * intercepts the publish message when the channel is active, the client id is set and interceptors are available,
      * otherwise delegates to authorizer
@@ -125,14 +117,10 @@ public class IncomingPublishHandler extends SimpleChannelInboundHandler<PUBLISH>
      * @param ctx     the context of the channel handler
      * @param publish the publish to process
      */
-    private void interceptOrDelegate(final @NotNull ChannelHandlerContext ctx, final @NotNull PUBLISH publish) {
+    public void interceptOrDelegate(final @NotNull ChannelHandlerContext ctx, final @NotNull PUBLISH publish, final @NotNull String clientId) {
         final Channel channel = ctx.channel();
-        final String clientId = channel.attr(ChannelAttributes.CLIENT_ID).get();
-        if (clientId == null) {
-            return;
-        }
 
-        final ClientContextImpl clientContext = channel.attr(ChannelAttributes.PLUGIN_CLIENT_CONTEXT).get();
+        final ClientContextImpl clientContext = channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).get();
         if (clientContext == null) {
             ctx.executor().execute(() -> authorizerService.authorizePublish(ctx, publish));
             return;
@@ -143,8 +131,8 @@ public class IncomingPublishHandler extends SimpleChannelInboundHandler<PUBLISH>
             return;
         }
 
-        final ClientInformation clientInfo = PluginInformationUtil.getAndSetClientInformation(channel, clientId);
-        final ConnectionInformation connectionInfo = PluginInformationUtil.getAndSetConnectionInformation(channel);
+        final ClientInformation clientInfo = ExtensionInformationUtil.getAndSetClientInformation(channel, clientId);
+        final ConnectionInformation connectionInfo = ExtensionInformationUtil.getAndSetConnectionInformation(channel);
 
         final PublishPacketImpl packet = new PublishPacketImpl(publish);
         final PublishInboundInputImpl input = new PublishInboundInputImpl(clientInfo, connectionInfo, packet);
@@ -160,8 +148,7 @@ public class IncomingPublishHandler extends SimpleChannelInboundHandler<PUBLISH>
 
         for (final PublishInboundInterceptor interceptor : interceptors) {
 
-            final HiveMQExtension extension = hiveMQExtensions.getExtensionForClassloader(
-                    (IsolatedPluginClassloader) interceptor.getClass().getClassLoader());
+            final HiveMQExtension extension = hiveMQExtensions.getExtensionForClassloader(interceptor.getClass().getClassLoader());
             if (extension == null) { // disabled extension would be null
                 context.finishInterceptor();
                 continue;
@@ -232,7 +219,7 @@ public class IncomingPublishHandler extends SimpleChannelInboundHandler<PUBLISH>
                 dropMessage(output);
             } else {
                 final PUBLISH finalPublish = PUBLISHFactory.merge(inputHolder.get().getPublishPacket(), publish);
-                ctx.executor().execute(() -> authorizerService.authorizePublish(ctx, finalPublish));
+                authorizerService.authorizePublish(ctx, finalPublish);
             }
         }
 
@@ -249,7 +236,7 @@ public class IncomingPublishHandler extends SimpleChannelInboundHandler<PUBLISH>
                             "Client '" + clientId +
                                     "' (IP: {}) sent a PUBLISH, but its onward delivery was prevented by a publish inbound interceptor. Disconnecting client.",
                             "Sent PUBLISH, but its onward delivery was prevented by a publish inbound interceptor",
-                            null,
+                            Mqtt5DisconnectReasonCode.ADMINISTRATIVE_ACTION,
                             null);
                 } else {
 

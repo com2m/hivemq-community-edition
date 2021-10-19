@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.hivemq.extensions.handler;
 
 import com.hivemq.configuration.service.FullConfigurationService;
@@ -21,10 +22,9 @@ import com.hivemq.extension.sdk.api.async.TimeoutFallback;
 import com.hivemq.extension.sdk.api.client.parameter.ClientInformation;
 import com.hivemq.extension.sdk.api.client.parameter.ConnectionInformation;
 import com.hivemq.extension.sdk.api.interceptor.publish.PublishOutboundInterceptor;
+import com.hivemq.extensions.ExtensionInformationUtil;
 import com.hivemq.extensions.HiveMQExtension;
 import com.hivemq.extensions.HiveMQExtensions;
-import com.hivemq.extensions.PluginInformationUtil;
-import com.hivemq.extensions.classloader.IsolatedPluginClassloader;
 import com.hivemq.extensions.client.ClientContextImpl;
 import com.hivemq.extensions.executor.PluginOutPutAsyncer;
 import com.hivemq.extensions.executor.PluginTaskExecutorService;
@@ -34,11 +34,10 @@ import com.hivemq.extensions.interceptor.publish.parameter.PublishOutboundInputI
 import com.hivemq.extensions.interceptor.publish.parameter.PublishOutboundOutputImpl;
 import com.hivemq.extensions.packets.publish.ModifiableOutboundPublishImpl;
 import com.hivemq.extensions.packets.publish.PublishPacketImpl;
-import com.hivemq.mqtt.handler.publish.PublishStatus;
+import com.hivemq.mqtt.event.PublishDroppedEvent;
 import com.hivemq.mqtt.message.dropping.MessageDroppedService;
 import com.hivemq.mqtt.message.publish.PUBLISH;
 import com.hivemq.mqtt.message.publish.PUBLISHFactory;
-import com.hivemq.mqtt.message.publish.PublishWithFuture;
 import com.hivemq.util.ChannelAttributes;
 import com.hivemq.util.Exceptions;
 import io.netty.channel.*;
@@ -55,8 +54,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @author Silvio Giebl
  */
 @Singleton
-@ChannelHandler.Sharable
-public class PublishOutboundInterceptorHandler extends ChannelOutboundHandlerAdapter {
+public class PublishOutboundInterceptorHandler {
 
     private static final Logger log = LoggerFactory.getLogger(PublishOutboundInterceptorHandler.class);
 
@@ -81,21 +79,7 @@ public class PublishOutboundInterceptorHandler extends ChannelOutboundHandlerAda
         this.messageDroppedService = messageDroppedService;
     }
 
-    @Override
-    public void write(
-            final @NotNull ChannelHandlerContext ctx,
-            final @NotNull Object msg,
-            final @NotNull ChannelPromise promise) {
-
-        if (!(msg instanceof PUBLISH)) {
-            ctx.write(msg, promise);
-            return;
-        }
-        handlePublish(ctx, (PUBLISH) msg, promise);
-    }
-
-    // Returns true if the publish is handled by the outbound interceptor handling
-    private void handlePublish(
+    public void handleOutboundPublish(
             final @NotNull ChannelHandlerContext ctx,
             final @NotNull PUBLISH publish,
             final @NotNull ChannelPromise promise) {
@@ -106,7 +90,7 @@ public class PublishOutboundInterceptorHandler extends ChannelOutboundHandlerAda
             return;
         }
 
-        final ClientContextImpl clientContext = channel.attr(ChannelAttributes.PLUGIN_CLIENT_CONTEXT).get();
+        final ClientContextImpl clientContext = channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).get();
         if (clientContext == null) {
             ctx.write(publish, promise);
             return;
@@ -117,8 +101,8 @@ public class PublishOutboundInterceptorHandler extends ChannelOutboundHandlerAda
             return;
         }
 
-        final ClientInformation clientInfo = PluginInformationUtil.getAndSetClientInformation(channel, clientId);
-        final ConnectionInformation connectionInfo = PluginInformationUtil.getAndSetConnectionInformation(channel);
+        final ClientInformation clientInfo = ExtensionInformationUtil.getAndSetClientInformation(channel, clientId);
+        final ConnectionInformation connectionInfo = ExtensionInformationUtil.getAndSetConnectionInformation(channel);
 
         final PublishPacketImpl packet = new PublishPacketImpl(publish);
         final PublishOutboundInputImpl input = new PublishOutboundInputImpl(clientInfo, connectionInfo, packet);
@@ -129,13 +113,19 @@ public class PublishOutboundInterceptorHandler extends ChannelOutboundHandlerAda
         final PublishOutboundOutputImpl output = new PublishOutboundOutputImpl(asyncer, modifiablePacket);
         final ExtensionParameterHolder<PublishOutboundOutputImpl> outputHolder = new ExtensionParameterHolder<>(output);
 
-        final PublishOutboundInterceptorContext context = new PublishOutboundInterceptorContext(
-                clientId, interceptors.size(), ctx, promise, publish, inputHolder, outputHolder);
+        final PublishOutboundInterceptorContext context = new PublishOutboundInterceptorContext(clientId,
+                interceptors.size(),
+                ctx,
+                promise,
+                publish,
+                inputHolder,
+                outputHolder,
+                messageDroppedService);
 
         for (final PublishOutboundInterceptor interceptor : interceptors) {
 
-            final HiveMQExtension extension = hiveMQExtensions.getExtensionForClassloader(
-                    (IsolatedPluginClassloader) interceptor.getClass().getClassLoader());
+            final HiveMQExtension extension =
+                    hiveMQExtensions.getExtensionForClassloader(interceptor.getClass().getClassLoader());
             if (extension == null) { // disabled extension would be null
                 context.finishInterceptor();
                 continue;
@@ -147,7 +137,7 @@ public class PublishOutboundInterceptorHandler extends ChannelOutboundHandlerAda
         }
     }
 
-    private class PublishOutboundInterceptorContext extends PluginInOutTaskContext<PublishOutboundOutputImpl>
+    static class PublishOutboundInterceptorContext extends PluginInOutTaskContext<PublishOutboundOutputImpl>
             implements Runnable {
 
         private final int interceptorCount;
@@ -157,6 +147,7 @@ public class PublishOutboundInterceptorHandler extends ChannelOutboundHandlerAda
         private final @NotNull PUBLISH publish;
         private final @NotNull ExtensionParameterHolder<PublishOutboundInputImpl> inputHolder;
         private final @NotNull ExtensionParameterHolder<PublishOutboundOutputImpl> outputHolder;
+        private final @NotNull MessageDroppedService messageDroppedService;
 
         PublishOutboundInterceptorContext(
                 final @NotNull String identifier,
@@ -165,10 +156,12 @@ public class PublishOutboundInterceptorHandler extends ChannelOutboundHandlerAda
                 final @NotNull ChannelPromise promise,
                 final @NotNull PUBLISH publish,
                 final @NotNull ExtensionParameterHolder<PublishOutboundInputImpl> inputHolder,
-                final @NotNull ExtensionParameterHolder<PublishOutboundOutputImpl> outputHolder) {
+                final @NotNull ExtensionParameterHolder<PublishOutboundOutputImpl> outputHolder,
+                final @NotNull MessageDroppedService messageDroppedService) {
 
             super(identifier);
             this.interceptorCount = interceptorCount;
+            this.messageDroppedService = messageDroppedService;
             this.counter = new AtomicInteger(0);
             this.ctx = ctx;
             this.promise = promise;
@@ -205,12 +198,11 @@ public class PublishOutboundInterceptorHandler extends ChannelOutboundHandlerAda
         @Override
         public void run() {
             if (outputHolder.get().isPreventDelivery()) {
-                messageDroppedService.extensionPrevented(
-                        getIdentifier(), publish.getTopic(), publish.getQoS().getQosNumber());
+                messageDroppedService.extensionPrevented(getIdentifier(),
+                        publish.getTopic(),
+                        publish.getQoS().getQosNumber());
                 promise.setSuccess();
-                if (publish instanceof PublishWithFuture) {
-                    ((PublishWithFuture) publish).getFuture().set(PublishStatus.DELIVERED);
-                }
+                ctx.fireUserEventTriggered(new PublishDroppedEvent(publish));
             } else {
                 final PUBLISH mergedPublish = PUBLISHFactory.merge(inputHolder.get().getPublishPacket(), publish);
                 ctx.writeAndFlush(mergedPublish, promise);
@@ -242,9 +234,9 @@ public class PublishOutboundInterceptorHandler extends ChannelOutboundHandlerAda
             try {
                 interceptor.onOutboundPublish(input, output);
             } catch (final Throwable e) {
-                log.warn(
-                        "Uncaught exception was thrown from extension with id \"{}\" on outbound PUBLISH interception. " +
-                                "Extensions are responsible for their own exception handling.", extensionId);
+                log.warn("Uncaught exception was thrown from extension with id \"{}\" on outbound PUBLISH interception. " +
+                                "Extensions are responsible for their own exception handling.",
+                        extensionId);
                 log.debug("Original exception:", e);
                 output.forciblyPreventPublishDelivery();
                 Exceptions.rethrowError(e);

@@ -24,7 +24,6 @@ import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.mqtt5.Mqtt5RetainHandling;
 import com.hivemq.mqtt.message.subscribe.Topic;
 import com.hivemq.mqtt.topic.SubscriberWithIdentifiers;
-import com.hivemq.mqtt.topic.SubscriberWithQoS;
 import com.hivemq.mqtt.topic.SubscriptionFlags;
 import org.junit.Before;
 import org.junit.Test;
@@ -417,8 +416,9 @@ public class TestGetSubscribersWithFilterFromTopicTreeImpl {
         topicTree.addTopic("client", new Topic("topic/+", QoS.AT_LEAST_ONCE), sharedFlag, "group");
         topicTree.addTopic("client", new Topic("#", QoS.AT_LEAST_ONCE), sharedFlag, "group");
 
-        final ImmutableSet<SubscriberWithIdentifiers> subscribers = topicTree.getSubscribers("topic/a");
-        assertEquals(3, subscribers.size());
+        final TopicSubscribers topicSubscribers = topicTree.findTopicSubscribers("topic/a");
+        assertEquals(0, topicSubscribers.getSubscribers().size());
+        assertEquals(3, topicSubscribers.getSharedSubscriptions().size());
     }
 
 
@@ -429,7 +429,7 @@ public class TestGetSubscribersWithFilterFromTopicTreeImpl {
         topicTree.addTopic("client1", new Topic("topic/a", QoS.AT_MOST_ONCE, false, false, Mqtt5RetainHandling.SEND, 1), sharedFlag, null);
         topicTree.addTopic("client1", new Topic("topic/+", QoS.AT_LEAST_ONCE, false, false, Mqtt5RetainHandling.SEND, 2), sharedFlag, "group");
 
-        final SubscriberWithIdentifiers subscribers = topicTree.getSubscriber("client1", "topic/a");
+        final SubscriberWithIdentifiers subscribers = topicTree.findSubscriber("client1", "topic/a");
 
         assertEquals(1, subscribers.getSubscriptionIdentifier().length());
         assertTrue(subscribers.getSubscriptionIdentifier().contains(2));
@@ -442,7 +442,7 @@ public class TestGetSubscribersWithFilterFromTopicTreeImpl {
         topicTree.addTopic("client1", new Topic("topic/a", QoS.AT_MOST_ONCE, false, false, Mqtt5RetainHandling.SEND, 1), notSharedFlag, null);
         topicTree.addTopic("client1", new Topic("topic/+", QoS.AT_LEAST_ONCE, false, false, Mqtt5RetainHandling.SEND, 2), notSharedFlag, null);
 
-        final SubscriberWithIdentifiers subscribers = topicTree.getSubscriber("client1", "topic/a");
+        final SubscriberWithIdentifiers subscribers = topicTree.findSubscriber("client1", "topic/a");
 
         assertEquals(2, subscribers.getSubscriptionIdentifier().length());
         assertTrue(subscribers.getSubscriptionIdentifier().contains(1));
@@ -457,7 +457,7 @@ public class TestGetSubscribersWithFilterFromTopicTreeImpl {
         topicTree.addTopic("client1", new Topic("topic/a", QoS.AT_MOST_ONCE, false, false, Mqtt5RetainHandling.SEND, 1), notSharedFlag, null);
         topicTree.addTopic("client1", new Topic("topic/+", QoS.AT_LEAST_ONCE, false, false, Mqtt5RetainHandling.SEND, 2), sharedFlag, "group");
 
-        final SubscriberWithIdentifiers subscribers = topicTree.getSubscriber("client1", "topic/a");
+        final SubscriberWithIdentifiers subscribers = topicTree.findSubscriber("client1", "topic/a");
 
         assertEquals(1, subscribers.getSubscriptionIdentifier().length());
         assertEquals(1, subscribers.getSubscriptionIdentifier().get(0));
@@ -472,8 +472,9 @@ public class TestGetSubscribersWithFilterFromTopicTreeImpl {
         topicTree.addTopic("client", new Topic("topic", QoS.AT_LEAST_ONCE), notSharedFlag, null);
         topicTree.addTopic("client", new Topic("topic", QoS.AT_LEAST_ONCE), sharedFlag, "name");
 
-        final ImmutableSet<SubscriberWithIdentifiers> subscribers = topicTree.getSubscribers("topic");
-        assertEquals(2, subscribers.size());
+        final TopicSubscribers topicSubscribers = topicTree.findTopicSubscribers("topic");
+        assertEquals(1, topicSubscribers.getSubscribers().size());
+        assertEquals(1, topicSubscribers.getSharedSubscriptions().size());
     }
 
     @Test
@@ -538,11 +539,6 @@ public class TestGetSubscribersWithFilterFromTopicTreeImpl {
 
     @NotNull
     public LocalTopicTree.ItemFilter getMatchAllFilter() {
-        return new LocalTopicTree.ItemFilter() {
-            @Override
-            public boolean checkItem(@NotNull final SubscriberWithQoS subscriber) {
-                return true;
-            }
-        };
+        return subscriber -> true;
     }
 }

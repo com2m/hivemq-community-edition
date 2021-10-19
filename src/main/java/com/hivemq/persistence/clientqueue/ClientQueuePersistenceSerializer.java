@@ -102,8 +102,7 @@ public class ClientQueuePersistenceSerializer {
         return serializeKey(key, messageNumber);
     }
 
-    @NotNull
-    private ByteIterable serializeKey(@NotNull final Key key, final long number) {
+    @NotNull ByteIterable serializeKey(@NotNull final Key key, final long number) {
         final byte[] clientBytes = key.getQueueId().getBytes(UTF_8);
         final byte[] result = new byte[clientBytes.length + 1 + Long.BYTES];
 
@@ -300,9 +299,8 @@ public class ClientQueuePersistenceSerializer {
 
         cursor = XodusUtils.serializeShortLengthArray(topic, result, cursor);
         cursor = XodusUtils.serializeLong(message.getTimestamp(), result, cursor);
-        cursor = XodusUtils.serializeLong(message.getLocalPublishId(), result, cursor);
+        cursor = XodusUtils.serializeLong(message.getPublishId(), result, cursor);
         cursor = XodusUtils.serializeShortLengthArray(hivemqId, result, cursor);
-        cursor = XodusUtils.serializeLong(message.getPayloadId(), result, cursor);
         cursor = XodusUtils.serializeLong(message.getMessageExpiryInterval(), result, cursor);
         if (responseTopic != null) {
             cursor = XodusUtils.serializeShortLengthArray(responseTopic, result, cursor);
@@ -370,9 +368,6 @@ public class ClientQueuePersistenceSerializer {
         cursor += Short.BYTES;
         builder.withHivemqId(new String(serialized, cursor, hivemqIdLength, UTF_8));
         cursor += hivemqIdLength;
-
-        builder.withPayloadId(Bytes.readLong(serialized, cursor));
-        cursor += Long.BYTES;
 
         builder.withMessageExpiryInterval(Bytes.readLong(serialized, cursor));
         cursor += Long.BYTES;

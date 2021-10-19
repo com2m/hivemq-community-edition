@@ -20,10 +20,9 @@ import com.hivemq.extension.sdk.api.client.parameter.ClientInformation;
 import com.hivemq.extension.sdk.api.client.parameter.ConnectionInformation;
 import com.hivemq.extension.sdk.api.interceptor.pingreq.PingReqInboundInterceptor;
 import com.hivemq.extension.sdk.api.interceptor.pingresp.PingRespOutboundInterceptor;
+import com.hivemq.extensions.ExtensionInformationUtil;
 import com.hivemq.extensions.HiveMQExtension;
 import com.hivemq.extensions.HiveMQExtensions;
-import com.hivemq.extensions.PluginInformationUtil;
-import com.hivemq.extensions.classloader.IsolatedPluginClassloader;
 import com.hivemq.extensions.client.ClientContextImpl;
 import com.hivemq.extensions.executor.PluginOutPutAsyncer;
 import com.hivemq.extensions.executor.PluginTaskExecutorService;
@@ -51,8 +50,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @author Silvio Giebl
  */
 @Singleton
-@ChannelHandler.Sharable
-public class PingInterceptorHandler extends ChannelDuplexHandler {
+public class PingInterceptorHandler {
 
     private static final Logger log = LoggerFactory.getLogger(PingInterceptorHandler.class);
 
@@ -71,36 +69,17 @@ public class PingInterceptorHandler extends ChannelDuplexHandler {
         this.hiveMQExtensions = hiveMQExtensions;
     }
 
-    @Override
-    public void write(
-            final @NotNull ChannelHandlerContext ctx,
-            final @NotNull Object msg,
-            final @NotNull ChannelPromise promise) {
 
-        if (!(msg instanceof PINGRESP)) {
-            ctx.write(msg, promise);
-            return;
-        }
-        handleOutboundPingResp(ctx, (PINGRESP) msg, promise);
-    }
 
-    @Override
-    public void channelRead(final ChannelHandlerContext ctx, final @NotNull Object msg) {
-        if (!(msg instanceof PINGREQ)) {
-            ctx.fireChannelRead(msg);
-            return;
-        }
-        handleInboundPingReq(ctx, ((PINGREQ) msg));
-    }
 
-    private void handleInboundPingReq(final @NotNull ChannelHandlerContext ctx, final @NotNull PINGREQ pingreq) {
+    public void handleInboundPingReq(final @NotNull ChannelHandlerContext ctx, final @NotNull PINGREQ pingreq) {
         final Channel channel = ctx.channel();
         final String clientId = channel.attr(ChannelAttributes.CLIENT_ID).get();
         if (clientId == null) {
             return;
         }
 
-        final ClientContextImpl clientContext = channel.attr(ChannelAttributes.PLUGIN_CLIENT_CONTEXT).get();
+        final ClientContextImpl clientContext = channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).get();
         if (clientContext == null) {
             ctx.fireChannelRead(pingreq);
             return;
@@ -111,8 +90,8 @@ public class PingInterceptorHandler extends ChannelDuplexHandler {
             return;
         }
 
-        final ClientInformation clientInfo = PluginInformationUtil.getAndSetClientInformation(channel, clientId);
-        final ConnectionInformation connectionInfo = PluginInformationUtil.getAndSetConnectionInformation(channel);
+        final ClientInformation clientInfo = ExtensionInformationUtil.getAndSetClientInformation(channel, clientId);
+        final ConnectionInformation connectionInfo = ExtensionInformationUtil.getAndSetConnectionInformation(channel);
 
         final PingReqInboundInputImpl input = new PingReqInboundInputImpl(clientInfo, connectionInfo);
         final PingReqInboundOutputImpl output = new PingReqInboundOutputImpl(asyncer);
@@ -121,8 +100,7 @@ public class PingInterceptorHandler extends ChannelDuplexHandler {
 
         for (final PingReqInboundInterceptor interceptor : interceptors) {
 
-            final HiveMQExtension extension = hiveMQExtensions.getExtensionForClassloader(
-                    (IsolatedPluginClassloader) interceptor.getClass().getClassLoader());
+            final HiveMQExtension extension = hiveMQExtensions.getExtensionForClassloader(interceptor.getClass().getClassLoader());
             if (extension == null) {
                 context.finishInterceptor();
                 continue;
@@ -134,7 +112,7 @@ public class PingInterceptorHandler extends ChannelDuplexHandler {
         }
     }
 
-    private void handleOutboundPingResp(
+    public void handleOutboundPingResp(
             final @NotNull ChannelHandlerContext ctx,
             final @NotNull PINGRESP pingresp,
             final @NotNull ChannelPromise promise) {
@@ -145,7 +123,7 @@ public class PingInterceptorHandler extends ChannelDuplexHandler {
             return;
         }
 
-        final ClientContextImpl clientContext = channel.attr(ChannelAttributes.PLUGIN_CLIENT_CONTEXT).get();
+        final ClientContextImpl clientContext = channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).get();
         if (clientContext == null) {
             ctx.write(pingresp, promise);
             return;
@@ -156,8 +134,8 @@ public class PingInterceptorHandler extends ChannelDuplexHandler {
             return;
         }
 
-        final ClientInformation clientInfo = PluginInformationUtil.getAndSetClientInformation(channel, clientId);
-        final ConnectionInformation connectionInfo = PluginInformationUtil.getAndSetConnectionInformation(channel);
+        final ClientInformation clientInfo = ExtensionInformationUtil.getAndSetClientInformation(channel, clientId);
+        final ConnectionInformation connectionInfo = ExtensionInformationUtil.getAndSetConnectionInformation(channel);
 
         final PingRespOutboundInputImpl input = new PingRespOutboundInputImpl(clientInfo, connectionInfo);
         final PingRespOutboundOutputImpl output = new PingRespOutboundOutputImpl(asyncer);
@@ -166,8 +144,7 @@ public class PingInterceptorHandler extends ChannelDuplexHandler {
 
         for (final PingRespOutboundInterceptor interceptor : interceptors) {
 
-            final HiveMQExtension extension = hiveMQExtensions.getExtensionForClassloader(
-                    (IsolatedPluginClassloader) interceptor.getClass().getClassLoader());
+            final HiveMQExtension extension = hiveMQExtensions.getExtensionForClassloader(interceptor.getClass().getClassLoader());
             if (extension == null) {
                 context.finishInterceptor();
                 continue;

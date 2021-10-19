@@ -16,17 +16,17 @@
 package com.hivemq.persistence.local.xodus;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Preconditions;
-import com.hivemq.extension.sdk.api.annotations.NotNull;
-import com.hivemq.extension.sdk.api.annotations.Nullable;
+import com.google.common.collect.ImmutableMap;
 import com.hivemq.bootstrap.ioc.lazysingleton.LazySingleton;
 import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.exceptions.UnrecoverableException;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
+import com.hivemq.extensions.iteration.BucketChunkResult;
 import com.hivemq.migration.meta.PersistenceType;
 import com.hivemq.persistence.PersistenceStartup;
 import com.hivemq.persistence.RetainedMessage;
 import com.hivemq.persistence.local.xodus.bucket.Bucket;
-import com.hivemq.persistence.local.xodus.bucket.BucketUtils;
 import com.hivemq.persistence.payload.PublishPayloadPersistence;
 import com.hivemq.persistence.retained.RetainedMessageLocalPersistence;
 import com.hivemq.util.LocalPersistenceFileUtil;
@@ -34,13 +34,14 @@ import com.hivemq.util.PublishUtil;
 import com.hivemq.util.ThreadPreConditions;
 import jetbrains.exodus.ByteIterable;
 import jetbrains.exodus.ExodusException;
-import jetbrains.exodus.env.*;
+import jetbrains.exodus.env.Cursor;
+import jetbrains.exodus.env.StoreConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.PostConstruct;
 import javax.inject.Inject;
-import java.io.File;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -61,7 +62,7 @@ public class RetainedMessageXodusLocalPersistence extends XodusLocalPersistence 
     private static final Logger log = LoggerFactory.getLogger(
             RetainedMessageXodusLocalPersistence.class);
 
-    public static final String PERSISTENCE_VERSION = "040000";
+    public static final String PERSISTENCE_VERSION = "040500";
 
     private final @NotNull PublishPayloadPersistence payloadPersistence;
     private final @NotNull RetainedMessageXodusSerializer serializer;
@@ -131,10 +132,7 @@ public class RetainedMessageXodusLocalPersistence extends XodusLocalPersistence 
 
                         while (cursor.getNext()) {
                             final RetainedMessage message = serializer.deserializeValue(byteIterableToBytes(cursor.getValue()));
-                            final Long payloadId = message.getPayloadId();
-                            if (payloadId != null) {
-                                payloadPersistence.incrementReferenceCounterOnBootstrap(payloadId);
-                            }
+                            payloadPersistence.incrementReferenceCounterOnBootstrap(message.getPublishId());
                             final String topic = serializer.deserializeKey(byteIterableToBytes(cursor.getKey()));
                             topicTrees.get(bucketIndex).add(topic);
                             retainMessageCounter.incrementAndGet();
@@ -151,6 +149,28 @@ public class RetainedMessageXodusLocalPersistence extends XodusLocalPersistence 
     }
 
     @Override
+    public void bootstrapPayloads() {
+        try {
+            for (final Bucket bucket : buckets) {
+                bucket.getEnvironment().executeInReadonlyTransaction(txn -> {
+                    try (final Cursor cursor = bucket.getStore().openCursor(txn)) {
+                        while (cursor.getNext()) {
+                            final RetainedMessage message = serializer.deserializeValue(byteIterableToBytes(cursor.getValue()));
+                            final long payloadId = message.getPublishId();
+                            payloadPersistence.incrementReferenceCounterOnBootstrap(payloadId);
+                        }
+                    }
+                });
+            }
+        } catch (final ExodusException e) {
+            log.error("An error occurred while preparing the Retained Message persistence.");
+            log.debug("Original Exception:", e);
+            throw new UnrecoverableException(false);
+        }
+    }
+
+
+    @Override
     public void clear(final int bucketIndex) {
 
         ThreadPreConditions.startsWith(SINGLE_WRITER_THREAD_PREFIX);
@@ -162,8 +182,7 @@ public class RetainedMessageXodusLocalPersistence extends XodusLocalPersistence 
             final Cursor cursor = bucket.getStore().openCursor(txn);
             while (cursor.getNext()) {
                 final RetainedMessage message = serializer.deserializeValue(byteIterableToBytes(cursor.getValue()));
-                Preconditions.checkNotNull(message.getPayloadId(), "Payload ID must not be null here");
-                payloadPersistence.decrementReferenceCounter(message.getPayloadId());
+                payloadPersistence.decrementReferenceCounter(message.getPublishId());
                 retainMessageCounter.decrementAndGet();
                 cursor.deleteCurrent();
             }
@@ -194,7 +213,7 @@ public class RetainedMessageXodusLocalPersistence extends XodusLocalPersistence 
             log.trace("Removing retained message for topic {}", topic);
             bucket.getStore().delete(txn, key);
             topicTrees.get(bucketIndex).remove(topic);
-            payloadPersistence.decrementReferenceCounter(message.getPayloadId());
+            payloadPersistence.decrementReferenceCounter(message.getPublishId());
             retainMessageCounter.decrementAndGet();
         });
 
@@ -219,16 +238,14 @@ public class RetainedMessageXodusLocalPersistence extends XodusLocalPersistence 
 
                 final RetainedMessage message = serializer.deserializeValue(byteIterableToBytes(byteIterable));
 
-                final Long payloadId = message.getPayloadId();
-
-                final byte[] payload = payloadPersistence.getPayloadOrNull(payloadId);
+                final byte[] payload = payloadPersistence.getPayloadOrNull(message.getPublishId());
                 if (payload == null) {
                     // In case the payload was just deleted, we return the new retained message for this topic (or null if it was removed).
                     payloadIdExpired.set(true);
                     return null;
                 }
 
-                if (PublishUtil.isExpired(message.getTimestamp(), message.getMessageExpiryInterval())) {
+                if (PublishUtil.checkExpiry(message.getTimestamp(), message.getMessageExpiryInterval())) {
                     return null;
                 }
                 message.setMessage(payload);
@@ -266,7 +283,7 @@ public class RetainedMessageXodusLocalPersistence extends XodusLocalPersistence 
                     log.trace("Replacing retained message for topic {}", topic);
                     bucket.getStore().put(txn, bytesToByteIterable(serializer.serializeKey(topic)), bytesToByteIterable(serializer.serializeValue(retainedMessage)));
                     // The previous retained message is replaced, so we have to decrement the reference count.
-                    payloadPersistence.decrementReferenceCounter(retainedMessageFromStore.getPayloadId());
+                    payloadPersistence.decrementReferenceCounter(retainedMessageFromStore.getPublishId());
                 } else {
                     bucket.getStore().put(txn, bytesToByteIterable(serializer.serializeKey(topic)), bytesToByteIterable(serializer.serializeValue(retainedMessage)));
                     log.trace("Creating new retained message for topic {}", topic);
@@ -302,9 +319,9 @@ public class RetainedMessageXodusLocalPersistence extends XodusLocalPersistence 
                 if (cursor.getNext()) {
                     do {
                         final RetainedMessage message = serializer.deserializeValue(byteIterableToBytes(cursor.getValue()));
-                        if (PublishUtil.isExpired(message.getTimestamp(), message.getMessageExpiryInterval())) {
+                        if (PublishUtil.checkExpiry(message.getTimestamp(), message.getMessageExpiryInterval())) {
                             cursor.deleteCurrent();
-                            payloadPersistence.decrementReferenceCounter(message.getPayloadId());
+                            payloadPersistence.decrementReferenceCounter(message.getPublishId());
                             retainMessageCounter.decrementAndGet();
                             topicTrees.get(bucketId).remove(serializer.deserializeKey(byteIterableToBytes(cursor.getKey())));
                         }
@@ -312,6 +329,72 @@ public class RetainedMessageXodusLocalPersistence extends XodusLocalPersistence 
                     } while (cursor.getNext());
                 }
             }
+        });
+    }
+
+    @Override
+    public @NotNull BucketChunkResult<Map<String, @NotNull RetainedMessage>> getAllRetainedMessagesChunk(final int bucketIndex,
+                                                                                                         final @Nullable String lastTopic,
+                                                                                                         final int maxMemory) {
+        ThreadPreConditions.startsWith(SINGLE_WRITER_THREAD_PREFIX);
+        final Bucket bucket = buckets[bucketIndex];
+
+        return bucket.getEnvironment().computeInReadonlyTransaction(txn -> {
+            int usedMemory = 0;
+            final ImmutableMap.Builder<String, RetainedMessage> retrievedMessages = ImmutableMap.builder();
+            String lastFoundTopic = lastTopic;
+            boolean hasNext = true;
+
+            try (final Cursor cursor = bucket.getStore().openCursor(txn)) {
+                if (lastTopic == null) {
+                    hasNext = cursor.getNext();
+                } else {
+                    final ByteIterable lastTopicKey = bytesToByteIterable(serializer.serializeKey(lastFoundTopic));
+                    final ByteIterable foundKey = cursor.getSearchKeyRange(lastTopicKey);
+
+                    if (foundKey == null) {
+                        return new BucketChunkResult<>(retrievedMessages.build(), true, lastTopic, bucketIndex);
+                    }
+
+                    // we already have this one, lets look for the next
+                    if (cursor.getKey().equals(lastTopicKey)) {
+                        //jump to the next key
+                        hasNext = cursor.getNext();
+                    }
+                }
+
+                // we iterate either until the end of the persistence or until the maximum requested messages are found
+                while (hasNext && usedMemory < maxMemory) {
+
+                    final String deserializedTopic = byteIterableToString(cursor.getKey());
+                    final RetainedMessage deserializedMessage = serializer.deserializeValue(byteIterableToBytes(cursor.getValue()));
+
+                    // ignore messages with exceeded message expiry interval
+                    if (PublishUtil.checkExpiry(deserializedMessage.getTimestamp(), deserializedMessage.getMessageExpiryInterval())) {
+                        hasNext = cursor.getNext();
+                        continue;
+                    }
+
+                    final byte[] payload = payloadPersistence.getPayloadOrNull(deserializedMessage.getPublishId());
+
+                    // ignore messages with no payload and log a warning for the fact
+                    if (payload == null) {
+                        log.warn("Could not dereference payload for retained message on topic \"{}\" with payload id \"{}\".",
+                                deserializedTopic, deserializedMessage.getPublishId());
+                        hasNext = cursor.getNext();
+                        continue;
+                    }
+                    deserializedMessage.setMessage(payload);
+
+                    lastFoundTopic = deserializedTopic;
+                    usedMemory += deserializedMessage.getEstimatedSizeInMemory();
+
+                    retrievedMessages.put(lastFoundTopic, deserializedMessage);
+                    hasNext = cursor.getNext();
+                }
+            }
+            // if the cursor has no next value any more we know that there is nothing more to get
+            return new BucketChunkResult<>(retrievedMessages.build(), !hasNext, lastFoundTopic, bucketIndex);
         });
     }
 
@@ -326,11 +409,7 @@ public class RetainedMessageXodusLocalPersistence extends XodusLocalPersistence 
                     while (cursor.getNext()) {
                         final RetainedMessage message = serializer.deserializeValue(byteIterableToBytes(cursor.getValue()));
                         final String topic = serializer.deserializeKey(byteIterableToBytes(cursor.getKey()));
-                        final Long payLoadID = message.getPayloadId();
-                        //we ignore tombstones and deleted at iteration. Tombstones have null payloadId.
-                        if (payLoadID != null) {
-                            callback.onItem(topic, message);
-                        }
+                        callback.onItem(topic, message);
                     }
                 }
             });

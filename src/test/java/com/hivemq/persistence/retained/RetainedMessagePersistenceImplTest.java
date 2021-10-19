@@ -16,10 +16,13 @@
 package com.hivemq.persistence.retained;
 
 import com.google.common.collect.Sets;
+import com.hivemq.extensions.iteration.Chunker;
 import com.hivemq.mqtt.topic.TopicMatcher;
 import com.hivemq.persistence.RetainedMessage;
+import com.hivemq.persistence.SingleWriterService;
 import com.hivemq.persistence.local.xodus.bucket.BucketUtils;
 import com.hivemq.persistence.payload.PublishPayloadPersistence;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -42,6 +45,8 @@ import static org.mockito.Mockito.*;
  */
 public class RetainedMessagePersistenceImplTest {
 
+    private AutoCloseable closeableMock;
+
     @Rule
     public InitFutureUtilsExecutorRule initFutureUtilsExecutorRule = new InitFutureUtilsExecutorRule();
 
@@ -58,13 +63,23 @@ public class RetainedMessagePersistenceImplTest {
 
     private RetainedMessage message;
 
+    private SingleWriterService singleWriterService;
+
     @Before
     public void setUp() throws Exception {
-        MockitoAnnotations.initMocks(this);
-        message = new RetainedMessage(TestMessageUtil.createMqtt3Publish(), 1L, 1000);
+        closeableMock = MockitoAnnotations.openMocks(this);
+        message = new RetainedMessage(TestMessageUtil.createMqtt3Publish(), 1000);
+        singleWriterService = TestSingleWriterFactory.defaultSingleWriter();
         retainedMessagePersistence =
                 new RetainedMessagePersistenceImpl(localPersistence, topicMatcher, payloadPersistence,
-                        TestSingleWriterFactory.defaultSingleWriter());
+                        singleWriterService, new Chunker());
+    }
+
+    @After
+    public void tearDown() throws Exception {
+        retainedMessagePersistence.closeDB();
+        singleWriterService.stop();
+        closeableMock.close();
     }
 
     @Test(expected = NullPointerException.class)
@@ -190,20 +205,7 @@ public class RetainedMessagePersistenceImplTest {
             throw e.getCause();
         }
         verify(localPersistence).put(eq(message), eq("topic"), anyInt());
-    }
-
-    @Test
-    public void test_persist_without_payload() throws Throwable {
-        when(payloadPersistence.add(any(byte[].class), anyLong())).thenReturn(1L);
-        message = new RetainedMessage(TestMessageUtil.createMqtt3Publish(), null, 1000);
-        try {
-            retainedMessagePersistence.persist("topic", message).get();
-        } catch (final InterruptedException | ExecutionException e) {
-            throw e.getCause();
-        }
-        verify(localPersistence).put(eq(message), eq("topic"), anyInt());
-        assertNotNull(message.getPayloadId());
-        assertEquals(1L, message.getPayloadId().longValue());
+        verify(payloadPersistence).add(any(byte[].class), eq(1L), anyLong());
     }
 
     @Test

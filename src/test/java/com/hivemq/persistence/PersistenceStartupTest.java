@@ -16,6 +16,7 @@
 package com.hivemq.persistence;
 
 import com.hivemq.configuration.service.InternalConfigurations;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
@@ -33,6 +34,8 @@ import static org.mockito.Mockito.verify;
  */
 public class PersistenceStartupTest {
 
+    private AutoCloseable closeableMock;
+
     private PersistenceStartup persistenceStartup;
 
     @Mock
@@ -40,12 +43,21 @@ public class PersistenceStartupTest {
 
     @Before
     public void setUp() throws Exception {
-        MockitoAnnotations.initMocks(this);
-        persistenceStartup = new PersistenceStartup();
+        closeableMock = MockitoAnnotations.openMocks(this);
+    }
+
+    @After
+    public void tearDown() throws Exception {
+        if (persistenceStartup != null) {
+            persistenceStartup.finish();
+        }
+        closeableMock.close();
     }
 
     @Test
     public void test_shut_down_stops_persistences() throws InterruptedException {
+
+        persistenceStartup = new PersistenceStartup();
 
         persistenceStartup.submitPersistenceStart(filePersistence);
 
@@ -104,7 +116,7 @@ public class PersistenceStartupTest {
     }
 
     @SuppressWarnings("NullabilityAnnotations")
-    private class TestFilePersistence implements FilePersistence {
+    private static class TestFilePersistence implements FilePersistence {
 
         private final CountDownLatch interruptedLatch;
 

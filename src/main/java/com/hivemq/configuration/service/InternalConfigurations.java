@@ -35,9 +35,19 @@ public class InternalConfigurations {
 	private static final int AVAILABLE_PROCESSORS_TIMES_TWO = Runtime.getRuntime().availableProcessors() * 2;
 	private static final int AVAILABLE_PROCESSORS_TIMES_FOUR = Runtime.getRuntime().availableProcessors() * 4;
 
-	/* ***************
-	 *  Persistences *
-	 *****************/
+    /* ****************
+     *  Single Writer *
+     *****************/
+
+    /**
+     * Activates special SingleWriter for in-memory persistence. The submitted tasks must not be blocking.
+     */
+    public static final AtomicBoolean IN_MEMORY_SINGLE_WRITER = new AtomicBoolean(true);
+
+
+    /* ***************
+     *  Persistences *
+     *****************/
 
 	// The "persistence shutdown grace period" represents the time span,
 	// in which single writer tasks are still processed after the persistence shutdown hook was called (in milliseconds).
@@ -66,24 +76,32 @@ public class InternalConfigurations {
 	//max amount of clients to pull from the peristence for extension iterate chunk
 	public static final int PERSISTENCE_CLIENT_SESSIONS_MAX_CHUNK_SIZE = 2000;
 
-	//The threshold at which the topic tree starts to map entries instead of storing them in an array
-	public static final AtomicInteger TOPIC_TREE_MAP_CREATION_THRESHOLD = new AtomicInteger(16);
-	// The configuration for qos 0 memory hard limit divisor, must be greater than 0.
-	public static final AtomicInteger QOS_0_MEMORY_HARD_LIMIT_DIVISOR = new AtomicInteger(4);
+    //max amount of memory for retained messages to pull from the peristence for extension iterate chunk
+    public static final int PERSISTENCE_RETAINED_MESSAGES_MAX_CHUNK_MEMORY = 10485760; //10 MByte
+
+    //The threshold at which the topic tree starts to map entries instead of storing them in an array
+    public static final AtomicInteger TOPIC_TREE_MAP_CREATION_THRESHOLD = new AtomicInteger(16);
+    // The configuration for qos 0 memory hard limit divisor, must be greater than 0.
+    public static final AtomicInteger QOS_0_MEMORY_HARD_LIMIT_DIVISOR = new AtomicInteger(4);
 
 	// The configuration for qos 0 memory limit per client, must be greater than 0.
 	public static final AtomicInteger QOS_0_MEMORY_LIMIT_PER_CLIENT = new AtomicInteger(1024 * 1024 * 5);
 
-	// The amount of qos 0 messages that are queued if the channel is not writable
-	public static final AtomicInteger NOT_WRITABLE_QUEUE_SIZE = new AtomicInteger(1000);
+    // The configuration for shared sub caching of publish without packet-id
+    public static final AtomicInteger SHARED_SUBSCRIPTION_WITHOUT_PACKET_ID_CACHE_MAX_SIZE = new AtomicInteger(10000);
+
+    // The  expiry in seconds for entries of the cache for the first publish without packetId for shared subscriptions
+    public static final AtomicInteger SHARED_SUBSCRIPTION_WITHOUT_PACKET_ID_CACHE_EXPIRY_SECONDS = new AtomicInteger(60);
+
+    // The amount of qos 0 messages that are queued if the channel is not writable
+    public static final AtomicInteger NOT_WRITABLE_QUEUE_SIZE = new AtomicInteger(1000);
 
 	// The limit of unacknowledged messages that hivemq will handle, regardless of the client receive maximum
 	public static int MAX_INFLIGHT_WINDOW_SIZE = 50;
 
 
-
-	//The maximum allowed size of the passed value for the ConnectionAttributeStore in bytes
-	public static final int CONNECTION_ATTRIBUTE_STORE_MAX_VALUE_SIZE = 10240; //10Kb
+    //The maximum allowed size of the passed value for the ConnectionAttributeStore in bytes
+    public static final int CONNECTION_ATTRIBUTE_STORE_MAX_VALUE_SIZE = 10240; //10Kb
 
 	// The configuration for xodus persistence environment jmx
 	public static final boolean XODUS_PERSISTENCE_ENVIRONMENT_JMX = false;
@@ -105,9 +123,8 @@ public class InternalConfigurations {
 	public static final int XODUS_PERSISTENCE_LOG_MEMORY_PERCENTAGE = 25;
 
 
-
-	// The amount of publishes that are polled per batch
-	public static int PUBLISH_POLL_BATCH_SIZE = 50;
+    // The amount of publishes that are polled per batch
+    public static int PUBLISH_POLL_BATCH_SIZE = 50;
 
 	// The amount of bytes that are polled per batch
 	public static final int PUBLISH_POLL_BATCH_MEMORY = 1024 * 1024 * 5; // 5Mb
@@ -179,7 +196,7 @@ public class InternalConfigurations {
 	 */
 	public static final AtomicBoolean ACKNOWLEDGE_AFTER_PERSIST = new AtomicBoolean(true);
 
-	public static final boolean XODUS_LOG_CACHE_USE_NIO = true;
+    public static final boolean XODUS_LOG_CACHE_USE_NIO = false;
 
 	/**
 	 * The live time of a entry in the shared subscription cache in milliseconds
@@ -191,14 +208,31 @@ public class InternalConfigurations {
 	 */
 	public static final int SHARED_SUBSCRIPTION_CACHE_SIZE = 10000;
 
-	//The memory that is used for rocksdb memtable as a portion of the RAM for the retained message persistence. (size = RAM/configValue)
-	public static final int PAYLOAD_PERSISTENCE_MEMTABLE_SIZE_PORTION = 32;
+    //The memory that is used for rocksdb memtable as a portion of the RAM for the retained message persistence. (size = RAM/configValue)
+    public static final AtomicInteger PAYLOAD_PERSISTENCE_MEMTABLE_SIZE_PORTION = new AtomicInteger(32);
 
-	//The memory that is used for rocksdb block-cache as a portion of the RAM for the retained message persistence. (size = RAM/configValue)
-	public static final int PAYLOAD_PERSISTENCE_BLOCK_CACHE_SIZE_PORTION = 64;
+    //The memory that is used for rocksdb block-cache as a portion of the RAM for the retained message persistence. (size = RAM/configValue)
+    public static final AtomicInteger PAYLOAD_PERSISTENCE_BLOCK_CACHE_SIZE_PORTION = new AtomicInteger(64);
 
 	//The block size used by rocksdb for the retained message persistence in bytes
 	public static final int PAYLOAD_PERSISTENCE_BLOCK_SIZE = 32 * 1024;
+
+    // The period with which stats are written to the LOG file in seconds. Periodic writes are disabled when set to '0'.
+    public static final int ROCKSDB_STATS_PERSIST_PERIOD = 0;
+
+    // The maximum size of each LOG file in bytes
+    public static final int ROCKSDB_MAX_LOG_FILE_SIZE = 1024 * 500; // 500KB
+
+    // The maximum amount of LOG files per RocksDB (bucket)
+    public static final int ROCKSDB_LOG_FILE_NUMBER = 2;
+
+    // The maximum size stats history buffer that is used to dump stats to the LOG file
+    public static final int ROCKSDB_STATS_HISTORY_BUFFER_SIZE = 64 * 1024; // 64KB
+
+    /**
+     * The maximum number of publishes until a flush is triggered on the Netty pipeline.
+     */
+    public static final AtomicInteger MAX_PUBLISHES_BEFORE_FLUSH = new AtomicInteger(128);
 
 
 	/**
@@ -243,10 +277,10 @@ public class InternalConfigurations {
 	 */
 	public static boolean EXPIRE_INFLIGHT_MESSAGES = false;
 
-	/**
-	 *  pubrels are removed after the message expiry.
-	 */
-	public static boolean EXPIRE_INFLIGHT_PUBRELS = false;
+    /**
+     * pubrels are removed after the message expiry.
+     */
+    public static boolean EXPIRE_INFLIGHT_PUBRELS = false;
 
 
 	/* *****************
@@ -268,8 +302,8 @@ public class InternalConfigurations {
 	//Toggles for system metrics via oshi
 	public static final boolean SYSTEM_METRICS_ENABLED = true;
 
-	// register metrics for jmx reporting on startup if enabled
-	public static final boolean JMX_REPORTER_ENABLED = true;
+    // register metrics for jmx reporting on startup if enabled
+    public static final AtomicBoolean JMX_REPORTER_ENABLED = new AtomicBoolean(true);
 
 	/* *****************
 	 *      MQTT 5     *
@@ -280,29 +314,29 @@ public class InternalConfigurations {
 	 */
 	public static final AtomicInteger TOPIC_ALIAS_GLOBAL_MEMORY_HARD_LIMIT = new AtomicInteger(1024 * 1024 * 200); //200Mb
 
-	/**
-	 * the global memory soft limit topic aliases may use in bytes.
-	 */
-	public static final AtomicInteger TOPIC_ALIAS_GLOBAL_MEMORY_SOFT_LIMIT = new AtomicInteger(1024 * 1024 * 50); //50Mb
-	/**
-	 * Disconnect Client with reason code?
-	 */
-	public static final boolean DISCONNECT_WITH_REASON_CODE = true;
+    /**
+     * the global memory soft limit topic aliases may use in bytes.
+     */
+    public static final AtomicInteger TOPIC_ALIAS_GLOBAL_MEMORY_SOFT_LIMIT = new AtomicInteger(1024 * 1024 * 50); //50Mb
+    /**
+     * Disconnect Client with reason code?
+     */
+    public static final AtomicBoolean DISCONNECT_WITH_REASON_CODE = new AtomicBoolean(true);
 
-	/**
-	 * Disconnect Client with reason string?
-	 */
-	public static final boolean DISCONNECT_WITH_REASON_STRING = true;
+    /**
+     * Disconnect Client with reason string?
+     */
+    public static final AtomicBoolean DISCONNECT_WITH_REASON_STRING = new AtomicBoolean(true);
 
-	/**
-	 * Send CONNACK with reason code?
-	 */
-	public static final boolean CONNACK_WITH_REASON_CODE = true;
+    /**
+     * Send CONNACK with reason code?
+     */
+    public static final AtomicBoolean CONNACK_WITH_REASON_CODE = new AtomicBoolean(true);
 
-	/**
-	 * Send CONNACK with reason string?
-	 */
-	public static final boolean CONNACK_WITH_REASON_STRING = true;
+    /**
+     * Send CONNACK with reason string?
+     */
+    public static final AtomicBoolean CONNACK_WITH_REASON_STRING = new AtomicBoolean(true);
 
 	/**
 	 * The maximum allowed size of the user properties in bytes
@@ -368,4 +402,5 @@ public class InternalConfigurations {
 	 */
 	public static final AtomicInteger AUTH_PROCESS_TIMEOUT = new AtomicInteger(30);
 
+    public static final AtomicBoolean PUBLISH_PAYLOAD_FORCE_FLUSH = new AtomicBoolean(true);
 }

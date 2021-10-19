@@ -13,43 +13,67 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.hivemq.throttling.ioc;
 
+import com.hivemq.common.shutdown.HiveMQShutdownHook;
 import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.configuration.service.RestrictionsConfigurationService;
 import com.hivemq.throttling.GlobalTrafficShaperExecutorShutdownHook;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
-import static org.mockito.Mockito.*;
+import java.util.Collection;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.mockito.Mockito.when;
 
 public class GlobalTrafficShapingProviderTest {
 
-    @Mock
-    ShutdownHooks shutdownHooks;
+    private AutoCloseable closeableMock;
 
     @Mock
-    RestrictionsConfigurationService configurationService;
+    private RestrictionsConfigurationService configurationService;
+
+    private ShutdownHooks shutdownHooks;
 
     @Before
     public void setUp() throws Exception {
-
-        MockitoAnnotations.initMocks(this);
+        closeableMock = MockitoAnnotations.openMocks(this);
         when(configurationService.incomingLimit()).thenReturn(20L);
+
+        shutdownHooks = new ShutdownHooks();
+    }
+
+    @After
+    public void tearDown() throws Exception {
+        for (final HiveMQShutdownHook hook : shutdownHooks.getSynchronousHooks().values()) {
+            hook.run();
+        }
+        closeableMock.close();
     }
 
     @Test
     public void test_shutdown_hook_added() {
 
-
-        final GlobalTrafficShapingProvider globalTrafficShapingProvider = new GlobalTrafficShapingProvider(shutdownHooks, configurationService);
+        final GlobalTrafficShapingProvider globalTrafficShapingProvider =
+                new GlobalTrafficShapingProvider(shutdownHooks, configurationService);
 
         globalTrafficShapingProvider.get();
 
-        verify(shutdownHooks).add(any(GlobalTrafficShaperExecutorShutdownHook.class));
+        final Collection<HiveMQShutdownHook> hooks = shutdownHooks.getSynchronousHooks()
+                .values()
+                .stream()
+                .filter(x -> x instanceof GlobalTrafficShaperExecutorShutdownHook)
+                .collect(Collectors.toList());
+
+        assertNotNull(hooks);
+        assertEquals(1, hooks.size());
     }
-
-
 }

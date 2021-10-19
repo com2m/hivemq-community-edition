@@ -37,7 +37,7 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import static com.hivemq.mqtt.message.publish.PUBLISH.MESSAGE_EXPIRY_INTERVAL_NOT_SET;
-import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 
 /**
@@ -88,16 +88,16 @@ public class DropOutgoingPublishesHandlerTest {
                 .withTopic("topic")
                 .withQoS(QoS.AT_MOST_ONCE)
                 .withMessageExpiryInterval(MESSAGE_EXPIRY_INTERVAL_NOT_SET)
-                .withPayloadId(1L)
+                .withPublishId(1L)
                 .withPersistence(publishPayloadPersistence)
                 .build();
 
-        final PublishWithFuture publishWithFuture = new PublishWithFuture(publish, future, 1L, false, publishPayloadPersistence);
-        handler.write(ctx, publishWithFuture, promise);
+        final PublishWithFuture publishWithFuture = new PublishWithFuture(publish, future, false, publishPayloadPersistence);
+        final boolean messageDropped = handler.checkChannelNotWritable(ctx, publishWithFuture, promise);
+        assertTrue(messageDropped);
         assertEquals(PublishStatus.CHANNEL_NOT_WRITABLE, future.get());
         verify(promise).setSuccess();
         verify(messageDroppedService).notWritable("clientId", "topic", 0);
-        verify(publishPayloadPersistence).decrementReferenceCounter(1);
     }
 
     @Test
@@ -109,11 +109,12 @@ public class DropOutgoingPublishesHandlerTest {
                 .withTopic("topic")
                 .withQoS(QoS.AT_LEAST_ONCE)
                 .withMessageExpiryInterval(MESSAGE_EXPIRY_INTERVAL_NOT_SET)
-                .withPayloadId(1L)
+                .withPublishId(1L)
                 .withPersistence(publishPayloadPersistence)
                 .build();
-        final PublishWithFuture publishWithFuture = new PublishWithFuture(publish, future, 1L, false, publishPayloadPersistence);
-        handler.write(ctx, publishWithFuture, promise);
+        final PublishWithFuture publishWithFuture = new PublishWithFuture(publish, future, false, publishPayloadPersistence);
+        final boolean messageDropped = handler.checkChannelNotWritable(ctx, publishWithFuture, promise);
+        assertFalse(messageDropped);
         assertEquals(false, future.isDone()); // will be set in the Ordered topic handler
         verify(promise, never()).setSuccess();
         verify(counter, never()).inc();
@@ -130,11 +131,12 @@ public class DropOutgoingPublishesHandlerTest {
                 .withTopic("topic")
                 .withQoS(QoS.AT_MOST_ONCE)
                 .withMessageExpiryInterval(MESSAGE_EXPIRY_INTERVAL_NOT_SET)
-                .withPayloadId(1L)
+                .withPublishId(1L)
                 .withPersistence(publishPayloadPersistence)
                 .build();
-        final PublishWithFuture publishWithFuture = new PublishWithFuture(publish, future, 1L, false, publishPayloadPersistence);
-        handler.write(ctx, publishWithFuture, promise);
+        final PublishWithFuture publishWithFuture = new PublishWithFuture(publish, future, false, publishPayloadPersistence);
+        final boolean messageDropped = handler.checkChannelNotWritable(ctx, publishWithFuture, promise);
+        assertFalse(messageDropped);
         assertEquals(false, future.isDone()); // will be set in the Ordered topic handler
         verify(promise, never()).setSuccess();
         verify(counter, never()).inc();

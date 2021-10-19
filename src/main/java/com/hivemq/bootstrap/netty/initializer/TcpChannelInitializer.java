@@ -15,10 +15,9 @@
  */
 package com.hivemq.bootstrap.netty.initializer;
 
-import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.bootstrap.netty.ChannelDependencies;
 import com.hivemq.configuration.service.entity.TcpListener;
-import com.hivemq.logging.EventLog;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.security.ssl.NonSslHandler;
 import io.netty.channel.Channel;
 
@@ -37,15 +36,14 @@ public class TcpChannelInitializer extends AbstractChannelInitializer {
 
     public TcpChannelInitializer(@NotNull final ChannelDependencies channelDependencies,
                                  @NotNull final TcpListener tcpListener,
-                                 @NotNull final Provider<NonSslHandler> nonSslHandlerProvider,
-                                 @NotNull final EventLog eventLog) {
-        super(channelDependencies, tcpListener, eventLog);
+                                 @NotNull final Provider<NonSslHandler> nonSslHandlerProvider) {
+        super(channelDependencies, tcpListener);
         this.nonSslHandlerProvider = nonSslHandlerProvider;
     }
 
     @Override
     protected void addSpecialHandlers(@NotNull final Channel ch) {
-        ch.pipeline().addBefore(FIRST_ABSTRACT_HANDLER, NON_SSL_HANDLER, nonSslHandlerProvider.get());
+        ch.pipeline().addFirst(NON_SSL_HANDLER, nonSslHandlerProvider.get());
     }
 
 }

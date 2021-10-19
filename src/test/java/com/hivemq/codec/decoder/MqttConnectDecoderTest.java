@@ -16,13 +16,9 @@
 package com.hivemq.codec.decoder;
 
 import com.hivemq.configuration.HivemqId;
-import com.hivemq.logging.EventLog;
-import com.hivemq.mqtt.handler.connack.MqttConnackSendUtil;
 import com.hivemq.mqtt.handler.connack.MqttConnacker;
-import com.hivemq.mqtt.handler.disconnect.Mqtt3ServerDisconnector;
-import com.hivemq.mqtt.handler.disconnect.Mqtt5ServerDisconnector;
-import com.hivemq.mqtt.handler.disconnect.MqttDisconnectUtil;
 import com.hivemq.mqtt.message.ProtocolVersion;
+import com.hivemq.mqtt.message.reason.Mqtt5ConnAckReasonCode;
 import com.hivemq.util.ChannelAttributes;
 import com.hivemq.util.ClientIds;
 import io.netty.buffer.ByteBuf;
@@ -34,8 +30,10 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import util.TestChannelAttribute;
 import util.TestConfigurationBootstrap;
 
+import static org.junit.Assert.assertNotNull;
 import static org.mockito.Mockito.*;
 
 public class MqttConnectDecoderTest {
@@ -44,10 +42,10 @@ public class MqttConnectDecoderTest {
     Channel channel;
 
     @Mock
-    EventLog eventLog;
+    Attribute<ProtocolVersion> protocolVersionAttribute;
 
     @Mock
-    Attribute<ProtocolVersion> protocolVersionAttribute;
+    private MqttConnacker mqttConnacker;
 
     private MqttConnectDecoder decoder;
 
@@ -58,20 +56,10 @@ public class MqttConnectDecoderTest {
 
         MockitoAnnotations.initMocks(this);
         final HivemqId hiveMQId = new HivemqId();
-
-        final MqttDisconnectUtil mqttDisconnectUtil = new MqttDisconnectUtil(eventLog);
-        final MqttConnackSendUtil mqttConnackSendUtil = new MqttConnackSendUtil(eventLog);
-        final Mqtt5ServerDisconnector mqtt5ServerDisconnector = new Mqtt5ServerDisconnector(mqttDisconnectUtil);
-        final Mqtt3ServerDisconnector mqtt3ServerDisconnector = new Mqtt3ServerDisconnector(mqttDisconnectUtil);
-        final MqttConnacker mqttConnacker = new MqttConnacker(mqttConnackSendUtil);
-
-        decoder = new MqttConnectDecoder(mqtt5ServerDisconnector,
-                mqtt3ServerDisconnector,
-                mqttConnacker,
-                eventLog,
-                new TestConfigurationBootstrap().getFullConfigurationService(),
-                hiveMQId,
-                new ClientIds(hiveMQId));
+        decoder = new MqttConnectDecoder(mqttConnacker,
+                                         new TestConfigurationBootstrap().getFullConfigurationService(),
+                                         hiveMQId,
+                                         new ClientIds(hiveMQId));
     }
 
     @Test
@@ -84,7 +72,7 @@ public class MqttConnectDecoderTest {
 
         decoder.decode(channel, buf, fixedHeader);
 
-        verify(channel).close();
+        verify(mqttConnacker).connackError(eq(channel), anyString(), anyString(), eq(Mqtt5ConnAckReasonCode.UNSUPPORTED_PROTOCOL_VERSION), anyString());
 
     }
 
@@ -98,7 +86,7 @@ public class MqttConnectDecoderTest {
 
         decoder.decode(channel, buf, fixedHeader);
 
-        verify(channel).close();
+        verify(mqttConnacker).connackError(eq(channel), anyString(), anyString(), eq(Mqtt5ConnAckReasonCode.UNSUPPORTED_PROTOCOL_VERSION), anyString());
 
     }
 
@@ -108,6 +96,7 @@ public class MqttConnectDecoderTest {
         final ChannelFuture cf = mock(ChannelFuture.class);
         when(channel.writeAndFlush(any())).thenReturn(cf);
         when(channel.attr(ChannelAttributes.MQTT_VERSION)).thenReturn(protocolVersionAttribute);
+        when(channel.attr(ChannelAttributes.CONNECT_RECEIVED_TIMESTAMP)).thenReturn(new TestChannelAttribute<>(null));
 
         final ByteBuf buf = Unpooled.wrappedBuffer(new byte[]{0, 4, 'M', 'Q', 'T', 'T', 5});
 
@@ -118,6 +107,7 @@ public class MqttConnectDecoderTest {
         }
 
         verify(protocolVersionAttribute).set(ProtocolVersion.MQTTv5);
+        assertNotNull(channel.attr(ChannelAttributes.CONNECT_RECEIVED_TIMESTAMP).get());
 
     }
 
@@ -127,12 +117,14 @@ public class MqttConnectDecoderTest {
         final ChannelFuture cf = mock(ChannelFuture.class);
         when(channel.writeAndFlush(any())).thenReturn(cf);
         when(channel.attr(ChannelAttributes.MQTT_VERSION)).thenReturn(protocolVersionAttribute);
+        when(channel.attr(ChannelAttributes.CONNECT_RECEIVED_TIMESTAMP)).thenReturn(new TestChannelAttribute<>(null));
 
         final ByteBuf buf = Unpooled.wrappedBuffer(new byte[]{0, 4, 'M', 'Q', 'T', 'T', 4});
 
         decoder.decode(channel, buf, fixedHeader);
 
         verify(protocolVersionAttribute).set(ProtocolVersion.MQTTv3_1_1);
+        assertNotNull(channel.attr(ChannelAttributes.CONNECT_RECEIVED_TIMESTAMP).get());
 
     }
 
@@ -142,12 +134,14 @@ public class MqttConnectDecoderTest {
         final ChannelFuture cf = mock(ChannelFuture.class);
         when(channel.writeAndFlush(any())).thenReturn(cf);
         when(channel.attr(ChannelAttributes.MQTT_VERSION)).thenReturn(protocolVersionAttribute);
+        when(channel.attr(ChannelAttributes.CONNECT_RECEIVED_TIMESTAMP)).thenReturn(new TestChannelAttribute<>(null));
 
         final ByteBuf buf = Unpooled.wrappedBuffer(new byte[]{0, 6, 'M', 'Q', 'T', 'T', 3, 1});
 
         decoder.decode(channel, buf, fixedHeader);
 
         verify(protocolVersionAttribute).set(ProtocolVersion.MQTTv3_1);
+        assertNotNull(channel.attr(ChannelAttributes.CONNECT_RECEIVED_TIMESTAMP).get());
 
     }
 
@@ -160,7 +154,7 @@ public class MqttConnectDecoderTest {
 
         decoder.decode(channel, buf, fixedHeader);
 
-        verify(channel).close();
+        verify(mqttConnacker).connackError(eq(channel), anyString(), anyString(), eq(Mqtt5ConnAckReasonCode.UNSUPPORTED_PROTOCOL_VERSION), anyString());
 
     }
 
@@ -173,7 +167,7 @@ public class MqttConnectDecoderTest {
 
         decoder.decode(channel, buf, fixedHeader);
 
-        verify(channel).close();
+        verify(mqttConnacker).connackError(eq(channel), anyString(), anyString(), eq(Mqtt5ConnAckReasonCode.UNSUPPORTED_PROTOCOL_VERSION), anyString());
 
     }
 
@@ -187,7 +181,7 @@ public class MqttConnectDecoderTest {
 
         decoder.decode(channel, buf, fixedHeader);
 
-        verify(channel).close();
+        verify(mqttConnacker).connackError(eq(channel), anyString(), anyString(), eq(Mqtt5ConnAckReasonCode.UNSUPPORTED_PROTOCOL_VERSION), anyString());
 
     }
 }

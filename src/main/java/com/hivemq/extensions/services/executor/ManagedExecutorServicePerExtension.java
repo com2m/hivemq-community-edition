@@ -19,7 +19,6 @@ import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.services.CompletableScheduledFuture;
 import com.hivemq.extension.sdk.api.services.ManagedExtensionExecutorService;
 import com.hivemq.extensions.HiveMQExtensions;
-import com.hivemq.extensions.classloader.IsolatedPluginClassloader;
 
 import java.util.Collection;
 import java.util.List;
@@ -33,17 +32,17 @@ import java.util.stream.Collectors;
 public class ManagedExecutorServicePerExtension implements ManagedExtensionExecutorService {
 
     @NotNull
-    private final GlobalManagedPluginExecutorService managedPluginExecutorService;
+    private final GlobalManagedExtensionExecutorService managedPluginExecutorService;
 
     @NotNull
-    private final IsolatedPluginClassloader classLoader;
+    private final ClassLoader classLoader;
 
     @NotNull
     private final HiveMQExtensions hiveMQExtensions;
 
     public ManagedExecutorServicePerExtension(
-            @NotNull final GlobalManagedPluginExecutorService managedPluginExecutorService,
-            @NotNull final IsolatedPluginClassloader classLoader, @NotNull final HiveMQExtensions hiveMQExtensions) {
+            @NotNull final GlobalManagedExtensionExecutorService managedPluginExecutorService,
+            @NotNull final ClassLoader classLoader, @NotNull final HiveMQExtensions hiveMQExtensions) {
         this.managedPluginExecutorService = managedPluginExecutorService;
         this.classLoader = classLoader;
         this.hiveMQExtensions = hiveMQExtensions;

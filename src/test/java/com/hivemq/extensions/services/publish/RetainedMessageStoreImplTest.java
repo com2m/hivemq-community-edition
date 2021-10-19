@@ -25,11 +25,13 @@ import com.hivemq.extension.sdk.api.services.exception.DoNotImplementException;
 import com.hivemq.extension.sdk.api.services.exception.RateLimitExceededException;
 import com.hivemq.extension.sdk.api.services.publish.RetainedMessageStore;
 import com.hivemq.extension.sdk.api.services.publish.RetainedPublish;
+import com.hivemq.extensions.iteration.AsyncIteratorFactory;
 import com.hivemq.extensions.packets.general.UserPropertiesImpl;
 import com.hivemq.extensions.services.PluginServiceRateLimitService;
-import com.hivemq.extensions.services.executor.GlobalManagedPluginExecutorService;
+import com.hivemq.extensions.services.executor.GlobalManagedExtensionExecutorService;
 import com.hivemq.persistence.RetainedMessage;
 import com.hivemq.persistence.retained.RetainedMessagePersistence;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
@@ -52,6 +54,8 @@ import static org.mockito.Mockito.when;
  */
 public class RetainedMessageStoreImplTest {
 
+    private AutoCloseable closeableMock;
+
     private RetainedMessageStore retainedMessageStore;
 
     @Mock
@@ -60,13 +64,24 @@ public class RetainedMessageStoreImplTest {
     @Mock
     private PluginServiceRateLimitService pluginServiceRateLimitService;
 
+    @Mock
+    private AsyncIteratorFactory asyncIteratorFactory;
+
+    private GlobalManagedExtensionExecutorService managedPluginExecutorService;
+
     @Before
     public void setUp() throws Exception {
-        MockitoAnnotations.initMocks(this);
-        final GlobalManagedPluginExecutorService managedPluginExecutorService = new GlobalManagedPluginExecutorService(Mockito.mock(ShutdownHooks.class));
+        closeableMock = MockitoAnnotations.openMocks(this);
+        managedPluginExecutorService = new GlobalManagedExtensionExecutorService(Mockito.mock(ShutdownHooks.class));
         managedPluginExecutorService.postConstruct();
-        retainedMessageStore = new RetainedMessageStoreImpl(retainedMessagePersistence, managedPluginExecutorService, pluginServiceRateLimitService);
+        retainedMessageStore = new RetainedMessageStoreImpl(retainedMessagePersistence, managedPluginExecutorService, pluginServiceRateLimitService, asyncIteratorFactory);
         when(pluginServiceRateLimitService.rateLimitExceeded()).thenReturn(false);
+    }
+
+    @After
+    public void tearDown() throws Exception {
+        managedPluginExecutorService.shutdown();
+        closeableMock.close();
     }
 
     @Test(expected = RateLimitExceededException.class)

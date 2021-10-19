@@ -17,11 +17,10 @@ package com.hivemq.codec.decoder.mqtt311;
 
 import com.hivemq.codec.decoder.mqtt3.Mqtt311ConnectDecoder;
 import com.hivemq.configuration.HivemqId;
-import com.hivemq.logging.EventLog;
-import com.hivemq.mqtt.handler.connack.MqttConnackSendUtil;
 import com.hivemq.mqtt.handler.connack.MqttConnacker;
-import com.hivemq.mqtt.handler.disconnect.Mqtt3ServerDisconnector;
-import com.hivemq.mqtt.handler.disconnect.MqttDisconnectUtil;
+import com.hivemq.mqtt.message.reason.Mqtt5ConnAckReasonCode;
+import com.hivemq.util.ClientIds;
+import com.hivemq.util.ReasonStrings;
 import io.netty.channel.Channel;
 import io.netty.util.Attribute;
 import io.netty.util.AttributeKey;
@@ -47,7 +46,7 @@ public class Mqtt311ConnectDecoderInvalidFixedHeadersTest {
     Channel channel;
 
     @Mock
-    EventLog eventLog;
+    MqttConnacker connacker;
 
     private Mqtt311ConnectDecoder decoder;
 
@@ -70,9 +69,8 @@ public class Mqtt311ConnectDecoderInvalidFixedHeadersTest {
         MockitoAnnotations.initMocks(this);
         when(channel.attr(any(AttributeKey.class))).thenReturn(mock(Attribute.class));
 
-        decoder = new Mqtt311ConnectDecoder(new MqttConnacker(new MqttConnackSendUtil(eventLog)),
-                new Mqtt3ServerDisconnector(new MqttDisconnectUtil(eventLog)),
-                eventLog,
+        decoder = new Mqtt311ConnectDecoder(connacker,
+                new ClientIds(new HivemqId()),
                 new TestConfigurationBootstrap().getFullConfigurationService(),
                 new HivemqId());
     }
@@ -82,7 +80,10 @@ public class Mqtt311ConnectDecoderInvalidFixedHeadersTest {
 
         assertNull(decoder.decode(channel, null, invalidBitHeader));
 
-        verify(channel).close();
-        verify(eventLog).clientWasDisconnected(any(Channel.class), anyString());
+        verify(connacker).connackError(channel,
+                "A client (IP: {}) connected with an invalid fixed header.",
+                "Invalid CONNECT fixed header",
+                Mqtt5ConnAckReasonCode.MALFORMED_PACKET,
+                ReasonStrings.CONNACK_MALFORMED_PACKET_FIXED_HEADER);
     }
 }

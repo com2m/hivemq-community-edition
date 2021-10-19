@@ -105,7 +105,6 @@ public class PublishStatusFutureCallback implements FutureCallback<PublishStatus
         if (status != PublishStatus.NOT_CONNECTED) {
             checkForNewMessages();
         }
-        payloadPersistence.decrementReferenceCounter(publish.getPayloadId());
         if (packetIdentifier != 0) {
             messageIDPool.returnId(packetIdentifier);
         }
@@ -129,6 +128,6 @@ public class PublishStatusFutureCallback implements FutureCallback<PublishStatus
             return;
         }
 
-        payloadPersistence.decrementReferenceCounter(publish.getPayloadId());
+        payloadPersistence.decrementReferenceCounter(publish.getPublishId());
     }
 }

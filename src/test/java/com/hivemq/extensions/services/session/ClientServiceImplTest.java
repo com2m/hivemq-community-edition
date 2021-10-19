@@ -18,27 +18,21 @@ package com.hivemq.extensions.services.session;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.common.shutdown.ShutdownHooks;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.packets.disconnect.DisconnectReasonCode;
 import com.hivemq.extension.sdk.api.services.exception.RateLimitExceededException;
 import com.hivemq.extension.sdk.api.services.session.ClientService;
 import com.hivemq.extension.sdk.api.services.session.SessionInformation;
-import com.hivemq.extensions.iteration.AsyncIterator;
-import com.hivemq.extensions.iteration.AsyncIteratorFactory;
-import com.hivemq.extensions.iteration.ChunkResult;
-import com.hivemq.extensions.iteration.FetchCallback;
+import com.hivemq.extensions.iteration.*;
 import com.hivemq.extensions.services.PluginServiceRateLimitService;
-import com.hivemq.extensions.services.executor.GlobalManagedPluginExecutorService;
+import com.hivemq.extensions.services.executor.GlobalManagedExtensionExecutorService;
 import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.mqtt.message.connect.MqttWillPublish;
 import com.hivemq.mqtt.message.reason.Mqtt5DisconnectReasonCode;
-import com.hivemq.persistence.clientsession.ChunkCursor;
 import com.hivemq.persistence.clientsession.ClientSession;
 import com.hivemq.persistence.clientsession.ClientSessionPersistence;
 import com.hivemq.persistence.clientsession.ClientSessionWill;
-import com.hivemq.persistence.local.xodus.BucketChunkResult;
-import com.hivemq.persistence.local.xodus.MultipleChunkResult;
 import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.Before;
@@ -325,7 +319,7 @@ public class ClientServiceImplTest {
 
     @NotNull
     private ClientSession getSession(final boolean connected) {
-        return new ClientSession(connected, sessionExpiry, new ClientSessionWill(mock(MqttWillPublish.class), 12345L));
+        return new ClientSession(connected, sessionExpiry, new ClientSessionWill(mock(MqttWillPublish.class), 12345L), 23456L);
     }
 
     @Test(timeout = 10000, expected = RateLimitExceededException.class)
@@ -357,8 +351,8 @@ public class ClientServiceImplTest {
 
         final CountDownLatch latch = new CountDownLatch(1);
         final ExecutorService executor = Executors.newSingleThreadExecutor();
-        final ClientServiceImpl.AllClientsItemCallback itemCallback =
-                new ClientServiceImpl.AllClientsItemCallback(executor, (context, value) -> {
+        final AllItemsItemCallback<SessionInformation> itemCallback =
+                new AllItemsItemCallback<>(executor, (context, value) -> {
                     items.add(value);
                     latch.countDown();
                 });
@@ -380,8 +374,8 @@ public class ClientServiceImplTest {
     public void test_item_callback_abort() throws Exception {
 
         final ExecutorService executor = Executors.newSingleThreadExecutor();
-        final ClientServiceImpl.AllClientsItemCallback itemCallback =
-                new ClientServiceImpl.AllClientsItemCallback(executor, (context, value) -> {
+        final AllItemsItemCallback<SessionInformation> itemCallback =
+                new AllItemsItemCallback<>(executor, (context, value) -> {
                     context.abortIteration();
                 });
 
@@ -400,8 +394,8 @@ public class ClientServiceImplTest {
     public void test_item_callback_exception() throws Throwable {
 
         final ExecutorService executor = Executors.newSingleThreadExecutor();
-        final ClientServiceImpl.AllClientsItemCallback itemCallback =
-                new ClientServiceImpl.AllClientsItemCallback(executor, (context, value) -> {
+        final AllItemsItemCallback<SessionInformation> itemCallback =
+                new AllItemsItemCallback<>(executor, (context, value) -> {
                     throw new RuntimeException("test-exception");
                 });
 
@@ -456,7 +450,7 @@ public class ClientServiceImplTest {
         final ClientServiceImpl.AllClientsFetchCallback fetchCallback =
                 new ClientServiceImpl.AllClientsFetchCallback(null);
 
-        final ChunkResult<ChunkCursor, SessionInformation> chunkResult =
+        final ChunkResult<SessionInformation> chunkResult =
                 fetchCallback.convertToChunkResult(new MultipleChunkResult<Map<String, ClientSession>>(
                         Map.of(
                                 1, new BucketChunkResult<>(Map.of(
@@ -473,9 +467,9 @@ public class ClientServiceImplTest {
     }
 
     @NotNull
-    private GlobalManagedPluginExecutorService getManagedExtensionExecutorService() {
-        final GlobalManagedPluginExecutorService globalManagedPluginExecutorService =
-                new GlobalManagedPluginExecutorService(mock(ShutdownHooks.class));
+    private GlobalManagedExtensionExecutorService getManagedExtensionExecutorService() {
+        final GlobalManagedExtensionExecutorService globalManagedPluginExecutorService =
+                new GlobalManagedExtensionExecutorService(mock(ShutdownHooks.class));
         globalManagedPluginExecutorService.postConstruct();
         return globalManagedPluginExecutorService;
     }

@@ -26,11 +26,13 @@ import com.hivemq.mqtt.message.publish.PUBLISH;
 import com.hivemq.mqtt.message.publish.PUBLISHFactory;
 import com.hivemq.mqtt.message.pubrel.PUBREL;
 import com.hivemq.persistence.PersistenceStartup;
+import com.hivemq.persistence.clientsession.SharedSubscriptionService;
 import com.hivemq.persistence.local.xodus.EnvironmentUtil;
 import com.hivemq.persistence.local.xodus.bucket.BucketUtils;
 import com.hivemq.persistence.payload.PublishPayloadPersistence;
 import com.hivemq.util.LocalPersistenceFileUtil;
 import org.apache.commons.lang3.RandomStringUtils;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -58,6 +60,8 @@ import static org.mockito.Mockito.*;
 @SuppressWarnings("NullabilityAnnotations")
 public class ClientQueueXodusLocalPersistenceTest {
 
+    private AutoCloseable closeableMock;
+
     @Rule
     public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
@@ -76,9 +80,11 @@ public class ClientQueueXodusLocalPersistenceTest {
 
     private final long byteLimit = 5 * 1024 * 1024;
 
+    private PersistenceStartup persistenceStartup;
+
     @Before
     public void setUp() throws Exception {
-        MockitoAnnotations.initMocks(this);
+        closeableMock = MockitoAnnotations.openMocks(this);
 
         InternalConfigurations.PERSISTENCE_BUCKET_COUNT.set(bucketCount);
         InternalConfigurations.PERSISTENCE_CLOSE_RETRIES.set(3);
@@ -90,14 +96,23 @@ public class ClientQueueXodusLocalPersistenceTest {
         InternalConfigurations.QOS_0_MEMORY_LIMIT_PER_CLIENT.set(1024);
         InternalConfigurations.RETAINED_MESSAGE_QUEUE_SIZE.set(5);
 
+        persistenceStartup = new PersistenceStartup();
+
         persistence = new ClientQueueXodusLocalPersistence(
                 payloadPersistence,
                 new EnvironmentUtil(),
                 localPersistenceFileUtil,
-                new PersistenceStartup(),
+                persistenceStartup,
                 messageDroppedService);
 
         persistence.start();
+    }
+
+    @After
+    public void tearDown() throws Exception {
+        persistence.stop();
+        persistenceStartup.finish();
+        closeableMock.close();
     }
 
     @Test
@@ -127,7 +142,8 @@ public class ClientQueueXodusLocalPersistenceTest {
         }
 
         assertEquals(100, counter.get());
-        assertEquals((Long.MAX_VALUE / 2) + 99, ClientQueuePersistenceSerializer.NEXT_PUBLISH_NUMBER.get());
+        // Highest sequence number is 99 therefore the next number has to be 100
+        assertEquals((Long.MAX_VALUE / 2) + 100, ClientQueuePersistenceSerializer.NEXT_PUBLISH_NUMBER.get());
 
     }
 
@@ -459,7 +475,7 @@ public class ClientQueueXodusLocalPersistenceTest {
                 "client", false, createBigPublish(1, QoS.AT_MOST_ONCE, "topic5", 2, queueLimit), 100L, DISCARD, false,
                 0);
 
-        verify(payloadPersistence).decrementReferenceCounter(1);
+        verify(payloadPersistence).decrementReferenceCounter(2);
         verify(messageDroppedService).qos0MemoryExceeded(eq("client"), eq("topic5"), eq(0), anyLong(), anyLong());
     }
 
@@ -474,7 +490,7 @@ public class ClientQueueXodusLocalPersistenceTest {
         persistence.add(
                 "group", true, createBigPublish(1, QoS.AT_MOST_ONCE, "topic5", 2, queueLimit), 100L, DISCARD, false, 0);
 
-        verify(payloadPersistence).decrementReferenceCounter(1);
+        verify(payloadPersistence).decrementReferenceCounter(2);
         verify(messageDroppedService).qos0MemoryExceededShared(eq("group"), eq("topic5"), eq(0), anyLong(), anyLong());
     }
 
@@ -843,7 +859,7 @@ public class ClientQueueXodusLocalPersistenceTest {
         publishes.add(createBigPublish(1, QoS.AT_MOST_ONCE, "topic2", 2, queueLimit));
         persistence.add("client", false, publishes.build(), 100L, DISCARD, false, 0);
 
-        verify(payloadPersistence).decrementReferenceCounter(1);
+        verify(payloadPersistence).decrementReferenceCounter(2);
         verify(messageDroppedService).qos0MemoryExceeded(eq("client"), eq("topic2"), eq(0), anyLong(), anyLong());
 
         assertEquals(1, persistence.size("client", false, 0));
@@ -1008,7 +1024,7 @@ public class ClientQueueXodusLocalPersistenceTest {
                 payloadPersistence,
                 new EnvironmentUtil(),
                 localPersistenceFileUtil,
-                new PersistenceStartup(),
+                persistenceStartup,
                 messageDroppedService);
 
         persistence.start();
@@ -1041,7 +1057,7 @@ public class ClientQueueXodusLocalPersistenceTest {
                 payloadPersistence,
                 new EnvironmentUtil(),
                 localPersistenceFileUtil,
-                new PersistenceStartup(),
+                persistenceStartup,
                 messageDroppedService);
 
         persistence.start();
@@ -1085,7 +1101,7 @@ public class ClientQueueXodusLocalPersistenceTest {
                 payloadPersistence,
                 new EnvironmentUtil(),
                 localPersistenceFileUtil,
-                new PersistenceStartup(),
+                persistenceStartup,
                 messageDroppedService);
 
         persistence.start();
@@ -1121,6 +1137,46 @@ public class ClientQueueXodusLocalPersistenceTest {
 
     }
 
+    @Test
+    public void test_shared_sub_without_packetId_cache_works() {
+        String sharedSub = "topic" + "\u0000"+ "0";
+
+
+        persistence.add(sharedSub, true, createPublish(1, QoS.AT_LEAST_ONCE, "topic", 1), 21, DISCARD_OLDEST, false, 0);
+        persistence.readNew(sharedSub, true, ImmutableIntArray.of(1), 256000,  0);
+        ImmutableList<PUBLISH> publishes;
+        long startIndex = persistence.sharedSubLastPacketWithoutIdCache.getIfPresent(sharedSub);
+        System.out.println(startIndex);
+
+        // add many new messages
+        for (int i = 2; i < 21; i++) {
+            persistence.add(sharedSub, true, createPublish(i, QoS.AT_LEAST_ONCE, "topic", 1),
+                    20, DISCARD_OLDEST,  false,  0);
+        }
+        // read one
+        persistence.readNew(sharedSub, true, ImmutableIntArray.of(1), 256000, 0);
+        // cache must be increased by one
+        long currentIndex = persistence.sharedSubLastPacketWithoutIdCache.getIfPresent(sharedSub);
+        assertEquals(startIndex + 1, currentIndex);
+        // read one
+        persistence.readNew(sharedSub, true, ImmutableIntArray.of(1), 256000, 0);
+        // cache must be increased by two
+        currentIndex = persistence.sharedSubLastPacketWithoutIdCache.getIfPresent(sharedSub);
+        assertEquals(startIndex + 2, currentIndex);
+        // read 3
+        publishes = persistence.readNew(sharedSub, true, ImmutableIntArray.of(1, 1, 1), 256000 , 0);
+        assertEquals(3, publishes.size());
+        // cache must be increased by at least 3 and 5 at max (5 would be perfect, but we cant update it while iterating,
+        // because we dont know whether the callback set a packet-id or noz
+        currentIndex = persistence.sharedSubLastPacketWithoutIdCache.getIfPresent(sharedSub);
+        assertTrue(startIndex + 3 <= currentIndex && startIndex + 5 >= currentIndex);
+        //remove inflight marking for the first message
+        persistence.removeInFlightMarker(sharedSub, "hivemqId_pub_1", 0);
+        // cache must be at start
+        currentIndex = persistence.sharedSubLastPacketWithoutIdCache.getIfPresent(sharedSub);
+        assertEquals(startIndex, currentIndex);
+    }
+
     private ImmutableIntArray createPacketIds(final int start, final int size) {
         final ImmutableIntArray.Builder builder = ImmutableIntArray.builder();
         for (int i = start; i < (size + start); i++) {
@@ -1136,7 +1192,7 @@ public class ClientQueueXodusLocalPersistenceTest {
     private PUBLISH createPublish(final int packetId, final QoS qos, final long expiryInterval, final long timestamp) {
         return new PUBLISHFactory.Mqtt5Builder().withPacketIdentifier(packetId)
                 .withQoS(qos)
-                .withPayloadId(1L)
+                .withPublishId(1L)
                 .withPayload("message".getBytes())
                 .withTopic("topic")
                 .withHivemqId("hivemqId")
@@ -1149,7 +1205,7 @@ public class ClientQueueXodusLocalPersistenceTest {
     private PUBLISH createPublish(final int packetId, final QoS qos, final String topic) {
         return new PUBLISHFactory.Mqtt5Builder().withPacketIdentifier(packetId)
                 .withQoS(qos)
-                .withPayloadId(1L)
+                .withPublishId(1L)
                 .withPayload("message".getBytes())
                 .withTopic(topic)
                 .withHivemqId("hivemqId")
@@ -1160,7 +1216,7 @@ public class ClientQueueXodusLocalPersistenceTest {
     private PUBLISH createPublish(final int packetId, final QoS qos, final String topic, final int publishId) {
         return new PUBLISHFactory.Mqtt5Builder().withPacketIdentifier(packetId)
                 .withQoS(qos)
-                .withPayloadId(1L)
+                .withPublishId(1L)
                 .withPayload("message".getBytes())
                 .withTopic(topic)
                 .withHivemqId("hivemqId")
@@ -1173,7 +1229,7 @@ public class ClientQueueXodusLocalPersistenceTest {
     private PUBLISH createPublish(final int packetId, final QoS qos, final String topic, final int publishId, final byte[] message) {
         return new PUBLISHFactory.Mqtt5Builder().withPacketIdentifier(packetId)
                 .withQoS(qos)
-                .withPayloadId(1L)
+                .withPublishId(1L)
                 .withPayload(message)
                 .withTopic(topic)
                 .withHivemqId("hivemqId")
@@ -1186,7 +1242,6 @@ public class ClientQueueXodusLocalPersistenceTest {
             final int packetId, final QoS qos, final String topic, final int publishId, final int queueLimit) {
         return new PUBLISHFactory.Mqtt5Builder().withPacketIdentifier(packetId)
                 .withQoS(qos)
-                .withPayloadId(1L)
                 .withPayload(RandomStringUtils.randomAlphanumeric(queueLimit).getBytes())
                 .withCorrelationData(RandomStringUtils.randomAlphanumeric(65000).getBytes())
                 .withResponseTopic(RandomStringUtils.randomAlphanumeric(65000))
