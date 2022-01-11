@@ -48,19 +48,18 @@ public abstract class AbstractChannelInitializer extends ChannelInitializer<Chan
 
     private static final Logger log = LoggerFactory.getLogger(AbstractChannelInitializer.class);
 
-
     private final @NotNull ChannelDependencies channelDependencies;
     private final @NotNull Listener listener;
-
     private final boolean throttlingEnabled;
+    private final boolean legacyNettyShutdown;
 
     public AbstractChannelInitializer(
-            final @NotNull ChannelDependencies channelDependencies,
-            final @NotNull Listener listener) {
+            final @NotNull ChannelDependencies channelDependencies, final @NotNull Listener listener) {
         this.channelDependencies = channelDependencies;
         this.listener = listener;
         final boolean incomingEnabled = channelDependencies.getRestrictionsConfigurationService().incomingLimit() > 0;
         final boolean outgoingEnabled = InternalConfigurations.OUTGOING_BANDWIDTH_THROTTLING_DEFAULT > 0;
+        this.legacyNettyShutdown = InternalConfigurations.NETTY_SHUTDOWN_LEGACY;
         this.throttlingEnabled = incomingEnabled || outgoingEnabled;
     }
 
@@ -68,10 +67,20 @@ public abstract class AbstractChannelInitializer extends ChannelInitializer<Chan
     protected void initChannel(final @NotNull Channel ch) throws Exception {
 
         Preconditions.checkNotNull(ch, "Channel must never be null");
-        final PublishFlushHandler publishFlushHandler = channelDependencies.createPublishFlushHandler();
-        ch.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(publishFlushHandler));
 
-        ch.attr(ChannelAttributes.LISTENER).set(listener);
+        if (!legacyNettyShutdown && channelDependencies.getShutdownHooks().isShuttingDown()) {
+            //during shutting down, we dont want new clients to create any pipeline,
+            //and we dont want to read from their socket
+            ch.config().setAutoRead(false);
+            ch.close();
+            return;
+        }
+
+        final PublishFlushHandler publishFlushHandler = channelDependencies.createPublishFlushHandler();
+        final ClientConnection clientConnection = new ClientConnection(ch, publishFlushHandler);
+        ch.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+
+        clientConnection.setConnectedListener(listener);
 
         ch.pipeline().addLast(ALL_CHANNELS_GROUP_HANDLER, new ChannelGroupHandler(channelDependencies.getChannelGroup()));
         if (throttlingEnabled) {

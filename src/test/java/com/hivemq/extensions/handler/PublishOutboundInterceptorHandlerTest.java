@@ -17,6 +17,7 @@
 package com.hivemq.extensions.handler;
 
 import com.google.common.collect.ImmutableList;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.interceptor.publish.PublishOutboundInterceptor;
@@ -89,11 +90,15 @@ public class PublishOutboundInterceptorHandlerTest {
 
     private PublishOutboundInterceptorHandler handler;
 
+    private ClientConnection clientConnection;
+
     @Before
     public void setUp() throws Exception {
         MockitoAnnotations.initMocks(this);
         channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.CLIENT_ID).set("test_client");
+        clientConnection = new ClientConnection(channel, null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId("test_client");
         configurationService = new TestConfigurationBootstrap().getFullConfigurationService();
 
         handler = new PublishOutboundInterceptorHandler(asyncer,
@@ -122,7 +127,7 @@ public class PublishOutboundInterceptorHandlerTest {
 
     @Test(timeout = 5_000)
     public void test_client_id_null() {
-        channel.attr(ChannelAttributes.CLIENT_ID).set(null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId(null);
         channel.writeOutbound(TestMessageUtil.createFullMqtt5Publish());
         final PUBLISH publish = channel.readOutbound();
         assertNull(publish);
@@ -140,8 +145,8 @@ public class PublishOutboundInterceptorHandlerTest {
         final PublishOutboundInterceptor interceptor = getIsolatedInterceptor();
         when(clientContext.getPublishOutboundInterceptors()).thenReturn(ImmutableList.of(interceptor));
 
-        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
         channel.writeOutbound(TestMessageUtil.createFullMqtt5Publish());
         final PUBLISH publish = channel.readOutbound();
         assertNotNull(publish);

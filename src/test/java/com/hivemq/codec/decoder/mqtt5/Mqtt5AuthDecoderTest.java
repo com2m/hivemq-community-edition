@@ -16,6 +16,7 @@
 package com.hivemq.codec.decoder.mqtt5;
 
 import com.google.common.collect.ImmutableList;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.mqtt.message.auth.AUTH;
@@ -23,8 +24,10 @@ import com.hivemq.mqtt.message.mqtt5.MqttUserProperty;
 import com.hivemq.mqtt.message.reason.Mqtt5AuthReasonCode;
 import com.hivemq.util.ChannelAttributes;
 import io.netty.buffer.ByteBuf;
+import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.Before;
 import org.junit.Test;
+import util.TestMqttDecoder;
 
 import static org.junit.Assert.*;
 
@@ -33,12 +36,13 @@ import static org.junit.Assert.*;
  */
 public class Mqtt5AuthDecoderTest extends AbstractMqtt5DecoderTest {
 
-    private final Mqtt5AuthReasonCode reasonCode = Mqtt5AuthReasonCode.CONTINUE_AUTHENTICATION;
+    private final @NotNull Mqtt5AuthReasonCode reasonCode = Mqtt5AuthReasonCode.CONTINUE_AUTHENTICATION;
 
     @Before
     public void before() {
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv5);
     }
 
     // Tests for Fixed/Variable Header
@@ -61,6 +65,11 @@ public class Mqtt5AuthDecoderTest extends AbstractMqtt5DecoderTest {
 
         decodeNok(encoded0001);
 
+        channel = new EmbeddedChannel(TestMqttDecoder.create());
+        clientConnection = new ClientConnection(channel, null);
+        clientConnection.setProtocolVersion(protocolVersion);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+
         final byte[] encoded0010 = {
                 // fixed header
                 //   type, flags
@@ -78,6 +87,11 @@ public class Mqtt5AuthDecoderTest extends AbstractMqtt5DecoderTest {
 
         decodeNok(encoded0010);
 
+        channel = new EmbeddedChannel(TestMqttDecoder.create());
+        clientConnection = new ClientConnection(channel, null);
+        clientConnection.setProtocolVersion(protocolVersion);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+
         final byte[] encoded0100 = {
                 // fixed header
                 //   type, flags
@@ -94,6 +108,11 @@ public class Mqtt5AuthDecoderTest extends AbstractMqtt5DecoderTest {
         };
 
         decodeNok(encoded0100);
+
+        channel = new EmbeddedChannel(TestMqttDecoder.create());
+        clientConnection = new ClientConnection(channel, null);
+        clientConnection.setProtocolVersion(protocolVersion);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
 
         final byte[] encoded1000 = {
                 // fixed header
@@ -1034,7 +1053,7 @@ public class Mqtt5AuthDecoderTest extends AbstractMqtt5DecoderTest {
     }
 
     @NotNull
-    private AUTH decodeAuth(final byte[] encoded) {
+    private AUTH decodeAuth(final byte @NotNull [] encoded) {
         final ByteBuf byteBuf = channel.alloc().buffer();
         byteBuf.writeBytes(encoded);
         channel.writeInbound(byteBuf);
@@ -1045,16 +1064,12 @@ public class Mqtt5AuthDecoderTest extends AbstractMqtt5DecoderTest {
         return auth;
     }
 
-    private void decodeNok(final byte[] encoded) {
+    private void decodeNok(final byte @NotNull [] encoded) {
         final ByteBuf byteBuf = channel.alloc().buffer();
         byteBuf.writeBytes(encoded);
         channel.writeInbound(byteBuf);
 
         final AUTH auth = channel.readInbound();
         assertNull(auth);
-
-        createChannel();
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
     }
-
 }

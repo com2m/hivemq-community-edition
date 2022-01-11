@@ -16,6 +16,7 @@
 package com.hivemq.mqtt.callback;
 
 import com.google.common.util.concurrent.Futures;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.mqtt.handler.publish.PublishStatus;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.pool.MessageIDPool;
@@ -81,6 +82,7 @@ public class PublishStatusFutureCallbackTest {
         queueId = "queueId";
         publish = TestMessageUtil.createMqtt5Publish();
         channel = new EmbeddedChannel();
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
         client = "client";
 
         when(publishPollService.removeMessageFromSharedQueue(anyString(), anyString())).thenReturn(Futures.immediateFuture(null));
@@ -101,7 +103,7 @@ public class PublishStatusFutureCallbackTest {
     @Test
     public void test_on_success_qos_0_new_messages_available() {
 
-        publish = TestMessageUtil.getDefaultPublishBuilder(payloadPersistence).withQoS(QoS.AT_MOST_ONCE).build();
+        publish = TestMessageUtil.getDefaultPublishBuilder(payloadPersistence).withQoS(QoS.AT_MOST_ONCE).withOnwardQos(QoS.AT_MOST_ONCE).build();
         publishStatusFutureCallback = new PublishStatusFutureCallback(payloadPersistence, publishPollService, sharedSubscription, queueId, publish, messageIDPool, channel, client);
         publishStatusFutureCallback.onSuccess(PublishStatus.DELIVERED);
         verify(publishPollService).pollMessages(client, channel);
@@ -111,8 +113,8 @@ public class PublishStatusFutureCallbackTest {
     @Test
     public void test_on_success_qos_0_no_new_messages_available() {
 
-        channel.attr(ChannelAttributes.IN_FLIGHT_MESSAGES).set(new AtomicInteger(1000));
-        publish = TestMessageUtil.getDefaultPublishBuilder(payloadPersistence).withQoS(QoS.AT_MOST_ONCE).build();
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setInFlightMessages(new AtomicInteger(1000));
+        publish = TestMessageUtil.getDefaultPublishBuilder(payloadPersistence).withQoS(QoS.AT_MOST_ONCE).withOnwardQos(QoS.AT_MOST_ONCE).build();
         publishStatusFutureCallback = new PublishStatusFutureCallback(payloadPersistence, publishPollService, sharedSubscription, queueId, publish, messageIDPool, channel, client);
         publishStatusFutureCallback.onSuccess(PublishStatus.DELIVERED);
         verify(publishPollService, never()).pollMessages(client, channel);
@@ -175,7 +177,7 @@ public class PublishStatusFutureCallbackTest {
     @Test
     public void test_on_failure_no_cancelation() {
 
-        publish = TestMessageUtil.getDefaultPublishBuilder(payloadPersistence).withQoS(QoS.AT_MOST_ONCE).build();
+        publish = TestMessageUtil.getDefaultPublishBuilder(payloadPersistence).withQoS(QoS.AT_MOST_ONCE).withOnwardQos(QoS.AT_MOST_ONCE).build();
         publishStatusFutureCallback = new PublishStatusFutureCallback(payloadPersistence, publishPollService, sharedSubscription, queueId, publish, messageIDPool, channel, client);
         publishStatusFutureCallback.onFailure(TestException.INSTANCE);
         verify(payloadPersistence).decrementReferenceCounter(anyLong());

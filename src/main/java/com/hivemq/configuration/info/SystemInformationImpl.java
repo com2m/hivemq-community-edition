@@ -71,12 +71,13 @@ public class SystemInformationImpl implements SystemInformation {
         this.configFolder = configFolder;
         this.dataFolder = dataFolder;
         this.pluginFolder = pluginFolder;
-
-
         this.runningSince = System.currentTimeMillis();
-        setHiveMQVersion();
-        setFolders();
         processorCount = getPhysicalProcessorCount();
+    }
+
+    public void init() {
+        setHivemqVersion();
+        setFolders();
     }
 
     private int getPhysicalProcessorCount() {
@@ -99,27 +100,42 @@ public class SystemInformationImpl implements SystemInformation {
 
     private void setFolders() {
         setHomeFolder();
-        configFolder = Objects.requireNonNullElse(
+        configFolder = Objects.requireNonNullElseGet(
                 configFolder,
-                setUpHiveMQFolder(SystemProperties.CONFIG_FOLDER, EnvironmentVariables.CONFIG_FOLDER, "conf", false));
+                () -> setUpHiveMQFolder(
+                        SystemProperties.CONFIG_FOLDER,
+                        EnvironmentVariables.CONFIG_FOLDER,
+                        "conf",
+                        false
+                )
+        );
 
         logFolder = setUpHiveMQFolder(SystemProperties.LOG_FOLDER, EnvironmentVariables.LOG_FOLDER, "log", !embedded);
         // Set log folder property for logger-xml-config
         System.setProperty(SystemProperties.LOG_FOLDER, logFolder.getAbsolutePath());
 
-        dataFolder = Objects.requireNonNullElse(
+        dataFolder = Objects.requireNonNullElseGet(
                 dataFolder,
-                setUpHiveMQFolder(SystemProperties.DATA_FOLDER, EnvironmentVariables.DATA_FOLDER, "data", true));
+                () -> setUpHiveMQFolder(
+                        SystemProperties.DATA_FOLDER,
+                        EnvironmentVariables.DATA_FOLDER,
+                        "data",
+                        true
+                )
+        );
 
-        pluginFolder = Objects.requireNonNullElse(
+        pluginFolder = Objects.requireNonNullElseGet(
                 pluginFolder,
-                setUpHiveMQFolder(SystemProperties.EXTENSIONS_FOLDER,
+                () -> setUpHiveMQFolder(
+                        SystemProperties.EXTENSIONS_FOLDER,
                         EnvironmentVariables.EXTENSION_FOLDER,
                         "extensions",
-                        !embedded));
+                        !embedded
+                )
+        );
     }
 
-    private void setHiveMQVersion() {
+    private void setHivemqVersion() {
 
         hivemqVersion = ManifestUtils.getValueFromManifest(HiveMQServer.class, "HiveMQ-Version");
 
@@ -215,8 +231,7 @@ public class SystemInformationImpl implements SystemInformation {
      * @return value of the system property, if not present value of the environment variable, if not present null
      */
     private @Nullable String getSystemPropertyOrEnvironmentVariable(
-            final String propertyName,
-            final String variableName) {
+            final String propertyName, final String variableName) {
         final String systemProperty = System.getProperty(propertyName);
         if (systemProperty != null) {
             return systemProperty;

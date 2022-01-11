@@ -15,7 +15,8 @@
  */
 package com.hivemq.mqtt.handler.disconnect;
 
-import com.hivemq.configuration.HivemqId;
+import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientState;
 import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.extensions.events.OnAuthFailedEvent;
 import com.hivemq.extensions.events.OnServerDisconnectEvent;
@@ -32,13 +33,12 @@ import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.*;
+import static org.mockito.Mockito.mock;
 
 /**
  * @author Florian Limpöck
@@ -48,14 +48,12 @@ import static org.junit.Assert.*;
 public class MqttServerDisconnectorTest {
 
     private MqttServerDisconnector mqttServerDisconnector;
-
-    @Mock
-    EventLog eventLog;
+    private EventLog eventLog;
 
     @Before
     public void setUp() throws Exception {
-        MockitoAnnotations.initMocks(this);
-        mqttServerDisconnector = new MqttServerDisconnectorImpl(eventLog, new HivemqId());
+        eventLog = mock(EventLog.class);
+        mqttServerDisconnector = new MqttServerDisconnectorImpl(eventLog);
     }
 
     @After
@@ -68,8 +66,10 @@ public class MqttServerDisconnectorTest {
     public void test_log_and_close_with_event() throws InterruptedException {
 
         final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.EXTENSION_CONNECT_EVENT_SENT).set(true);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
+        final ClientConnection clientConnection = new ClientConnection(channel, null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().proposeClientState(ClientState.AUTHENTICATED);
 
         final CountDownLatch eventLatch = new CountDownLatch(1);
         final CountDownLatch authLatch = new CountDownLatch(1);
@@ -86,7 +86,9 @@ public class MqttServerDisconnectorTest {
     public void test_log_and_close_without_event() throws InterruptedException {
 
         final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
+        final ClientConnection clientConnection = new ClientConnection(channel, null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
 
         final CountDownLatch eventLatch = new CountDownLatch(1);
         final CountDownLatch authLatch = new CountDownLatch(1);
@@ -106,11 +108,13 @@ public class MqttServerDisconnectorTest {
         InternalConfigurations.DISCONNECT_WITH_REASON_CODE.set(false);
         InternalConfigurations.DISCONNECT_WITH_REASON_STRING.set(false);
 
-        mqttServerDisconnector = new MqttServerDisconnectorImpl(eventLog, new HivemqId());
+        mqttServerDisconnector = new MqttServerDisconnectorImpl(eventLog);
 
         final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.EXTENSION_CONNECT_EVENT_SENT).set(true);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
+        final ClientConnection clientConnection = new ClientConnection(channel, null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().proposeClientState(ClientState.AUTHENTICATED);
 
         final CountDownLatch eventLatch = new CountDownLatch(1);
         final CountDownLatch authLatch = new CountDownLatch(1);
@@ -136,8 +140,10 @@ public class MqttServerDisconnectorTest {
     public void test_disconnect_channel_with_reason_code_and_reason_string() throws InterruptedException {
 
         final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.EXTENSION_CONNECT_EVENT_SENT).set(true);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
+        final ClientConnection clientConnection = new ClientConnection(channel, null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().proposeClientState(ClientState.AUTHENTICATED);
 
         final CountDownLatch eventLatch = new CountDownLatch(1);
         final CountDownLatch authLatch = new CountDownLatch(1);
@@ -162,11 +168,13 @@ public class MqttServerDisconnectorTest {
 
         InternalConfigurations.DISCONNECT_WITH_REASON_STRING.set(false);
 
-        mqttServerDisconnector = new MqttServerDisconnectorImpl(eventLog, new HivemqId());
+        mqttServerDisconnector = new MqttServerDisconnectorImpl(eventLog);
 
         final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.EXTENSION_CONNECT_EVENT_SENT).set(true);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
+        final ClientConnection clientConnection = new ClientConnection(channel, null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().proposeClientState(ClientState.AUTHENTICATED);
 
         final CountDownLatch eventLatch = new CountDownLatch(1);
         final CountDownLatch authLatch = new CountDownLatch(1);
@@ -190,8 +198,9 @@ public class MqttServerDisconnectorTest {
     public void test_disconnect_channel_with_client_id() throws InterruptedException {
 
         final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.EXTENSION_CONNECT_EVENT_SENT).set(true);
-        channel.attr(ChannelAttributes.CLIENT_ID).set("client");
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().proposeClientState(ClientState.AUTHENTICATED);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId("client");
 
         final CountDownLatch eventLatch = new CountDownLatch(1);
         final CountDownLatch authLatch = new CountDownLatch(1);
@@ -208,8 +217,10 @@ public class MqttServerDisconnectorTest {
     public void test_disconnect_channel_with_reason_code() throws InterruptedException {
 
         final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.EXTENSION_CONNECT_EVENT_SENT).set(true);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
+        final ClientConnection clientConnection = new ClientConnection(channel, null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().proposeClientState(ClientState.AUTHENTICATED);
 
         final CountDownLatch eventLatch = new CountDownLatch(1);
         final CountDownLatch authLatch = new CountDownLatch(1);
@@ -233,7 +244,9 @@ public class MqttServerDisconnectorTest {
     public void test_disconnect_channel_with_reason_code_and_reason_string_at_auth() throws InterruptedException {
 
         final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.EXTENSION_CONNECT_EVENT_SENT).set(true);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
+
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().proposeClientState(ClientState.AUTHENTICATED);
 
         final CountDownLatch eventLatch = new CountDownLatch(1);
         final CountDownLatch authLatch = new CountDownLatch(1);
@@ -250,8 +263,10 @@ public class MqttServerDisconnectorTest {
     public void test_disconnect_channel_with_reason_code_and_reason_string_at_auth_mqtt3_1_1() throws InterruptedException {
 
         final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.EXTENSION_CONNECT_EVENT_SENT).set(true);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1_1);
+        final ClientConnection clientConnection = new ClientConnection(channel, null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv3_1_1);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().proposeClientState(ClientState.AUTHENTICATED);
 
         final CountDownLatch eventLatch = new CountDownLatch(1);
         final CountDownLatch authLatch = new CountDownLatch(1);
@@ -268,8 +283,10 @@ public class MqttServerDisconnectorTest {
     public void test_disconnect_channel_with_reason_code_and_reason_string_at_auth_mqtt_3_1() throws InterruptedException {
 
         final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.EXTENSION_CONNECT_EVENT_SENT).set(true);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1);
+        final ClientConnection clientConnection = new ClientConnection(channel, null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv3_1);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().proposeClientState(ClientState.AUTHENTICATED);
 
         final CountDownLatch eventLatch = new CountDownLatch(1);
         final CountDownLatch authLatch = new CountDownLatch(1);
@@ -285,14 +302,18 @@ public class MqttServerDisconnectorTest {
     @Test(expected = NullPointerException.class)
     public void test_disconnect_channel_with_reason_code_null() throws InterruptedException {
         final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
+        final ClientConnection clientConnection = new ClientConnection(channel, null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
         mqttServerDisconnector.disconnect(channel, "log", "eventlog", null, null, Mqtt5UserProperties.NO_USER_PROPERTIES, false, false);
     }
 
     @Test
     public void test_disconnect_channel_with_reason_code_null_mqtt_3() throws InterruptedException {
         final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1);
+        final ClientConnection clientConnection = new ClientConnection(channel, null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv3_1);
         mqttServerDisconnector.disconnect(channel, "log", "eventlog", null, null, Mqtt5UserProperties.NO_USER_PROPERTIES, false, false);
         assertFalse(channel.isActive());
     }

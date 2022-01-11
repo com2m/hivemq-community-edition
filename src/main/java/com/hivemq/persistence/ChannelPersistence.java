@@ -15,6 +15,8 @@
  */
 package com.hivemq.persistence;
 
+import com.google.common.util.concurrent.ListenableFuture;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.annotations.Nullable;
 import io.netty.channel.Channel;
@@ -29,42 +31,54 @@ import java.util.Set;
 public interface ChannelPersistence {
 
     /**
-     * Receive a {@link Channel} from the channel persistence, for a specific client id.
+     * Receive a {@link Channel} from the persistence, for a specific client id.
      *
      * @param clientId The client identifier.
-     * @return The Channel of the client or <null> if not found.
+     * @return The Channel of the client or {@code null} if not found.
      */
-    @Nullable
-    Channel get(@NotNull String clientId);
+    @Nullable Channel get(@NotNull String clientId);
 
     /**
-     * Store a {@link Channel} in the channel persistence, for a specific client id.
+     * Receive a {@link ClientConnection} from the persistence, for a specific client id.
      *
-     * @param clientId The client identifier.
-     * @param value    The Channel of the client.
+     * @param clientId         The client identifier.
+     * @return The ClientConnection of the client or {@code null} if not found.
      */
-    void persist(@NotNull String clientId, @NotNull Channel value);
+    @Nullable ClientConnection getClientConnection(@NotNull String clientId);
 
     /**
-     * Remove a {@link Channel} from the channel persistence, for a specific client id.
+     * Try to put a ClientConnection for the client id. Return the old ClientConnection when there is already one.
      *
-     * @param clientId The client identifier.
-     * @return The Channel of the client or <null> if not found.
+     * @param clientId         The client id of which the channel should be persisted.
+     * @param clientConnection The ClientConnection to persist.
+     * @return The currently persisted ClientConnection.
      */
-    @Nullable
-    Channel remove(@NotNull String clientId);
+    @NotNull ClientConnection persistIfAbsent(@NotNull String clientId, @NotNull ClientConnection clientConnection);
 
     /**
-     * @return the amount of stored channels.
+     * Remove a {@link ClientConnection} from the persistence, for a specific client id.
+     *
+     * @param clientConnection The ClientConnection to remove.
+     */
+    void remove(@NotNull ClientConnection clientConnection);
+
+    /**
+     * @return the amount of stored connections.
      */
     long size();
 
     /**
-     * Receive all channels with their corresponding client identifier as a set of map entries.
+     * Receive all ClientConnections with their corresponding client identifier as a set of map entries.
      *
-     * @return all channels currently stored.
+     * @return all ClientConnections currently stored.
      */
-    @NotNull
-    Set<Map.Entry<String, Channel>> entries();
+    @NotNull Set<Map.Entry<String, ClientConnection>> entries();
 
+    void addServerChannel(@NotNull String listenerName, @NotNull Channel channel);
+
+    @NotNull Set<Map.Entry<String, Channel>> getServerChannels();
+
+    @NotNull ListenableFuture<Void> shutDown();
+
+    void interruptShutdown();
 }

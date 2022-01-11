@@ -16,15 +16,15 @@
 package com.hivemq.util;
 
 import com.google.common.base.Optional;
-import com.hivemq.extension.sdk.api.annotations.NotNull;
-import com.hivemq.extension.sdk.api.annotations.Nullable;
+import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientState;
 import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.configuration.service.entity.Listener;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.security.auth.ClientToken;
 import com.hivemq.security.auth.SslClientCertificate;
 import io.netty.channel.Channel;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -40,8 +40,6 @@ import static com.google.common.base.Preconditions.checkNotNull;
  * @author Christoph Schäbel
  */
 public class ChannelUtils {
-
-    private final static Logger log = LoggerFactory.getLogger(ChannelUtils.class);
 
     private ChannelUtils() {
         //This is a utility class, don't instantiate it!
@@ -75,7 +73,7 @@ public class ChannelUtils {
      * Fetches the clientId from the channel attributes of the passed channel
      */
     public static String getClientId(final @NotNull Channel channel) {
-        return channel.attr(ChannelAttributes.CLIENT_ID).get();
+        return channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().getClientId();
     }
 
     public static ClientToken tokenFromChannel(@NotNull final Channel channel, @NotNull final Long disconnectTimestamp) {
@@ -88,11 +86,12 @@ public class ChannelUtils {
     }
 
     public static boolean messagesInFlight(@NotNull final Channel channel) {
-        final boolean inFlightMessagesSent = channel.attr(ChannelAttributes.IN_FLIGHT_MESSAGES_SENT).get() != null;
+        final ClientConnection clientConnection = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get();
+        final boolean inFlightMessagesSent = clientConnection.isInFlightMessagesSent();
         if (!inFlightMessagesSent) {
             return true;
         }
-        final AtomicInteger inFlightMessages = channel.attr(ChannelAttributes.IN_FLIGHT_MESSAGES).get();
+        final AtomicInteger inFlightMessages = clientConnection.getInFlightMessages();
         if (inFlightMessages == null) {
             return false;
         }
@@ -100,7 +99,7 @@ public class ChannelUtils {
     }
 
     public static int maxInflightWindow(@NotNull final Channel channel) {
-        final Integer clientReceiveMaximum = channel.attr(ChannelAttributes.CLIENT_RECEIVE_MAXIMUM).get();
+        final Integer clientReceiveMaximum = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().getClientReceiveMaximum();
         final int max = InternalConfigurations.MAX_INFLIGHT_WINDOW_SIZE;
         if (clientReceiveMaximum == null) {
             return max;
@@ -110,14 +109,15 @@ public class ChannelUtils {
 
     private static ClientToken getClientToken(@NotNull final Channel channel, @Nullable final Long disconnectTimestamp) {
         checkNotNull(channel, "channel must not be null");
+
+        final ClientConnection clientConnection = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get();
+
         final String clientId = getClientId(channel);
-
         //These things can all be null!
-        final String username = channel.attr(ChannelAttributes.AUTH_USERNAME).get();
-        final byte[] password = channel.attr(ChannelAttributes.AUTH_PASSWORD).get();
-        final SslClientCertificate sslCert = channel.attr(ChannelAttributes.AUTH_CERTIFICATE).get();
-
-        final Listener listener = channel.attr(ChannelAttributes.LISTENER).get();
+        final String username = clientConnection.getAuthUsername();
+        final byte[] password = clientConnection.getAuthPassword();
+        final SslClientCertificate sslCert = clientConnection.getAuthCertificate();
+        final Listener listener = clientConnection.getConnectedListener();
         final Optional<Long> disconnectTimestampOptional = Optional.fromNullable(disconnectTimestamp);
 
         final ClientToken clientToken = new ClientToken(clientId,
@@ -129,8 +129,12 @@ public class ChannelUtils {
                 listener,
                 disconnectTimestampOptional);
 
-        final Boolean authenticated = channel.attr(ChannelAttributes.AUTHENTICATED_OR_AUTHENTICATION_BYPASSED).get();
-        clientToken.setAuthenticated(authenticated != null ? authenticated : false);
+        final ClientState clientState = clientConnection.getClientState();
+        // Clients are seen as authenticated in both states.
+        final boolean authenticatedOrAuthenticating =
+                (clientState == ClientState.AUTHENTICATED) || (clientState == ClientState.RE_AUTHENTICATING);
+
+        clientToken.setAuthenticated(authenticatedOrAuthenticating);
 
         return clientToken;
     }

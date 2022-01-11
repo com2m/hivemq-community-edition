@@ -17,6 +17,7 @@
 package com.hivemq.extensions.handler;
 
 import com.google.common.collect.ImmutableMap;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.configuration.HivemqId;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
@@ -47,9 +48,7 @@ import com.hivemq.util.ChannelAttributes;
 import com.hivemq.util.Exceptions;
 import com.hivemq.util.ReasonStrings;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -101,7 +100,8 @@ public class ConnectInboundInterceptorHandler {
 
     public void handleInboundConnect(final @NotNull ChannelHandlerContext ctx, final @NotNull CONNECT connect) {
         final Channel channel = ctx.channel();
-        final String clientId = channel.attr(ChannelAttributes.CLIENT_ID).get();
+        final ClientConnection clientConnection = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get();
+        final String clientId = clientConnection.getClientId();
         if (clientId == null) {
             return;
         }
@@ -120,7 +120,7 @@ public class ConnectInboundInterceptorHandler {
                 new ConnectInboundProviderInputImpl(serverInformation, clientInfo, connectionInfo);
 
         final long timestamp =
-                Objects.requireNonNullElse(channel.attr(ChannelAttributes.CONNECT_RECEIVED_TIMESTAMP).get(),
+                Objects.requireNonNullElse(clientConnection.getConnectReceivedTimestamp(),
                         System.currentTimeMillis());
         final ConnectPacketImpl packet = new ConnectPacketImpl(connect, timestamp);
         final ConnectInboundInputImpl input = new ConnectInboundInputImpl(clientInfo, connectionInfo, packet);
@@ -214,14 +214,13 @@ public class ConnectInboundInterceptorHandler {
                         reasonString);
             } else {
                 final CONNECT connect = CONNECT.from(inputHolder.get().getConnectPacket(), hivemqId.get());
-                ctx.channel().attr(ChannelAttributes.CLIENT_ID).set(connect.getClientIdentifier());
-                ctx.channel()
-                        .attr(ChannelAttributes.EXTENSION_CLIENT_INFORMATION)
-                        .set(new ClientInformationImpl(connect.getClientIdentifier()));
-                ctx.channel().attr(ChannelAttributes.CLEAN_START).set(connect.isCleanStart());
-                ctx.channel().attr(ChannelAttributes.CONNECT_KEEP_ALIVE).set(connect.getKeepAlive());
-                ctx.channel().attr(ChannelAttributes.AUTH_USERNAME).set(connect.getUsername());
-                ctx.channel().attr(ChannelAttributes.AUTH_PASSWORD).set(connect.getPassword());
+                final ClientConnection clientConnection = ctx.channel().attr(ChannelAttributes.CLIENT_CONNECTION).get();
+                clientConnection.setClientId(connect.getClientIdentifier());
+                clientConnection.setExtensionClientInformation(new ClientInformationImpl(connect.getClientIdentifier()));
+                clientConnection.setCleanStart(connect.isCleanStart());
+                clientConnection.setConnectKeepAlive(connect.getKeepAlive());
+                clientConnection.setAuthUsername(connect.getUsername());
+                clientConnection.setAuthPassword(connect.getPassword());
 
                 ctx.fireChannelRead(connect);
             }

@@ -15,6 +15,7 @@
  */
 package com.hivemq.extensions.auth;
 
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extensions.handler.PluginAuthenticatorServiceImpl;
 import com.hivemq.mqtt.handler.auth.MqttAuthSender;
@@ -62,11 +63,10 @@ public class ConnectAuthContext extends AuthContext<ConnectAuthOutput> {
     @Override
     void succeedAuthentication(final @NotNull ConnectAuthOutput output) {
         super.succeedAuthentication(output);
-        ctx.channel().attr(ChannelAttributes.AUTH_DATA).set(output.getAuthenticationData());
-        ctx.channel()
-                .attr(ChannelAttributes.AUTH_USER_PROPERTIES)
-                .set(Mqtt5UserProperties.of(output.getOutboundUserProperties().asInternalList()));
-        connectHandler.connectSuccessfulAuthenticated(ctx, connect, output.getClientSettings());
+        final ClientConnection clientConnection = ctx.channel().attr(ChannelAttributes.CLIENT_CONNECTION).get();
+        clientConnection.setAuthData(output.getAuthenticationData());
+        clientConnection.setAuthUserProperties(Mqtt5UserProperties.of(output.getOutboundUserProperties().asInternalList()));
+        connectHandler.connectSuccessfulAuthenticated(ctx, clientConnection, connect, output.getClientSettings());
     }
 
     @Override
@@ -84,7 +84,8 @@ public class ConnectAuthContext extends AuthContext<ConnectAuthOutput> {
     @Override
     void undecidedAuthentication(final @NotNull ConnectAuthOutput output) {
         if (initial) {
-            connectHandler.connectSuccessfulUnauthenticated(ctx, connect, output.getClientSettings());
+            final ClientConnection clientConnection = ctx.channel().attr(ChannelAttributes.CLIENT_CONNECTION).get();
+            connectHandler.connectSuccessfulUndecided(ctx, clientConnection, connect, output.getClientSettings());
         } else {
             connacker.connackError(
                     ctx.channel(),

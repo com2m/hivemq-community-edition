@@ -18,9 +18,7 @@ package com.hivemq.mqtt.services;
 import com.google.common.primitives.ImmutableIntArray;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.MoreExecutors;
-import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.configuration.service.MqttConfigurationService;
-import com.hivemq.configuration.service.PersistenceConfigurationService;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.handler.publish.PublishStatus;
 import com.hivemq.mqtt.message.QoS;
@@ -183,6 +181,7 @@ public class PublishDistributorImplTest {
     private PUBLISH createPublish(final @NotNull QoS qos) {
         return new PUBLISHFactory.Mqtt5Builder().withPacketIdentifier(0)
                 .withQoS(qos)
+                .withOnwardQos(qos)
                 .withPayload("message".getBytes())
                 .withTopic("topic")
                 .withHivemqId("hivemqId")

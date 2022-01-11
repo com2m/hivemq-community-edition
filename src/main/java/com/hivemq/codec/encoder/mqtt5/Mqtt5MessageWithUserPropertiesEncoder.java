@@ -16,9 +16,10 @@
 package com.hivemq.codec.encoder.mqtt5;
 
 import com.google.common.base.Preconditions;
-import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.codec.encoder.FixedSizeMessageEncoder;
 import com.hivemq.configuration.service.SecurityConfigurationService;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.event.PublishDroppedEvent;
 import com.hivemq.mqtt.message.Message;
 import com.hivemq.mqtt.message.connack.CONNACK;
@@ -73,7 +74,7 @@ abstract class Mqtt5MessageWithUserPropertiesEncoder<T extends Message> extends 
 
         if (message.getOmittedProperties() > 0) {
 
-            final String clientIdFromChannel = ctx.channel().attr(ChannelAttributes.CLIENT_ID).get();
+            final String clientIdFromChannel = ctx.channel().attr(ChannelAttributes.CLIENT_CONNECTION).get().getClientId();
             final String clientId = clientIdFromChannel != null ? clientIdFromChannel : "UNKNOWN";
 
             final long maximumPacketSize = calculateMaxMessageSize(ctx.channel());
@@ -102,8 +103,10 @@ abstract class Mqtt5MessageWithUserPropertiesEncoder<T extends Message> extends 
 
         int omittedProperties = 0;
         int propertyLength = calculatePropertyLength(message);
+        final ClientConnection clientConnection = ctx.channel().attr(ChannelAttributes.CLIENT_CONNECTION).get();
 
-        if (!securityConfigurationService.allowRequestProblemInformation() || !Objects.requireNonNullElse(ctx.channel().attr(ChannelAttributes.REQUEST_PROBLEM_INFORMATION).get(), Mqtt5CONNECT.DEFAULT_PROBLEM_INFORMATION_REQUESTED)) {
+        if (!securityConfigurationService.allowRequestProblemInformation()
+                || !Objects.requireNonNullElse(clientConnection.getRequestProblemInformation(), Mqtt5CONNECT.DEFAULT_PROBLEM_INFORMATION_REQUESTED)) {
 
             //Must omit user properties and reason string for any other packet than PUBLISH, CONNACK, DISCONNECT
             //if no problem information requested.
@@ -144,7 +147,7 @@ abstract class Mqtt5MessageWithUserPropertiesEncoder<T extends Message> extends 
 
     private @NotNull Long calculateMaxMessageSize(final @NotNull Channel channel) {
         Preconditions.checkNotNull(channel, "A Channel must never be null");
-        final Long maxMessageSize = channel.attr(ChannelAttributes.MAX_PACKET_SIZE_SEND).get();
+        final Long maxMessageSize = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().getMaxPacketSizeSend();
         return Objects.requireNonNullElse(maxMessageSize, (long) MAXIMUM_PACKET_SIZE_LIMIT);
     }
 

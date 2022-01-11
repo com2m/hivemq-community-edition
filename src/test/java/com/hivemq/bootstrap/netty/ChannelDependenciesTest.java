@@ -18,9 +18,14 @@ package com.hivemq.bootstrap.netty;
 import com.hivemq.codec.decoder.MqttConnectDecoder;
 import com.hivemq.codec.decoder.MqttDecoders;
 import com.hivemq.codec.encoder.EncoderFactory;
+import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.configuration.service.RestrictionsConfigurationService;
-import com.hivemq.extensions.handler.*;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extensions.handler.ClientLifecycleEventHandler;
+import com.hivemq.extensions.handler.IncomingPublishHandler;
+import com.hivemq.extensions.handler.IncomingSubscribeHandler;
+import com.hivemq.extensions.handler.PluginInitializerHandler;
 import com.hivemq.logging.EventLog;
 import com.hivemq.metrics.MetricsHolder;
 import com.hivemq.metrics.handler.GlobalMQTTMessageCounter;
@@ -139,6 +144,9 @@ public class ChannelDependenciesTest {
     @Mock
     private GlobalMQTTMessageCounter globalMQTTMessageCounter;
 
+    @Mock
+    private ShutdownHooks shutdownHooks;
+
     @Before
     public void setUp() throws Exception {
 
@@ -172,8 +180,8 @@ public class ChannelDependenciesTest {
                 () -> messageExpiryHandler,
                 mqttServerDisconnector,
                 interceptorHandler,
-                globalMQTTMessageCounter);
-
+                globalMQTTMessageCounter,
+                shutdownHooks);
     }
 
     @Test

@@ -94,7 +94,7 @@ public class Mqtt5SubackEncoderTest extends AbstractMqtt5EncoderTest {
     public void encode_reason_string_and_user_properties_request_problem_information_false() {
 
         when(securityConfigurationService.allowRequestProblemInformation()).thenReturn(true);
-        channel.attr(ChannelAttributes.REQUEST_PROBLEM_INFORMATION).set(false);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setRequestProblemInformation(false);
 
         final byte[] expected = {
                 // fixed header
@@ -153,7 +153,7 @@ public class Mqtt5SubackEncoderTest extends AbstractMqtt5EncoderTest {
     public void encode_user_property_request_problem_information_false() {
 
         when(securityConfigurationService.allowRequestProblemInformation()).thenReturn(true);
-        channel.attr(ChannelAttributes.REQUEST_PROBLEM_INFORMATION).set(false);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setRequestProblemInformation(false);
 
         final byte[] expected = {
                 // fixed header
@@ -254,7 +254,7 @@ public class Mqtt5SubackEncoderTest extends AbstractMqtt5EncoderTest {
     public void encode_propertyLengthExceeded_omitReasonString() {
 
         final int maxPacketSize = 130;
-        channel.attr(ChannelAttributes.MAX_PACKET_SIZE_SEND).set((long) maxPacketSize);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setMaxPacketSizeSend((long) maxPacketSize);
 
         final int maxUserPropertiesCount = maxPacketSize / userPropertyBytes;
         final Mqtt5UserProperties maxUserProperties = getUserProperties(maxUserPropertiesCount);

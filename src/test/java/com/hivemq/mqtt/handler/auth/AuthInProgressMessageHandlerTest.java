@@ -15,6 +15,7 @@
  */
 package com.hivemq.mqtt.handler.auth;
 
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.logging.EventLog;
 import com.hivemq.mqtt.handler.connack.MqttConnacker;
 import com.hivemq.mqtt.handler.connack.MqttConnackerImpl;
@@ -57,7 +58,9 @@ public class AuthInProgressMessageHandlerTest {
         connacker = new MqttConnackerImpl(eventLog);
 
         channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
+        final ClientConnection clientConnection = new ClientConnection(channel, null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
         channel.pipeline().addFirst(new AuthInProgressMessageHandler(connacker));
     }
 
@@ -86,7 +89,7 @@ public class AuthInProgressMessageHandlerTest {
 
     @Test(timeout = 5000)
     public void test_handler_disallows_publish() {
-        final PUBLISH publish = new PUBLISHFactory.Mqtt5Builder().withTopic("topic").withQoS(QoS.AT_LEAST_ONCE).withPayload("payload".getBytes()).withHivemqId("hivemqId").build();
+        final PUBLISH publish = new PUBLISHFactory.Mqtt5Builder().withTopic("topic").withQoS(QoS.AT_LEAST_ONCE).withOnwardQos(QoS.AT_LEAST_ONCE).withPayload("payload".getBytes()).withHivemqId("hivemqId").build();
 
         channel.writeInbound(publish);
         final CONNACK connack = channel.readOutbound();

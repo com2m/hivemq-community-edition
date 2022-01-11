@@ -16,6 +16,7 @@
 package com.hivemq.codec.decoder.mqtt5;
 
 import com.google.common.collect.ImmutableList;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.mqtt.message.mqtt5.MqttUserProperty;
@@ -23,7 +24,9 @@ import com.hivemq.mqtt.message.pubrel.PUBREL;
 import com.hivemq.mqtt.message.reason.Mqtt5PubRelReasonCode;
 import com.hivemq.util.ChannelAttributes;
 import io.netty.buffer.ByteBuf;
+import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.Test;
+import util.TestMqttDecoder;
 
 import static org.junit.Assert.*;
 
@@ -34,7 +37,7 @@ import static org.junit.Assert.*;
 public class Mqtt5PubrelDecoderTest extends AbstractMqtt5DecoderTest {
 
 
-    private final Mqtt5PubRelReasonCode reasonCode = Mqtt5PubRelReasonCode.SUCCESS;
+    private final @NotNull Mqtt5PubRelReasonCode reasonCode = Mqtt5PubRelReasonCode.SUCCESS;
 
     @Test
     public void test_fixed_header() {
@@ -294,7 +297,7 @@ public class Mqtt5PubrelDecoderTest extends AbstractMqtt5DecoderTest {
     }
 
     @NotNull
-    private PUBREL decode(final byte[] encoded) {
+    private PUBREL decode(final byte @NotNull [] encoded) {
         final ByteBuf byteBuf = channel.alloc().buffer();
         byteBuf.writeBytes(encoded);
         channel.writeInbound(byteBuf);
@@ -506,7 +509,7 @@ public class Mqtt5PubrelDecoderTest extends AbstractMqtt5DecoderTest {
         decodeNullExpected(encoded);
     }
 
-    private void decodeChannelOpen(final byte[] encoded) {
+    private void decodeChannelOpen(final byte @NotNull [] encoded) {
         final ByteBuf byteBuf = channel.alloc().buffer();
         byteBuf.writeBytes(encoded);
         channel.writeInbound(byteBuf);
@@ -516,9 +519,9 @@ public class Mqtt5PubrelDecoderTest extends AbstractMqtt5DecoderTest {
 
         assertTrue(channel.isOpen());
 
-        createChannel();
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-
+        channel = new EmbeddedChannel(TestMqttDecoder.create());
+        clientConnection = new ClientConnection(channel, null);
+        clientConnection.setProtocolVersion(protocolVersion);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
     }
-
 }

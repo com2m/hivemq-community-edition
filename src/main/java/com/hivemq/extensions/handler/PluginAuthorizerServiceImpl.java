@@ -19,6 +19,7 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.SettableFuture;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.auth.parameter.AuthorizerProviderInput;
 import com.hivemq.extension.sdk.api.client.parameter.ServerInformation;
@@ -109,7 +110,7 @@ public class PluginAuthorizerServiceImpl implements PluginAuthorizerService {
         }
 
 
-        final String clientId = ctx.channel().attr(ChannelAttributes.CLIENT_ID).get();
+        final String clientId = ctx.channel().attr(ChannelAttributes.CLIENT_CONNECTION).get().getClientId();
 
         if (clientId == null) {
             //we must process the msg in every case !
@@ -148,7 +149,7 @@ public class PluginAuthorizerServiceImpl implements PluginAuthorizerService {
 
     public void authorizeWillPublish(final @NotNull ChannelHandlerContext ctx, final @NotNull CONNECT connect) {
 
-        final String clientId = ctx.channel().attr(ChannelAttributes.CLIENT_ID).get();
+        final String clientId = ctx.channel().attr(ChannelAttributes.CLIENT_CONNECTION).get().getClientId();
         if (clientId == null || !ctx.channel().isActive()) {
             //no more processing needed, client is already disconnected
             return;
@@ -212,7 +213,7 @@ public class PluginAuthorizerServiceImpl implements PluginAuthorizerService {
 
     public void authorizeSubscriptions(final @NotNull ChannelHandlerContext ctx, final @NotNull SUBSCRIBE msg) {
 
-        final String clientId = ctx.channel().attr(ChannelAttributes.CLIENT_ID).get();
+        final String clientId = ctx.channel().attr(ChannelAttributes.CLIENT_CONNECTION).get().getClientId();
         if (clientId == null || !ctx.channel().isActive()) {
             //no more processing needed
             return;
@@ -263,15 +264,12 @@ public class PluginAuthorizerServiceImpl implements PluginAuthorizerService {
                 .run(allTopicsProcessedTask, MoreExecutors.directExecutor());
     }
 
-    @NotNull
-    private ClientAuthorizers getClientAuthorizers(final @NotNull ChannelHandlerContext ctx) {
-        ClientAuthorizers clientAuthorizers = ctx.channel().attr(ChannelAttributes.EXTENSION_CLIENT_AUTHORIZERS).get();
-        if (clientAuthorizers == null) {
-
-            clientAuthorizers = new ClientAuthorizersImpl(extensionPriorityComparator);
-            ctx.channel().attr(ChannelAttributes.EXTENSION_CLIENT_AUTHORIZERS).set(clientAuthorizers);
+    private @NotNull ClientAuthorizers getClientAuthorizers(final @NotNull ChannelHandlerContext ctx) {
+        final ClientConnection clientConnection = ctx.channel().attr(ChannelAttributes.CLIENT_CONNECTION).get();
+        if (clientConnection.getExtensionClientAuthorizers() == null) {
+            clientConnection.setExtensionClientAuthorizers(new ClientAuthorizersImpl(extensionPriorityComparator));
         }
-        return clientAuthorizers;
+        return clientConnection.getExtensionClientAuthorizers();
     }
 
     private void disconnectWithReasonCode(final @NotNull ChannelHandlerContext ctx, @NotNull final String logReason, final @NotNull String reasonString) {

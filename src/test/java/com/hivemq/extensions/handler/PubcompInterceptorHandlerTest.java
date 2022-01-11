@@ -16,6 +16,7 @@
 package com.hivemq.extensions.handler;
 
 import com.google.common.collect.ImmutableList;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.extension.sdk.api.annotations.Immutable;
@@ -100,9 +101,11 @@ public class PubcompInterceptorHandlerTest {
         executor1.postConstruct();
 
         channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.CLIENT_ID).set("client");
-        channel.attr(ChannelAttributes.REQUEST_RESPONSE_INFORMATION).set(true);
-        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId("client");
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setRequestResponseInformation(true);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv5);
         when(plugin.getId()).thenReturn("plugin");
 
         final FullConfigurationService configurationService =
@@ -129,7 +132,7 @@ public class PubcompInterceptorHandlerTest {
     @Test(timeout = 5000)
     public void test_inbound_client_id_not_set() {
 
-        channel.attr(ChannelAttributes.CLIENT_ID).set(null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId(null);
 
         channel.writeInbound(testPubcomp());
         channel.runPendingTasks();
@@ -153,7 +156,6 @@ public class PubcompInterceptorHandlerTest {
     public void test_inbound_no_interceptors() {
 
         when(clientContext.getPubcompInboundInterceptors()).thenReturn(ImmutableList.of());
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(plugin);
 
         final PUBCOMP testPubcomp = testPubcomp();
@@ -177,8 +179,6 @@ public class PubcompInterceptorHandlerTest {
         when(clientContext.getPubcompInboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(plugin);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-
         channel.writeInbound(testPubcomp());
         channel.runPendingTasks();
         PUBCOMP pubcomp = channel.readInbound();
@@ -196,7 +196,6 @@ public class PubcompInterceptorHandlerTest {
 
         final PubcompInboundInterceptor interceptor = getInboundInterceptor("TestModifyInboundInterceptor");
         final List<PubcompInboundInterceptor> list = ImmutableList.of(interceptor);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
         when(clientContext.getPubcompInboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(null);
 
@@ -221,7 +220,6 @@ public class PubcompInterceptorHandlerTest {
         when(clientContext.getPubcompInboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(plugin);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
 
         channel.writeInbound(testPubcomp());
         channel.runPendingTasks();
@@ -240,7 +238,6 @@ public class PubcompInterceptorHandlerTest {
         when(clientContext.getPubcompInboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(plugin);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
 
         channel.writeInbound(testPubcomp());
         channel.runPendingTasks();
@@ -260,7 +257,6 @@ public class PubcompInterceptorHandlerTest {
         when(clientContext.getPubcompInboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(plugin);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
 
         channel.writeInbound(testPubcomp());
         channel.runPendingTasks();
@@ -278,7 +274,7 @@ public class PubcompInterceptorHandlerTest {
     @Test(timeout = 5000)
     public void test_outbound_client_id_not_set() {
 
-        channel.attr(ChannelAttributes.CLIENT_ID).set(null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId(null);
 
         channel.writeOutbound(testPubcomp());
         channel.runPendingTasks();
@@ -302,7 +298,6 @@ public class PubcompInterceptorHandlerTest {
     public void test_outbound_no_interceptors() {
 
         when(clientContext.getPubcompOutboundInterceptors()).thenReturn(ImmutableList.of());
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(plugin);
 
         final PUBCOMP testPubcomp = testPubcomp();
@@ -326,7 +321,6 @@ public class PubcompInterceptorHandlerTest {
         when(clientContext.getPubcompOutboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(plugin);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
 
         channel.writeOutbound(testPubcomp());
         channel.runPendingTasks();
@@ -345,7 +339,6 @@ public class PubcompInterceptorHandlerTest {
 
         final PubcompOutboundInterceptor interceptor = getOutboundInterceptor("TestModifyOutboundInterceptor");
         final List<PubcompOutboundInterceptor> list = ImmutableList.of(interceptor);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
         when(clientContext.getPubcompOutboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(null);
 
@@ -370,8 +363,6 @@ public class PubcompInterceptorHandlerTest {
         when(clientContext.getPubcompOutboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(plugin);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-
         channel.writeOutbound(testPubcomp());
 
         channel.writeOutbound(testPubcomp());
@@ -390,7 +381,6 @@ public class PubcompInterceptorHandlerTest {
         when(clientContext.getPubcompOutboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(plugin);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
 
         channel.writeOutbound(testPubcomp());
         channel.runPendingTasks();
@@ -407,8 +397,6 @@ public class PubcompInterceptorHandlerTest {
 
         when(clientContext.getPubcompOutboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(plugin);
-
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
 
         channel.writeOutbound(testPubcomp());
         channel.runPendingTasks();

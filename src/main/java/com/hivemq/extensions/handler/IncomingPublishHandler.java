@@ -120,7 +120,7 @@ public class IncomingPublishHandler {
     public void interceptOrDelegate(final @NotNull ChannelHandlerContext ctx, final @NotNull PUBLISH publish, final @NotNull String clientId) {
         final Channel channel = ctx.channel();
 
-        final ClientContextImpl clientContext = channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).get();
+        final ClientContextImpl clientContext = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().getExtensionClientContext();
         if (clientContext == null) {
             ctx.executor().execute(() -> authorizerService.authorizePublish(ctx, publish));
             return;
@@ -227,7 +227,7 @@ public class IncomingPublishHandler {
             final Channel channel = ctx.channel();
             final String clientId = getIdentifier();
 
-            final ProtocolVersion protocolVersion = channel.attr(ChannelAttributes.MQTT_VERSION).get();
+            final ProtocolVersion protocolVersion = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().getProtocolVersion();
             //MQTT 3
             if (protocolVersion != ProtocolVersion.MQTTv5) {
                 if (output.getReasonCode() != AckReasonCode.SUCCESS) {

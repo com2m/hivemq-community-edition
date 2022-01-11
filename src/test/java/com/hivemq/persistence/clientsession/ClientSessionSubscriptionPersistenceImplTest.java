@@ -16,6 +16,7 @@
 package com.hivemq.persistence.clientsession;
 
 import com.google.common.collect.ImmutableSet;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.extensions.iteration.Chunker;
 import com.hivemq.logging.EventLog;
 import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnector;
@@ -29,6 +30,7 @@ import com.hivemq.persistence.SingleWriterService;
 import com.hivemq.persistence.clientsession.callback.SubscriptionResult;
 import com.hivemq.persistence.local.ClientSessionLocalPersistence;
 import com.hivemq.persistence.local.ClientSessionSubscriptionLocalPersistence;
+import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.Channel;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.After;
@@ -50,6 +52,7 @@ import static org.mockito.Matchers.anyInt;
 import static org.mockito.Matchers.anyLong;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.*;
 
 /**
@@ -153,10 +156,10 @@ public class ClientSessionSubscriptionPersistenceImplTest {
     @Test
     public void test_invalidate_caches_channel_closed() {
 
-        final EmbeddedChannel embeddedChannel = new EmbeddedChannel();
-        embeddedChannel.close();
+        final EmbeddedChannel channel = new EmbeddedChannel();
+        channel.close();
 
-        when(channelPersistence.get("client")).thenReturn(embeddedChannel);
+        when(channelPersistence.get("client")).thenReturn(channel);
         persistence.invalidateSharedSubscriptionCacheAndPoll("client", ImmutableSet.of());
 
         verify(publishPollService, never()).pollSharedPublishesForClient(anyString(), anyString(), anyInt(), anyBoolean(), anyInt(), any(Channel.class));
@@ -166,30 +169,31 @@ public class ClientSessionSubscriptionPersistenceImplTest {
     @Test
     public void test_invalidate_caches_empty_subs() {
 
-        final EmbeddedChannel embeddedChannel = new EmbeddedChannel();
+        final EmbeddedChannel channel = new EmbeddedChannel();
 
-        when(channelPersistence.get("client")).thenReturn(embeddedChannel);
+        when(channelPersistence.get("client")).thenReturn(channel);
         persistence.invalidateSharedSubscriptionCacheAndPoll("client", ImmutableSet.of());
 
         verify(publishPollService, never()).pollSharedPublishesForClient(anyString(), anyString(), anyInt(), anyBoolean(), anyInt(), any(Channel.class));
 
-        embeddedChannel.close();
+        channel.close();
 
     }
 
     @Test
     public void test_invalidate_caches_success() {
 
-        final EmbeddedChannel embeddedChannel = new EmbeddedChannel();
+        final EmbeddedChannel channel = new EmbeddedChannel();
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
 
-        when(channelPersistence.get("client")).thenReturn(embeddedChannel);
+        when(channelPersistence.get("client")).thenReturn(channel);
         persistence.invalidateSharedSubscriptionCacheAndPoll("client", ImmutableSet.of(new Subscription(new Topic("topic", QoS.AT_LEAST_ONCE), (byte) 2, "group")));
 
         verify(publishPollService).pollSharedPublishesForClient(anyString(), anyString(), anyInt(), anyBoolean(), any(), any(Channel.class));
         verify(sharedSubscriptionService).invalidateSharedSubscriberCache("group/topic");
         verify(sharedSubscriptionService).invalidateSharedSubscriptionCache("client");
 
-        embeddedChannel.close();
+        channel.close();
 
     }
 

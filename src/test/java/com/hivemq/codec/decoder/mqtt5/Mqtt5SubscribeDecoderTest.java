@@ -15,6 +15,7 @@
  */
 package com.hivemq.codec.decoder.mqtt5;
 
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.message.Message;
@@ -40,7 +41,8 @@ public class Mqtt5SubscribeDecoderTest extends AbstractMqtt5DecoderTest {
 
     @Before
     public void before() {
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv5);
     }
 
     @Test
@@ -82,14 +84,14 @@ public class Mqtt5SubscribeDecoderTest extends AbstractMqtt5DecoderTest {
         assertEquals("property", subscribe.getUserProperties().asList().get(0).getValue());
 
         assertEquals("topic/#", topic1.getTopic());
-        assertEquals(true, topic1.isNoLocal());
-        assertEquals(true, topic1.isRetainAsPublished());
+        assertTrue(topic1.isNoLocal());
+        assertTrue(topic1.isRetainAsPublished());
         assertEquals(Mqtt5RetainHandling.SEND_IF_SUBSCRIPTION_DOES_NOT_EXIST, topic1.getRetainHandling());
         assertEquals(1, topic1.getQoS().getQosNumber());
 
         assertEquals("topid/#", topic2.getTopic());
-        assertEquals(true, topic2.isNoLocal());
-        assertEquals(true, topic2.isRetainAsPublished());
+        assertTrue(topic2.isNoLocal());
+        assertTrue(topic2.isRetainAsPublished());
         assertEquals(Mqtt5RetainHandling.SEND_IF_SUBSCRIPTION_DOES_NOT_EXIST, topic2.getRetainHandling());
         assertEquals(1, topic2.getQoS().getQosNumber());
 
@@ -143,14 +145,14 @@ public class Mqtt5SubscribeDecoderTest extends AbstractMqtt5DecoderTest {
         assertEquals("propert3", subscribe.getUserProperties().asList().get(2).getValue());
 
         assertEquals("topic/#", topic1.getTopic());
-        assertEquals(true, topic1.isNoLocal());
-        assertEquals(true, topic1.isRetainAsPublished());
+        assertTrue(topic1.isNoLocal());
+        assertTrue(topic1.isRetainAsPublished());
         assertEquals(Mqtt5RetainHandling.SEND_IF_SUBSCRIPTION_DOES_NOT_EXIST, topic1.getRetainHandling());
         assertEquals(1, topic1.getQoS().getQosNumber());
 
         assertEquals("topid/#", topic2.getTopic());
-        assertEquals(true, topic2.isNoLocal());
-        assertEquals(true, topic2.isRetainAsPublished());
+        assertTrue(topic2.isNoLocal());
+        assertTrue(topic2.isRetainAsPublished());
         assertEquals(Mqtt5RetainHandling.SEND_IF_SUBSCRIPTION_DOES_NOT_EXIST, topic2.getRetainHandling());
         assertEquals(1, topic2.getQoS().getQosNumber());
 
@@ -178,6 +180,11 @@ public class Mqtt5SubscribeDecoderTest extends AbstractMqtt5DecoderTest {
 
         decodeNullExpected(encoded);
 
+        channel = new EmbeddedChannel(TestMqttDecoder.create());
+        clientConnection = new ClientConnection(channel, null);
+        clientConnection.setProtocolVersion(protocolVersion);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+
         final byte[] encoded1 = {
                 // fixed header
                 // type, reserved
@@ -197,6 +204,11 @@ public class Mqtt5SubscribeDecoderTest extends AbstractMqtt5DecoderTest {
 
         decodeNullExpected(encoded1);
 
+        channel = new EmbeddedChannel(TestMqttDecoder.create());
+        clientConnection = new ClientConnection(channel, null);
+        clientConnection.setProtocolVersion(protocolVersion);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+
         final byte[] encoded2 = {
                 // fixed header
                 // type, reserved
@@ -215,6 +227,11 @@ public class Mqtt5SubscribeDecoderTest extends AbstractMqtt5DecoderTest {
         };
 
         decodeNullExpected(encoded2);
+
+        channel = new EmbeddedChannel(TestMqttDecoder.create());
+        clientConnection = new ClientConnection(channel, null);
+        clientConnection.setProtocolVersion(protocolVersion);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
 
         final byte[] encoded3 = {
                 // fixed header
@@ -848,7 +865,8 @@ public class Mqtt5SubscribeDecoderTest extends AbstractMqtt5DecoderTest {
                 0x0B, 1,
 
         };
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(protocolVersion);
 
         final ByteBuf byteBuf = channel.alloc().buffer();
         byteBuf.writeBytes(encoded);
@@ -861,7 +879,7 @@ public class Mqtt5SubscribeDecoderTest extends AbstractMqtt5DecoderTest {
     }
 
     @NotNull
-    private SUBSCRIBE decode(final byte[] encoded) {
+    private SUBSCRIBE decode(final byte @NotNull [] encoded) {
         final ByteBuf byteBuf = channel.alloc().buffer();
         byteBuf.writeBytes(encoded);
         channel.writeInbound(byteBuf);

@@ -16,6 +16,7 @@
 package com.hivemq.extensions.handler;
 
 import com.google.common.collect.ImmutableList;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
@@ -68,23 +69,30 @@ import static org.mockito.Mockito.when;
 
 /**
  * @author Robin Atherton
+ * @author Silvio Giebl
+ * @since 4.3
  */
 public class DisconnectInboundInterceptorHandlerTest {
 
-    public static AtomicBoolean isTriggered = new AtomicBoolean();
     @Rule
-    public TemporaryFolder temporaryFolder = new TemporaryFolder();
+    public @NotNull TemporaryFolder temporaryFolder = new TemporaryFolder();
+
     @Mock
-    private HiveMQExtension extension;
+    private @NotNull HiveMQExtension extension;
+
     @Mock
-    private HiveMQExtensions hiveMQExtensions;
+    private @NotNull HiveMQExtensions hiveMQExtensions;
+
     @Mock
-    private ClientContextImpl clientContext;
+    private @NotNull ClientContextImpl clientContext;
+
     @Mock
-    private FullConfigurationService configurationService;
-    private PluginTaskExecutor executor;
-    private EmbeddedChannel channel;
-    private DisconnectInterceptorHandler handler;
+    private @NotNull FullConfigurationService configurationService;
+
+    private @NotNull PluginTaskExecutor executor;
+    private @NotNull EmbeddedChannel channel;
+    public static @NotNull AtomicBoolean isTriggered = new AtomicBoolean();
+    private @NotNull DisconnectInterceptorHandler handler;
 
     @Before
     public void setup() {
@@ -94,9 +102,11 @@ public class DisconnectInboundInterceptorHandlerTest {
         executor.postConstruct();
 
         channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.CLIENT_ID).set("client");
-        channel.attr(ChannelAttributes.REQUEST_RESPONSE_INFORMATION).set(true);
-        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId("client");
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv5);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setRequestResponseInformation(true);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
         when(extension.getId()).thenReturn("extension");
 
         configurationService = new TestConfigurationBootstrap().getFullConfigurationService();
@@ -122,7 +132,7 @@ public class DisconnectInboundInterceptorHandlerTest {
 
     @Test(timeout = 5000)
     public void test_client_id_not_set() {
-        channel.attr(ChannelAttributes.CLIENT_ID).set(null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId(null);
         channel.writeOutbound(testDisconnect());
         channel.runPendingTasks();
         assertNull(channel.readInbound());
@@ -142,8 +152,8 @@ public class DisconnectInboundInterceptorHandlerTest {
         when(clientContext.getDisconnectOutboundInterceptors()).thenReturn(ImmutableList.of());
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(extension);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-        channel.attr(ChannelAttributes.CLIENT_SESSION_EXPIRY_INTERVAL).set(0L);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv5);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientSessionExpiryInterval(0L);
 
         final DISCONNECT disconnect = testDisconnect();
         channel.writeInbound(disconnect);
@@ -168,8 +178,7 @@ public class DisconnectInboundInterceptorHandlerTest {
         when(clientContext.getDisconnectInboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(null);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-        channel.attr(ChannelAttributes.CLIENT_SESSION_EXPIRY_INTERVAL).set(0L);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientSessionExpiryInterval(0L);
 
         channel.writeInbound(testDisconnect());
         channel.runPendingTasks();
@@ -193,8 +202,7 @@ public class DisconnectInboundInterceptorHandlerTest {
         when(clientContext.getDisconnectInboundInterceptors()).thenReturn(interceptors);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(extension);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-        channel.attr(ChannelAttributes.CLIENT_SESSION_EXPIRY_INTERVAL).set(0L);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientSessionExpiryInterval(0L);
 
         channel.writeInbound(testDisconnect());
         channel.runPendingTasks();
@@ -217,8 +225,7 @@ public class DisconnectInboundInterceptorHandlerTest {
         when(clientContext.getDisconnectInboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(extension);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-        channel.attr(ChannelAttributes.CLIENT_SESSION_EXPIRY_INTERVAL).set(0L);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientSessionExpiryInterval(0L);
 
         channel.writeInbound(testDisconnect());
         channel.runPendingTasks();
@@ -242,8 +249,7 @@ public class DisconnectInboundInterceptorHandlerTest {
         when(clientContext.getDisconnectInboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(extension);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-        channel.attr(ChannelAttributes.CLIENT_SESSION_EXPIRY_INTERVAL).set(0L);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientSessionExpiryInterval(0L);
 
         channel.writeInbound(testDisconnect());
         channel.runPendingTasks();
@@ -262,8 +268,7 @@ public class DisconnectInboundInterceptorHandlerTest {
         when(clientContext.getDisconnectInboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(extension);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-        channel.attr(ChannelAttributes.CLIENT_SESSION_EXPIRY_INTERVAL).set(0L);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientSessionExpiryInterval(0L);
 
         channel.writeInbound(testDisconnect());
         channel.runPendingTasks();

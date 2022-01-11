@@ -17,12 +17,12 @@ package com.hivemq.mqtt.handler.publish;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.ListenableFuture;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.extension.sdk.api.annotations.Immutable;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extensions.handler.IncomingPublishHandler;
 import com.hivemq.mqtt.event.PublishDroppedEvent;
 import com.hivemq.mqtt.event.PubrelDroppedEvent;
-import com.hivemq.mqtt.message.MessageIDPools;
 import com.hivemq.mqtt.message.MessageWithID;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.pool.MessageIDPool;
@@ -62,7 +62,6 @@ public class PublishFlowHandler extends ChannelDuplexHandler {
     private final @NotNull IncomingMessageFlowPersistence persistence;
     private final @NotNull OrderedTopicService orderedTopicService;
     private final @NotNull PublishPollService publishPollService;
-    private final @NotNull MessageIDPools messageIDPools;
     private final @NotNull IncomingPublishHandler incomingPublishHandler;
     private final @NotNull DropOutgoingPublishesHandler dropOutgoingPublishesHandler;
 
@@ -73,14 +72,12 @@ public class PublishFlowHandler extends ChannelDuplexHandler {
     public PublishFlowHandler(final @NotNull PublishPollService publishPollService,
                               final @NotNull IncomingMessageFlowPersistence persistence,
                               final @NotNull OrderedTopicService orderedTopicService,
-                              final @NotNull MessageIDPools messageIDPools,
                               final @NotNull IncomingPublishHandler incomingPublishHandler,
                               final @NotNull DropOutgoingPublishesHandler dropOutgoingPublishesHandler) {
         this.publishPollService = publishPollService;
         this.persistence = persistence;
         this.orderedTopicService = orderedTopicService;
         this.qos1And2AlreadySentMap = new HashMap<>();
-        this.messageIDPools = messageIDPools;
         this.incomingPublishHandler = incomingPublishHandler;
         this.dropOutgoingPublishesHandler = dropOutgoingPublishesHandler;
     }
@@ -88,7 +85,7 @@ public class PublishFlowHandler extends ChannelDuplexHandler {
     @Override
     public void channelRead(final ChannelHandlerContext ctx, @NotNull final Object msg) throws Exception {
 
-        final String client = ctx.channel().attr(ChannelAttributes.CLIENT_ID).get();
+        final String client = ctx.channel().attr(ChannelAttributes.CLIENT_CONNECTION).get().getClientId();
 
         if (msg instanceof PUBLISH) {
 
@@ -119,14 +116,14 @@ public class PublishFlowHandler extends ChannelDuplexHandler {
     @Override
     public void write(final @NotNull ChannelHandlerContext ctx, final @NotNull Object msg, final @NotNull ChannelPromise promise) throws Exception {
 
-        if(!(msg instanceof PUBLISH || msg instanceof PUBACK || msg instanceof PUBREL)){
+        if (!(msg instanceof PUBLISH || msg instanceof PUBACK || msg instanceof PUBREL)) {
             super.write(ctx, msg, promise);
             return;
         }
 
         if (msg instanceof PUBACK) {
             final PUBACK puback = (PUBACK) msg;
-            final String client = ctx.channel().attr(ChannelAttributes.CLIENT_ID).get();
+            final String client = ctx.channel().attr(ChannelAttributes.CLIENT_CONNECTION).get().getClientId();
             final int messageId = puback.getPacketIdentifier();
             persistence.addOrReplace(client, messageId, puback);
             promise.addListener(new PUBLISHFlowCompleteListener(messageId, client, qos1And2AlreadySentMap, persistence));
@@ -137,9 +134,9 @@ public class PublishFlowHandler extends ChannelDuplexHandler {
             return;
         }
 
-        if(DROP_MESSAGES_QOS_0){
+        if (DROP_MESSAGES_QOS_0) {
             final boolean messageDropped = dropOutgoingPublishesHandler.checkChannelNotWritable(ctx, msg, promise);
-            if(messageDropped){
+            if (messageDropped) {
                 return;
             }
         }
@@ -167,11 +164,12 @@ public class PublishFlowHandler extends ChannelDuplexHandler {
 
         orderedTopicService.handleInactive();
 
-        final Long sessionExpiryInterval = ctx.channel().attr(ChannelAttributes.CLIENT_SESSION_EXPIRY_INTERVAL).get();
+        final ClientConnection clientConnection = ctx.channel().attr(ChannelAttributes.CLIENT_CONNECTION).get();
+        final Long sessionExpiryInterval = clientConnection.getClientSessionExpiryInterval();
 
         //remove incoming message flow for not persisted client
         if (sessionExpiryInterval != null && sessionExpiryInterval == SESSION_EXPIRE_ON_DISCONNECT) {
-            final String clientId = ctx.channel().attr(ChannelAttributes.CLIENT_ID).get();
+            final String clientId = clientConnection.getClientId();
             if (clientId != null) {   //Just to be save. The client id should never be null, if the persistent session is not null.
                 persistence.delete(clientId);
             }
@@ -234,7 +232,7 @@ public class PublishFlowHandler extends ChannelDuplexHandler {
         log.trace("Client {}: Received PUBACK", client);
         final int messageId = msg.getPacketIdentifier();
         orderedTopicService.messageFlowComplete(ctx, messageId);
-        returnMessageId(msg, client);
+        returnMessageId(ctx.channel(), msg, client);
 
         if (log.isTraceEnabled()) {
             log.trace("Client {}: Received PUBACK remove message id:[{}] ", client, messageId);
@@ -259,7 +257,7 @@ public class PublishFlowHandler extends ChannelDuplexHandler {
     }
 
     private void handlePubrel(final ChannelHandlerContext ctx, final PUBREL pubrel) {
-        final String client = ctx.channel().attr(ChannelAttributes.CLIENT_ID).get();
+        final String client = ctx.channel().attr(ChannelAttributes.CLIENT_CONNECTION).get().getClientId();
 
         final int messageId = pubrel.getPacketIdentifier();
 
@@ -272,7 +270,7 @@ public class PublishFlowHandler extends ChannelDuplexHandler {
         log.trace("Client {}: Received PUBCOMP", client);
 
         orderedTopicService.messageFlowComplete(ctx, msg.getPacketIdentifier());
-        returnMessageId(msg, client);
+        returnMessageId(ctx.channel(), msg, client);
 
         if (log.isTraceEnabled()) {
             log.trace("Client {}: Received PUBCOMP remove message id:[{}]", client, msg.getPacketIdentifier());
@@ -280,16 +278,14 @@ public class PublishFlowHandler extends ChannelDuplexHandler {
 
     }
 
-    private void returnMessageId(final @NotNull MessageWithID msg, final @NotNull String clientId) {
+    private void returnMessageId(final @NotNull Channel channel, final @NotNull MessageWithID msg, final @NotNull String clientId) {
 
         final int messageId = msg.getPacketIdentifier();
 
         //Such a message ID must never be zero, but better be safe than sorry
         if (messageId > 0) {
-            final MessageIDPool messageIDPool = messageIDPools.forClientOrNull(clientId);
-            if (messageIDPool != null) {
-                messageIDPool.returnId(messageId);
-            }
+            final MessageIDPool messageIDPool = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().getMessageIDPool();
+            messageIDPool.returnId(messageId);
             if (log.isTraceEnabled()) {
                 log.trace("Returning Message ID {} for client {} because of a {} message was received", messageId, clientId, msg.getClass().getSimpleName());
             }

@@ -15,6 +15,8 @@
  */
 package com.hivemq.mqtt.handler.auth;
 
+import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientState;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.logging.EventLog;
 import com.hivemq.mqtt.message.mqtt5.Mqtt5UserProperties;
@@ -24,10 +26,9 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
 
 import static org.junit.Assert.assertNotNull;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 /**
@@ -36,15 +37,12 @@ import static org.mockito.Mockito.verify;
  */
 public class MqttAuthSenderTest {
 
-    @NotNull
-    private MqttAuthSender mqttAuthSender;
-
-    @Mock
+    private @NotNull MqttAuthSender mqttAuthSender;
     private EventLog eventLog;
 
     @Before
     public void setUp() throws Exception {
-        MockitoAnnotations.initMocks(this);
+        eventLog = mock(EventLog.class);
         mqttAuthSender = new MqttAuthSender(eventLog);
     }
 
@@ -65,20 +63,21 @@ public class MqttAuthSenderTest {
 
     @Test(expected = NullPointerException.class)
     public void test_send_auth_method_null() {
-        final EmbeddedChannel embeddedChannel = new EmbeddedChannel();
-        embeddedChannel.attr(ChannelAttributes.RE_AUTH_ONGOING).set(true);
-        mqttAuthSender.sendAuth(embeddedChannel, null, Mqtt5AuthReasonCode.SUCCESS, Mqtt5UserProperties.NO_USER_PROPERTIES, "reason");
+        final EmbeddedChannel channel = new EmbeddedChannel();
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().proposeClientState(ClientState.RE_AUTHENTICATING);
+        mqttAuthSender.sendAuth(channel, null, Mqtt5AuthReasonCode.SUCCESS, Mqtt5UserProperties.NO_USER_PROPERTIES, "reason");
     }
 
     @Test
     public void test_send_auth_success() {
-        final EmbeddedChannel embeddedChannel = new EmbeddedChannel();
-        embeddedChannel.attr(ChannelAttributes.RE_AUTH_ONGOING).set(true);
-        embeddedChannel.attr(ChannelAttributes.AUTH_METHOD).set("METHOD");
-        final ChannelFuture future = mqttAuthSender.sendAuth(embeddedChannel, null, Mqtt5AuthReasonCode.SUCCESS, Mqtt5UserProperties.NO_USER_PROPERTIES, "reason");
+        final EmbeddedChannel channel = new EmbeddedChannel();
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().proposeClientState(ClientState.RE_AUTHENTICATING);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setAuthMethod("METHOD");
+        final ChannelFuture future = mqttAuthSender.sendAuth(channel, null, Mqtt5AuthReasonCode.SUCCESS, Mqtt5UserProperties.NO_USER_PROPERTIES, "reason");
 
         assertNotNull(future);
-        verify(eventLog).clientAuthentication(embeddedChannel, Mqtt5AuthReasonCode.SUCCESS, false);
+        verify(eventLog).clientAuthentication(channel, Mqtt5AuthReasonCode.SUCCESS, false);
 
     }
 }
