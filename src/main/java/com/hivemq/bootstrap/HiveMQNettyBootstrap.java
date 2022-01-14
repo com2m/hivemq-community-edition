@@ -15,22 +15,19 @@
  */
 package com.hivemq.bootstrap;
 
-import com.google.common.base.Function;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
-import com.google.common.net.InetAddresses;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
-import com.hivemq.extension.sdk.api.annotations.Immutable;
-import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.bootstrap.netty.ChannelInitializerFactory;
 import com.hivemq.bootstrap.netty.NettyConfiguration;
 import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.configuration.service.entity.*;
 import com.hivemq.configuration.service.impl.listener.ListenerConfigurationService;
-import com.hivemq.exceptions.UnrecoverableException;
+import com.hivemq.extension.sdk.api.annotations.Immutable;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.persistence.ChannelPersistence;
 import com.hivemq.util.Validators;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.PooledByteBufAllocator;
@@ -39,11 +36,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * @author Dominik Obermaier
@@ -55,27 +51,35 @@ public class HiveMQNettyBootstrap {
     private final @NotNull ShutdownHooks shutdownHooks;
     private final @NotNull ListenerConfigurationService listenerConfigurationService;
     private final @NotNull ChannelInitializerFactory channelInitializerFactory;
+    private final @NotNull ChannelPersistence channelPersistence;
     private final @NotNull NettyConfiguration nettyConfiguration;
 
     @Inject
-    HiveMQNettyBootstrap(final @NotNull ShutdownHooks shutdownHooks,
-                         final @NotNull ListenerConfigurationService listenerConfigurationService,
-                         final @NotNull ChannelInitializerFactory channelInitializerFactory,
-                         final @NotNull NettyConfiguration nettyConfiguration) {
+    HiveMQNettyBootstrap(
+            final @NotNull ShutdownHooks shutdownHooks,
+            final @NotNull ListenerConfigurationService listenerConfigurationService,
+            final @NotNull ChannelInitializerFactory channelInitializerFactory,
+            final @NotNull ChannelPersistence channelPersistence,
+            final @NotNull NettyConfiguration nettyConfiguration) {
 
         this.shutdownHooks = shutdownHooks;
         this.listenerConfigurationService = listenerConfigurationService;
         this.channelInitializerFactory = channelInitializerFactory;
+        this.channelPersistence = channelPersistence;
         this.nettyConfiguration = nettyConfiguration;
     }
 
-    @NotNull
-    public ListenableFuture<List<ListenerStartupInformation>> bootstrapServer() {
+    public @NotNull ListenableFuture<List<ListenerStartupInformation>> bootstrapServer() {
 
         //Adding shutdown hook for graceful shutdown
         final int shutdownTimeout = InternalConfigurations.EVENT_LOOP_GROUP_SHUTDOWN_TIMEOUT;
+        final int channelsShutdownTimeout = InternalConfigurations.CHANNEL_PERSISTENCE_SHUTDOWN_TIMEOUT;
         shutdownHooks.add(new NettyShutdownHook(
-                nettyConfiguration.getChildEventLoopGroup(), nettyConfiguration.getParentEventLoopGroup(), shutdownTimeout));
+                nettyConfiguration.getChildEventLoopGroup(),
+                nettyConfiguration.getParentEventLoopGroup(),
+                shutdownTimeout,
+                channelsShutdownTimeout,
+                channelPersistence));
 
         final List<BindInformation> futures = new ArrayList<>();
 
@@ -95,91 +99,65 @@ public class HiveMQNettyBootstrap {
         }
     }
 
-
-    @NotNull
-    private List<BindInformation> bindTcpListeners(final @NotNull List<TcpListener> tcpListeners) {
+    private @NotNull List<BindInformation> bindTcpListeners(final @NotNull List<TcpListener> tcpListeners) {
         log.trace("Checking TCP listeners");
         final ImmutableList.Builder<BindInformation> futures = ImmutableList.builder();
-        for (final TcpListener tcpListener : tcpListeners) {
 
-            final ServerBootstrap b = createServerBootstrap(nettyConfiguration.getParentEventLoopGroup(), nettyConfiguration.getChildEventLoopGroup(), tcpListener);
-            final String bindAddress = tcpListener.getBindAddress();
+        for (final TcpListener listener : tcpListeners) {
 
-            final Integer port = tcpListener.getPort();
-
-
-            log.info("Starting TCP listener on address {} and port {}", bindAddress, port);
-            final ChannelFuture bind = b.bind(createInetSocketAddress(bindAddress, port));
-            futures.add(new BindInformation(tcpListener, bind));
+            final ServerBootstrap b = createServerBootstrap(nettyConfiguration.getParentEventLoopGroup(), nettyConfiguration.getChildEventLoopGroup(), listener);
+            log.info("Starting TCP listener on address {} and port {}", listener.getBindAddress(), listener.getPort());
+            final ChannelFuture bind = b.bind(listener.getBindAddress(), listener.getPort());
+            channelPersistence.addServerChannel(listener.getName(), bind.channel());
+            futures.add(new BindInformation(listener, bind));
         }
         return futures.build();
     }
 
-    @NotNull
-    private List<BindInformation> tlsTcpListeners(final @NotNull List<TlsTcpListener> tlsTcpListeners) {
+    private @NotNull List<BindInformation> tlsTcpListeners(final @NotNull List<TlsTcpListener> tlsTcpListeners) {
         log.trace("Checking TLS TCP listeners");
         final ImmutableList.Builder<BindInformation> futures = ImmutableList.builder();
 
-        for (final TlsTcpListener tlsTcpListener : tlsTcpListeners) {
+        for (final TlsTcpListener listener : tlsTcpListeners) {
 
-            final ServerBootstrap b = createServerBootstrap(nettyConfiguration.getParentEventLoopGroup(), nettyConfiguration.getChildEventLoopGroup(), tlsTcpListener);
-            final String bindAddress = tlsTcpListener.getBindAddress();
-            final Integer port = tlsTcpListener.getPort();
-            log.info("Starting TLS TCP listener on address {} and port {}", bindAddress, port);
-            final ChannelFuture bind = b.bind(bindAddress, port);
-            futures.add(new BindInformation(tlsTcpListener, bind));
+            final ServerBootstrap b = createServerBootstrap(nettyConfiguration.getParentEventLoopGroup(), nettyConfiguration.getChildEventLoopGroup(), listener);
+            log.info("Starting TLS TCP listener on address {} and port {}", listener.getBindAddress(), listener.getPort());
+            final ChannelFuture bind = b.bind(listener.getBindAddress(), listener.getPort());
+            channelPersistence.addServerChannel(listener.getName(), bind.channel());
+            futures.add(new BindInformation(listener, bind));
         }
         return futures.build();
     }
 
-    @NotNull
-    private List<BindInformation> websocketListeners(final @NotNull List<WebsocketListener> websocketListeners) {
+    private @NotNull List<BindInformation> websocketListeners(final @NotNull List<WebsocketListener> websocketListeners) {
         log.trace("Checking Websocket listeners");
         final ImmutableList.Builder<BindInformation> futures = ImmutableList.builder();
-        for (final WebsocketListener websocketListener : websocketListeners) {
 
-            final ServerBootstrap b = createServerBootstrap(nettyConfiguration.getParentEventLoopGroup(), nettyConfiguration.getChildEventLoopGroup(), websocketListener);
-            final String bindAddress = websocketListener.getBindAddress();
-            final Integer port = websocketListener.getPort();
-            log.info("Starting Websocket listener on address {} and port {}", bindAddress, port);
-            final ChannelFuture bind = b.bind(websocketListener.getBindAddress(), websocketListener.getPort());
-            futures.add(new BindInformation(websocketListener, bind));
+        for (final WebsocketListener listener : websocketListeners) {
+
+            final ServerBootstrap b = createServerBootstrap(nettyConfiguration.getParentEventLoopGroup(), nettyConfiguration.getChildEventLoopGroup(), listener);
+            log.info("Starting Websocket listener on address {} and port {}", listener.getBindAddress(), listener.getPort());
+            final ChannelFuture bind = b.bind(listener.getBindAddress(), listener.getPort());
+            channelPersistence.addServerChannel(listener.getName(), bind.channel());
+            futures.add(new BindInformation(listener, bind));
         }
         return futures.build();
     }
 
-    @NotNull
-    private List<BindInformation> tlsWebsocketListeners(final @NotNull List<TlsWebsocketListener> tlsWebsocketListeners) {
+    private @NotNull List<BindInformation> tlsWebsocketListeners(
+            final @NotNull List<TlsWebsocketListener> tlsWebsocketListeners) {
+
         log.trace("Checking Websocket TLS listeners");
         final ImmutableList.Builder<BindInformation> futures = ImmutableList.builder();
-        for (final TlsWebsocketListener tlsWebsocketListener : tlsWebsocketListeners) {
+        for (final TlsWebsocketListener listener : tlsWebsocketListeners) {
 
-            final ServerBootstrap b = createServerBootstrap(nettyConfiguration.getParentEventLoopGroup(), nettyConfiguration.getChildEventLoopGroup(), tlsWebsocketListener);
-            final String bindAddress = tlsWebsocketListener.getBindAddress();
-            final Integer port = tlsWebsocketListener.getPort();
-            log.info("Starting Websocket TLS listener on address {} and port {}", bindAddress, port);
-            final ChannelFuture bind = b.bind(tlsWebsocketListener.getBindAddress(), tlsWebsocketListener.getPort());
-            futures.add(new BindInformation(tlsWebsocketListener, bind));
+            final ServerBootstrap b = createServerBootstrap(nettyConfiguration.getParentEventLoopGroup(), nettyConfiguration.getChildEventLoopGroup(), listener);
+            log.info("Starting Websocket TLS listener on address {} and port {}", listener.getBindAddress(), listener.getPort());
+            final ChannelFuture bind = b.bind(listener.getBindAddress(), listener.getPort());
+            channelPersistence.addServerChannel(listener.getName(), bind.channel());
+            futures.add(new BindInformation(listener, bind));
         }
         return futures.build();
-    }
-
-    @NotNull
-    private InetSocketAddress createInetSocketAddress(final @NotNull String ip, final int port) {
-        InetAddress inetAddress;
-        try {
-            inetAddress = InetAddresses.forString(ip);
-        } catch (final IllegalArgumentException e) {
-            log.debug("Trying to find out the IP for {} via DNS lookup", ip);
-            try {
-                inetAddress = InetAddress.getByName(ip);
-            } catch (final UnknownHostException e1) {
-                log.error("Could not determine IP for hostname {}, unable to bind to it", ip);
-                throw new UnrecoverableException(false);
-            }
-        }
-
-        return new InetSocketAddress(inetAddress, port);
     }
 
     /**
@@ -189,36 +167,25 @@ public class HiveMQNettyBootstrap {
      * @return a {@link com.google.common.util.concurrent.ListenableFuture} which aggregates
      * all given {@link io.netty.channel.ChannelFuture}s
      */
-    @NotNull
-    private ListenableFuture<List<ListenerStartupInformation>> aggregatedFuture(final @NotNull List<BindInformation> bindInformation) {
+    private @NotNull ListenableFuture<List<ListenerStartupInformation>> aggregatedFuture(
+            final @NotNull List<BindInformation> bindInformation) {
 
-        final List<ListenableFuture<ListenerStartupInformation>> listenableFutures = Lists.transform(bindInformation, new Function<BindInformation, ListenableFuture<ListenerStartupInformation>>() {
-            @Override
-            public ListenableFuture<ListenerStartupInformation> apply(final BindInformation input) {
-                final SettableFuture<ListenerStartupInformation> objectSettableFuture = SettableFuture.create();
-                input.getBindFuture().addListener(updateGivenFuture(objectSettableFuture, input));
-                return objectSettableFuture;
-            }
-        });
+        final List<ListenableFuture<ListenerStartupInformation>> listenableFutures = bindInformation.stream()
+                .map(input -> {
+                    final SettableFuture<ListenerStartupInformation> objectSettableFuture = SettableFuture.create();
+                    input.getBindFuture().addListener(new UpdateGivenFutureListener(input, objectSettableFuture));
+                    return objectSettableFuture;
+                }).collect(Collectors.toList());
         return Futures.allAsList(listenableFutures);
     }
 
-    /**
-     * Updates a given future when the {@link io.netty.channel.ChannelFuture} is finished
-     *
-     * @param settableFuture a {@link com.google.common.util.concurrent.SettableFuture} to update when the
-     *                       ChannelFuture is finished
-     * @return a {@link io.netty.channel.ChannelFutureListener} which updates the passed future object when finished
-     */
-    @NotNull
-    private ChannelFutureListener updateGivenFuture(final @NotNull SettableFuture<ListenerStartupInformation> settableFuture, final @NotNull BindInformation bindInformation) {
-        return new UpdateGivenFutureListener(bindInformation, settableFuture);
-    }
+    private @NotNull ServerBootstrap createServerBootstrap(
+            final @NotNull EventLoopGroup bossGroup,
+            final @NotNull EventLoopGroup workerGroup,
+            final @NotNull Listener listener) {
 
-    @NotNull
-    private ServerBootstrap createServerBootstrap(final @NotNull EventLoopGroup bossGroup, final @NotNull EventLoopGroup workerGroup, final @NotNull Listener listener) {
-        final ServerBootstrap b = new ServerBootstrap();
-        b.group(bossGroup, workerGroup)
+        final ServerBootstrap b = new ServerBootstrap()
+                .group(bossGroup, workerGroup)
                 .channel(nettyConfiguration.getServerSocketChannelClass())
                 .childHandler(channelInitializerFactory.getChannelInitializer(listener))
                 .option(ChannelOption.SO_BACKLOG, 128)
@@ -235,7 +202,7 @@ public class HiveMQNettyBootstrap {
     /**
      * Sets all advanced properties
      *
-     * @param b        the server bootstrap
+     * @param b the server bootstrap
      */
     private void setAdvancedOptions(final @NotNull ServerBootstrap b) {
 
@@ -252,20 +219,24 @@ public class HiveMQNettyBootstrap {
         final int writeBufferHigh = InternalConfigurations.LISTENER_CLIENT_WRITE_BUFFER_HIGH_THRESHOLD;
         final int writeBufferLow = InternalConfigurations.LISTENER_CLIENT_WRITE_BUFFER_LOW_THRESHOLD;
 
-        final ClientWriteBufferProperties properties = Validators.validateWriteBufferProperties(new ClientWriteBufferProperties(writeBufferHigh, writeBufferLow));
+        final ClientWriteBufferProperties properties =
+                Validators.validateWriteBufferProperties(new ClientWriteBufferProperties(writeBufferHigh,
+                        writeBufferLow));
 
         //it is assumed that the ClientWriteBufferProperties that the listener returns was validated by Validators.validateWriteBufferProperties()
-        b.childOption(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(properties.getLowThreshold(), properties.getHighThreshold()));
-
+        b.childOption(ChannelOption.WRITE_BUFFER_WATER_MARK,
+                new WriteBufferWaterMark(properties.getLowThreshold(), properties.getHighThreshold()));
     }
 
     @Immutable
     private static class UpdateGivenFutureListener implements ChannelFutureListener {
+
         private final @NotNull BindInformation bindInformation;
         private final @NotNull SettableFuture<ListenerStartupInformation> settableFuture;
 
-        UpdateGivenFutureListener(@NotNull final BindInformation bindInformation,
-                                  @NotNull final SettableFuture<ListenerStartupInformation> settableFuture) {
+        UpdateGivenFutureListener(
+                final @NotNull BindInformation bindInformation,
+                final @NotNull SettableFuture<ListenerStartupInformation> settableFuture) {
             this.bindInformation = bindInformation;
             this.settableFuture = settableFuture;
         }
@@ -273,13 +244,13 @@ public class HiveMQNettyBootstrap {
         @Override
         public void operationComplete(final @NotNull ChannelFuture future) throws Exception {
             final Listener listener = bindInformation.getListener();
-            final int port = listener.getPort();
+            final int bindPort = ((InetSocketAddress) future.channel().localAddress()).getPort();
+            listener.setPort(bindPort);
             if (future.isSuccess()) {
-                settableFuture.set(ListenerStartupInformation.successfulListenerStartup(port, listener));
+                settableFuture.set(ListenerStartupInformation.successfulListenerStartup(bindPort, listener));
             } else {
-                settableFuture.set(ListenerStartupInformation.failedListenerStartup(port, listener, future.cause()));
+                settableFuture.set(ListenerStartupInformation.failedListenerStartup(bindPort, listener, future.cause()));
             }
-
         }
     }
 }

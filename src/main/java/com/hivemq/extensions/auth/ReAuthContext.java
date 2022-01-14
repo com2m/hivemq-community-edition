@@ -15,6 +15,8 @@
  */
 package com.hivemq.extensions.auth;
 
+import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientState;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extensions.auth.parameter.ModifiableClientSettingsImpl;
 import com.hivemq.extensions.events.OnAuthSuccessEvent;
@@ -59,7 +61,6 @@ public class ReAuthContext extends AuthContext<ReAuthOutput> {
     void succeedAuthentication(final @NotNull ReAuthOutput output) {
         super.succeedAuthentication(output);
         final Channel channel = ctx.channel();
-        channel.attr(ChannelAttributes.RE_AUTH_ONGOING).set(false);
         applyClientSettings(output.getClientSettings(), channel);
 
         final ChannelFuture authFuture = authSender.sendAuth(
@@ -134,7 +135,8 @@ public class ReAuthContext extends AuthContext<ReAuthOutput> {
             final @NotNull ModifiableClientSettingsImpl clientSettings,
             final @NotNull Channel channel) {
 
-        channel.attr(ChannelAttributes.CLIENT_RECEIVE_MAXIMUM).set(clientSettings.getClientReceiveMaximum());
-        channel.attr(ChannelAttributes.QUEUE_SIZE_MAXIMUM).set(clientSettings.getQueueSizeMaximum());
+        final ClientConnection clientConnection = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get();
+        clientConnection.setClientReceiveMaximum(clientSettings.getClientReceiveMaximum());
+        clientConnection.setQueueSizeMaximum(clientSettings.getQueueSizeMaximum());
     }
 }

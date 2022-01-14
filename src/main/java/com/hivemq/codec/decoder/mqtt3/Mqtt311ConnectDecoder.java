@@ -15,6 +15,7 @@
  */
 package com.hivemq.codec.decoder.mqtt3;
 
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.bootstrap.ioc.lazysingleton.LazySingleton;
 import com.hivemq.codec.decoder.AbstractMqttConnectDecoder;
 import com.hivemq.configuration.HivemqId;
@@ -116,6 +117,7 @@ public class Mqtt311ConnectDecoder extends AbstractMqttConnectDecoder {
             return null;
         }
 
+        final ClientConnection clientConnection = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get();
         final String clientId;
 
         if (validateUTF8 && utf8StringLength > 0) {
@@ -148,13 +150,13 @@ public class Mqtt311ConnectDecoder extends AbstractMqttConnectDecoder {
                 }
 
                 clientId = clientIds.generateNext();
-                channel.attr(ChannelAttributes.CLIENT_ID_ASSIGNED).set(true);
+                clientConnection.setClientIdAssigned(true);
             } else {
                 clientId = Strings.getPrefixedString(buf, utf8StringLength);
             }
         }
 
-        channel.attr(ChannelAttributes.CLIENT_ID).set(clientId);
+        clientConnection.setClientId(clientId);
 
         final MqttWillPublish willPublish;
 
@@ -180,7 +182,7 @@ public class Mqtt311ConnectDecoder extends AbstractMqttConnectDecoder {
                         ReasonStrings.CONNACK_MALFORMED_PACKET_USERNAME);
                 return null;
             }
-            channel.attr(ChannelAttributes.AUTH_USERNAME).set(userName);
+            clientConnection.setAuthUsername(userName);
         } else {
             userName = null;
         }
@@ -197,22 +199,24 @@ public class Mqtt311ConnectDecoder extends AbstractMqttConnectDecoder {
                         ReasonStrings.CONNACK_MALFORMED_PACKET_PASSWORD);
                 return null;
             }
-            channel.attr(ChannelAttributes.AUTH_PASSWORD).set(password);
+            clientConnection.setAuthPassword(password);
         } else {
             password = null;
         }
 
-        channel.attr(ChannelAttributes.CONNECT_KEEP_ALIVE).set(keepAlive);
-        channel.attr(ChannelAttributes.CLEAN_START).set(isCleanSessionFlag);
+        clientConnection.setConnectKeepAlive(keepAlive);
+        clientConnection.setCleanStart(isCleanSessionFlag);
+
+        final long sessionExpiryInterval = isCleanSessionFlag ? 0 : maxSessionExpiryInterval;
+        clientConnection.setClientSessionExpiryInterval(sessionExpiryInterval);
 
         return new CONNECT.Mqtt3Builder().withProtocolVersion(ProtocolVersion.MQTTv3_1_1)
                 .withClientIdentifier(clientId)
                 .withUsername(userName)
                 .withPassword(password)
                 .withCleanStart(isCleanSessionFlag)
-                .withSessionExpiryInterval(isCleanSessionFlag ? 0 : maxSessionExpiryInterval)
+                .withSessionExpiryInterval(sessionExpiryInterval)
                 .withKeepAlive(keepAlive)
                 .withWillPublish(willPublish).build();
     }
-
 }

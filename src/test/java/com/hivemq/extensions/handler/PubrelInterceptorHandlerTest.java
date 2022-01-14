@@ -16,6 +16,7 @@
 package com.hivemq.extensions.handler;
 
 import com.google.common.collect.ImmutableList;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.extension.sdk.api.annotations.Immutable;
@@ -50,6 +51,7 @@ import io.netty.channel.embedded.EmbeddedChannel;
 import org.jboss.shrinkwrap.api.ShrinkWrap;
 import org.jboss.shrinkwrap.api.exporter.ZipExporter;
 import org.jboss.shrinkwrap.api.spec.JavaArchive;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -71,26 +73,27 @@ import static org.mockito.Mockito.when;
 
 /**
  * @author Yannick Weber
+ * @since 4.3.0
  */
 public class PubrelInterceptorHandlerTest {
 
     @Rule
-    public TemporaryFolder temporaryFolder = new TemporaryFolder();
+    public @NotNull TemporaryFolder temporaryFolder = new TemporaryFolder();
 
     @Mock
-    private HiveMQExtensions hiveMQExtensions;
+    private @NotNull HiveMQExtensions hiveMQExtensions;
 
     @Mock
-    private HiveMQExtension plugin;
+    private @NotNull HiveMQExtension plugin;
 
     @Mock
-    private ClientContextImpl clientContext;
+    private @NotNull ClientContextImpl clientContext;
 
-    private PluginTaskExecutor executor1;
+    private @NotNull PluginTaskExecutor executor1;
 
-    private EmbeddedChannel channel;
+    private @NotNull EmbeddedChannel channel;
 
-    private PubrelInterceptorHandler handler;
+    private @NotNull PubrelInterceptorHandler handler;
 
     @Before
     public void setUp() throws Exception {
@@ -100,9 +103,11 @@ public class PubrelInterceptorHandlerTest {
         executor1.postConstruct();
 
         channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.CLIENT_ID).set("client");
-        channel.attr(ChannelAttributes.REQUEST_RESPONSE_INFORMATION).set(true);
-        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId("client");
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setRequestResponseInformation(true);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv5);
         when(plugin.getId()).thenReturn("plugin");
 
         final FullConfigurationService configurationService =
@@ -115,22 +120,27 @@ public class PubrelInterceptorHandlerTest {
 
         channel.pipeline().addLast("test", new ChannelOutboundHandlerAdapter() {
             @Override
-            public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+            public void write(@NotNull final ChannelHandlerContext ctx, @NotNull final Object msg, @NotNull final ChannelPromise promise) {
                 handler.handleOutboundPubrel(ctx, ((PUBREL) msg), promise);
             }
         });
         channel.pipeline().addLast("test2", new ChannelInboundHandlerAdapter() {
             @Override
-            public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+            public void channelRead(final @NotNull ChannelHandlerContext ctx, final @NotNull Object msg) {
                 handler.handleInboundPubrel(ctx, ((PUBREL) msg));
             }
         });
     }
 
+    @After
+    public void tearDown() throws Exception {
+        executor1.stop();
+    }
+
     @Test(timeout = 5000)
     public void test_inbound_client_id_not_set() {
 
-        channel.attr(ChannelAttributes.CLIENT_ID).set(null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId(null);
 
         channel.writeInbound(testPubrel());
         channel.runPendingTasks();
@@ -153,7 +163,6 @@ public class PubrelInterceptorHandlerTest {
     public void test_inbound_no_interceptors() {
 
         when(clientContext.getPubrelInboundInterceptors()).thenReturn(ImmutableList.of());
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(plugin);
 
         final PUBREL testPubrel = testPubrel();
@@ -177,8 +186,6 @@ public class PubrelInterceptorHandlerTest {
         when(clientContext.getPubrelInboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(plugin);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-
         channel.writeInbound(testPubrel());
         channel.runPendingTasks();
         PUBREL pubrel = channel.readInbound();
@@ -196,7 +203,6 @@ public class PubrelInterceptorHandlerTest {
 
         final PubrelInboundInterceptor interceptor = getInboundInterceptor("TestModifyInboundInterceptor");
         final List<PubrelInboundInterceptor> list = ImmutableList.of(interceptor);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
         when(clientContext.getPubrelInboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(null);
 
@@ -221,8 +227,6 @@ public class PubrelInterceptorHandlerTest {
         when(clientContext.getPubrelInboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(plugin);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-
         channel.writeInbound(testPubrel());
         channel.runPendingTasks();
         channel.runScheduledPendingTasks();
@@ -240,7 +244,6 @@ public class PubrelInterceptorHandlerTest {
         when(clientContext.getPubrelInboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(plugin);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
 
         channel.writeInbound(testPubrel());
         channel.runPendingTasks();
@@ -260,8 +263,6 @@ public class PubrelInterceptorHandlerTest {
         when(clientContext.getPubrelInboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(plugin);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-
         channel.writeInbound(testPubrel());
         channel.runPendingTasks();
         PUBREL pubrel = channel.readInbound();
@@ -278,7 +279,7 @@ public class PubrelInterceptorHandlerTest {
     @Test(timeout = 5000)
     public void test_outbound_client_id_not_set() {
 
-        channel.attr(ChannelAttributes.CLIENT_ID).set(null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId(null);
 
         channel.writeOutbound(testPubrel());
         channel.runPendingTasks();
@@ -302,7 +303,6 @@ public class PubrelInterceptorHandlerTest {
     public void test_outbound_no_interceptors() {
 
         when(clientContext.getPubrelOutboundInterceptors()).thenReturn(ImmutableList.of());
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(plugin);
 
         final PUBREL testPubrel = testPubrel();
@@ -326,8 +326,6 @@ public class PubrelInterceptorHandlerTest {
         when(clientContext.getPubrelOutboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(plugin);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-
         channel.writeOutbound(testPubrel());
         channel.runPendingTasks();
         PUBREL pubrel = channel.readOutbound();
@@ -345,7 +343,6 @@ public class PubrelInterceptorHandlerTest {
 
         final PubrelOutboundInterceptor interceptor = getOutboundInterceptor("TestModifyOutboundInterceptor");
         final List<PubrelOutboundInterceptor> list = ImmutableList.of(interceptor);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
         when(clientContext.getPubrelOutboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(null);
 
@@ -370,8 +367,6 @@ public class PubrelInterceptorHandlerTest {
         when(clientContext.getPubrelOutboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(plugin);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-
         channel.writeOutbound(testPubrel());
 
         channel.writeOutbound(testPubrel());
@@ -390,8 +385,6 @@ public class PubrelInterceptorHandlerTest {
         when(clientContext.getPubrelOutboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(plugin);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-
         channel.writeOutbound(testPubrel());
         channel.runPendingTasks();
         channel.runScheduledPendingTasks();
@@ -407,8 +400,6 @@ public class PubrelInterceptorHandlerTest {
 
         when(clientContext.getPubrelOutboundInterceptors()).thenReturn(list);
         when(hiveMQExtensions.getExtensionForClassloader(any())).thenReturn(plugin);
-
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
 
         channel.writeOutbound(testPubrel());
         channel.runPendingTasks();

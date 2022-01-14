@@ -110,7 +110,7 @@ public class OrderedTopicService {
         }
 
         final PUBLISH publish = (PUBLISH) msg;
-        final String clientId = channel.attr(ChannelAttributes.CLIENT_ID).get();
+        final String clientId = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().getClientId();
         final int qosNumber = publish.getQoS().getQosNumber();
         if (log.isTraceEnabled()) {
             log.trace("Client {}: Sending PUBLISH QoS {} Message with packet id {}", clientId, publish.getQoS().getQosNumber(), publish.getPacketIdentifier());
@@ -157,7 +157,7 @@ public class OrderedTopicService {
         }
 
         // In case the client is disconnected, we return all the publish status futures
-        // This is particularly important for shared subscriptions, because the publish wont be resent otherwise
+        // This is particularly important for shared subscriptions, because the publish will not be resent otherwise
         for (final Map.Entry<Integer, SettableFuture<PublishStatus>> entry : messageIdToFutureMap.entrySet()) {
             final SettableFuture<PublishStatus> publishStatusFuture = entry.getValue();
             publishStatusFuture.set(PublishStatus.NOT_CONNECTED);

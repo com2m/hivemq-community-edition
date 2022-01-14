@@ -16,7 +16,7 @@
 package com.hivemq.mqtt.handler.connect;
 
 import com.google.common.collect.ImmutableList;
-import com.hivemq.configuration.HivemqId;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.logging.EventLog;
 import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnector;
 import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnectorImpl;
@@ -26,6 +26,7 @@ import com.hivemq.mqtt.message.connect.CONNECT;
 import com.hivemq.mqtt.message.disconnect.DISCONNECT;
 import com.hivemq.mqtt.message.publish.PUBLISH;
 import com.hivemq.mqtt.message.subscribe.SUBSCRIBE;
+import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.embedded.EmbeddedChannel;
@@ -46,17 +47,18 @@ import static org.junit.Assert.assertFalse;
  */
 public class MessageBarrierTest {
 
-    private EmbeddedChannel embeddedChannel;
+    private EmbeddedChannel channel;
     private MessageBarrier messageBarrier;
 
     @Before
     public void before() {
         MockitoAnnotations.initMocks(this);
-        final MqttServerDisconnector mqttServerDisconnector = new MqttServerDisconnectorImpl(new EventLog(), new HivemqId());
+        final MqttServerDisconnector mqttServerDisconnector = new MqttServerDisconnectorImpl(new EventLog());
 
         messageBarrier = new MessageBarrier(mqttServerDisconnector);
-        embeddedChannel = new EmbeddedChannel(new DummyHandler());
-        embeddedChannel.pipeline().addFirst(MQTT_MESSAGE_BARRIER, messageBarrier);
+        channel = new EmbeddedChannel(new DummyHandler());
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
+        channel.pipeline().addFirst(MQTT_MESSAGE_BARRIER, messageBarrier);
     }
 
     @Test
@@ -67,47 +69,47 @@ public class MessageBarrierTest {
     @Test
     public void test_connect_sent() {
 
-        embeddedChannel.writeInbound(new CONNECT.Mqtt3Builder().withProtocolVersion(ProtocolVersion.MQTTv3_1_1).withClientIdentifier("clientID").build());
+        channel.writeInbound(new CONNECT.Mqtt3Builder().withProtocolVersion(ProtocolVersion.MQTTv3_1_1).withClientIdentifier("clientID").build());
         assertEquals(true, messageBarrier.getConnectReceived());
     }
 
     @Test
     public void test_message_sent_before_connect() {
 
-        embeddedChannel.writeInbound(TestMessageUtil.createMqtt3Publish());
-        assertEquals(false, embeddedChannel.isActive());
+        channel.writeInbound(TestMessageUtil.createMqtt3Publish());
+        assertEquals(false, channel.isActive());
 
     }
 
     @Test
     public void test_queue_messages_after_connect() {
 
-        embeddedChannel.writeInbound(new CONNECT.Mqtt3Builder().withProtocolVersion(ProtocolVersion.MQTTv3_1_1).withClientIdentifier("clientID").build());
+        channel.writeInbound(new CONNECT.Mqtt3Builder().withProtocolVersion(ProtocolVersion.MQTTv3_1_1).withClientIdentifier("clientID").build());
 
-        embeddedChannel.writeInbound(TestMessageUtil.createMqtt3Publish());
-        embeddedChannel.writeInbound(new SUBSCRIBE(ImmutableList.of(), 1));
-        embeddedChannel.writeInbound(TestMessageUtil.createMqtt3Publish());
-        embeddedChannel.writeInbound(new PINGREQ());
-        embeddedChannel.writeInbound(TestMessageUtil.createMqtt3Publish());
-        embeddedChannel.writeInbound(new DISCONNECT());
+        channel.writeInbound(TestMessageUtil.createMqtt3Publish());
+        channel.writeInbound(new SUBSCRIBE(ImmutableList.of(), 1));
+        channel.writeInbound(TestMessageUtil.createMqtt3Publish());
+        channel.writeInbound(new PINGREQ());
+        channel.writeInbound(TestMessageUtil.createMqtt3Publish());
+        channel.writeInbound(new DISCONNECT());
 
-        assertEquals(true, embeddedChannel.isActive());
+        assertEquals(true, channel.isActive());
         assertEquals(6, messageBarrier.getQueue().size());
     }
 
     @Test
     public void test_messages_not_sent_on_connack_fail() {
 
-        embeddedChannel.writeInbound(new CONNECT.Mqtt3Builder().withProtocolVersion(ProtocolVersion.MQTTv3_1_1).withClientIdentifier("clientID").build());
+        channel.writeInbound(new CONNECT.Mqtt3Builder().withProtocolVersion(ProtocolVersion.MQTTv3_1_1).withClientIdentifier("clientID").build());
 
-        embeddedChannel.writeInbound(TestMessageUtil.createMqtt3Publish());
-        embeddedChannel.writeInbound(new SUBSCRIBE(ImmutableList.of(), 1));
+        channel.writeInbound(TestMessageUtil.createMqtt3Publish());
+        channel.writeInbound(new SUBSCRIBE(ImmutableList.of(), 1));
 
         assertEquals(2, messageBarrier.getQueue().size());
 
         final AtomicInteger counter = new AtomicInteger(0);
 
-        embeddedChannel.pipeline().addFirst(new ChannelDuplexHandler() {
+        channel.pipeline().addFirst(new ChannelDuplexHandler() {
 
             @Override
             public void channelRead(final ChannelHandlerContext ctx, final Object msg) {
@@ -115,7 +117,7 @@ public class MessageBarrierTest {
             }
         });
 
-        embeddedChannel.writeOutbound(ConnackMessages.REFUSED_NOT_AUTHORIZED);
+        channel.writeOutbound(ConnackMessages.REFUSED_NOT_AUTHORIZED);
 
         assertEquals(0, counter.get());
     }
@@ -123,16 +125,16 @@ public class MessageBarrierTest {
     @Test
     public void test_messages_sent_on_connack_success() {
 
-        embeddedChannel.writeInbound(new CONNECT.Mqtt3Builder().withProtocolVersion(ProtocolVersion.MQTTv3_1_1).withClientIdentifier("clientID").build());
+        channel.writeInbound(new CONNECT.Mqtt3Builder().withProtocolVersion(ProtocolVersion.MQTTv3_1_1).withClientIdentifier("clientID").build());
 
-        embeddedChannel.writeInbound(TestMessageUtil.createMqtt3Publish());
-        embeddedChannel.writeInbound(new SUBSCRIBE(ImmutableList.of(), 1));
+        channel.writeInbound(TestMessageUtil.createMqtt3Publish());
+        channel.writeInbound(new SUBSCRIBE(ImmutableList.of(), 1));
 
         assertEquals(2, messageBarrier.getQueue().size());
 
         final AtomicInteger counter = new AtomicInteger(0);
 
-        embeddedChannel.pipeline().addAfter(MQTT_MESSAGE_BARRIER, "test", new ChannelDuplexHandler() {
+        channel.pipeline().addAfter(MQTT_MESSAGE_BARRIER, "test", new ChannelDuplexHandler() {
 
             @Override
             public void channelRead(final ChannelHandlerContext ctx, final Object msg) {
@@ -143,10 +145,10 @@ public class MessageBarrierTest {
             }
         });
 
-        embeddedChannel.writeOutbound(ConnackMessages.ACCEPTED_MSG_NO_SESS);
+        channel.writeOutbound(ConnackMessages.ACCEPTED_MSG_NO_SESS);
 
         assertEquals(2, counter.get());
-        assertFalse(embeddedChannel.pipeline().names().contains(MQTT_MESSAGE_BARRIER));
+        assertFalse(channel.pipeline().names().contains(MQTT_MESSAGE_BARRIER));
     }
 
 }

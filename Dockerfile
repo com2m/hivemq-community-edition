@@ -3,7 +3,7 @@ FROM gradle:jdk11 AS builder
 # Make tmp directory and set workdir.
 RUN mkdir /tmp/hivemq-source
 WORKDIR /tmp/hivemq-source
-ARG HIVEMQ_VERSION=2021.2
+ARG HIVEMQ_VERSION=2021.3
 
 COPY ./ ./
 
@@ -21,9 +21,9 @@ RUN ./gradlew clean build hivemqZip -x test && ls -la && ls -la ./build && ls -l
 RUN unzip ./build/zip/hivemq-ce-${HIVEMQ_VERSION}.zip -d ./build/zip/
 RUN find ./build/zip/hivemq-ce-${HIVEMQ_VERSION} -type f -print0 | xargs -0 dos2unix
 
-FROM docker.com2m.de/iot/core/iot-base-image:adoptopenjdk-jre-11.0.5_10-openj9-0.17.0-alpine-3
+FROM docker.com2m.de/iot/core/iot-base-image:adoptopenjdk-jre-11.0.12_7-openj9-0.27.0-alpine-0
 
-ARG HIVEMQ_VERSION=2021.2
+ARG HIVEMQ_VERSION=2021.3
 ENV HIVEMQ_GID=10000
 ENV HIVEMQ_UID=10000
 

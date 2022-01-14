@@ -16,6 +16,7 @@
 package com.hivemq.extensions.handler;
 
 import com.google.common.collect.ImmutableMap;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
@@ -105,6 +106,8 @@ public class ConnackOutboundInterceptorHandlerTest {
 
     private ConnackOutboundInterceptorHandler handler;
 
+    private ClientConnection clientConnection;
+
     @Before
     public void setUp() throws Exception {
         MockitoAnnotations.initMocks(this);
@@ -113,8 +116,13 @@ public class ConnackOutboundInterceptorHandlerTest {
         executor1.postConstruct();
 
         channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.CLIENT_ID).set("client");
-        channel.attr(ChannelAttributes.REQUEST_RESPONSE_INFORMATION).set(true);
+        clientConnection = new ClientConnection(channel, null);
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId("client");
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setRequestResponseInformation(true);
+
         when(plugin.getId()).thenReturn("plugin");
 
         configurationService = new TestConfigurationBootstrap().getFullConfigurationService();
@@ -133,7 +141,7 @@ public class ConnackOutboundInterceptorHandlerTest {
     @Test(timeout = 5000)
     public void test_client_id_not_set() {
 
-        channel.attr(ChannelAttributes.CLIENT_ID).set(null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId(null);
 
         final CONNACK initial = testConnack();
         channel.writeOutbound(initial);
@@ -152,7 +160,6 @@ public class ConnackOutboundInterceptorHandlerTest {
     public void test_no_interceptors() {
 
         when(interceptors.connackOutboundInterceptorProviders()).thenReturn(ImmutableMap.of());
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
 
         channel.writeOutbound(testConnack());
         channel.runPendingTasks();
@@ -171,7 +178,6 @@ public class ConnackOutboundInterceptorHandlerTest {
 
         final ConnackOutboundInterceptorProvider interceptorProvider = getInterceptor("TestNullOutboundInterceptor");
         when(interceptors.connackOutboundInterceptorProviders()).thenReturn(ImmutableMap.of("plugin", interceptorProvider));
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
 
         channel.writeOutbound(testConnack());
         channel.runPendingTasks();
@@ -191,7 +197,6 @@ public class ConnackOutboundInterceptorHandlerTest {
         final ConnackOutboundInterceptorProvider interceptorProvider = getInterceptor("TestModifyOutboundInterceptor");
         when(interceptors.connackOutboundInterceptorProviders()).thenReturn(ImmutableMap.of("plugin", interceptorProvider));
         when(hiveMQExtensions.getExtension(eq("plugin"))).thenReturn(plugin);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
 
         channel.writeOutbound(testConnack());
         channel.runPendingTasks();
@@ -211,7 +216,6 @@ public class ConnackOutboundInterceptorHandlerTest {
         final ConnackOutboundInterceptorProvider interceptorProvider = getInterceptor("TestModifyOutboundInterceptor");
         when(interceptors.connackOutboundInterceptorProviders()).thenReturn(ImmutableMap.of("plugin", interceptorProvider));
         when(hiveMQExtensions.getExtension(eq("plugin"))).thenReturn(null);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
 
         channel.writeOutbound(testConnack());
         channel.runPendingTasks();
@@ -231,7 +235,6 @@ public class ConnackOutboundInterceptorHandlerTest {
         final ConnackOutboundInterceptorProvider interceptorProvider = getInterceptor("TestTimeoutFailedOutboundInterceptor");
         when(interceptors.connackOutboundInterceptorProviders()).thenReturn(ImmutableMap.of("plugin", interceptorProvider));
         when(hiveMQExtensions.getExtension(eq("plugin"))).thenReturn(plugin);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
 
         channel.writeOutbound(testConnack());
 
@@ -250,7 +253,6 @@ public class ConnackOutboundInterceptorHandlerTest {
         final ConnackOutboundInterceptorProvider interceptorProvider = getInterceptor("TestExceptionOutboundInterceptor");
         when(interceptors.connackOutboundInterceptorProviders()).thenReturn(ImmutableMap.of("plugin", interceptorProvider));
         when(hiveMQExtensions.getExtension(eq("plugin"))).thenReturn(plugin);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
 
         channel.writeOutbound(testConnack());
 

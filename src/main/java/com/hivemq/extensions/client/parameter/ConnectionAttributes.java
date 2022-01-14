@@ -18,10 +18,11 @@ package com.hivemq.extensions.client.parameter;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
+import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.extension.sdk.api.annotations.ThreadSafe;
-import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.extension.sdk.api.services.exception.LimitExceededException;
 import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.Channel;
@@ -53,7 +54,7 @@ public class ConnectionAttributes {
     static ConnectionAttributes getInstanceIfPresent(@NotNull final Channel channel) {
         Preconditions.checkNotNull(channel, "Channel for connection attributes must not be null.");
 
-        return channel.attr(ChannelAttributes.CONNECTION_ATTRIBUTES).get();
+        return channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().getConnectionAttributes();
     }
 
     /**
@@ -74,9 +75,8 @@ public class ConnectionAttributes {
 
         final int maxValueSizeBytes = InternalConfigurations.CONNECTION_ATTRIBUTE_STORE_MAX_VALUE_SIZE;
 
-        final ConnectionAttributes newConnectionAttributes = new ConnectionAttributes(maxValueSizeBytes);
-        final ConnectionAttributes oldConnectionAttributes = channel.attr(ChannelAttributes.CONNECTION_ATTRIBUTES).setIfAbsent(newConnectionAttributes);
-        return (oldConnectionAttributes != null) ? oldConnectionAttributes : newConnectionAttributes;
+        final ClientConnection clientConnection = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get();
+        return clientConnection.setConnectionAttributesIfAbsent(new ConnectionAttributes(maxValueSizeBytes));
     }
 
     @VisibleForTesting

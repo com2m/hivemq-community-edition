@@ -16,6 +16,8 @@
 package com.hivemq.mqtt.handler.auth;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientState;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extensions.handler.PluginAuthenticatorService;
 import com.hivemq.mqtt.handler.connack.MqttConnacker;
@@ -73,29 +75,30 @@ public class AuthHandler extends SimpleChannelInboundHandler<AUTH> {
     protected void channelRead0(final @NotNull ChannelHandlerContext ctx, final @NotNull AUTH msg) {
 
         final Channel channel = ctx.channel();
-        final Boolean reAuth = channel.attr(ChannelAttributes.RE_AUTH_ONGOING).get();
-        final boolean reAuthOngoing = reAuth != null && reAuth;
-        final Boolean auth = channel.attr(ChannelAttributes.AUTH_ONGOING).get();
-        final boolean authOngoing = auth != null && auth;
+        final ClientConnection clientConnection = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get();
 
         authSender.logAuth(channel, msg.getReasonCode(), true);
 
         switch (msg.getReasonCode()) {
             case SUCCESS:
-                onReceivedSuccess(ctx, msg, reAuthOngoing);
+                onReceivedSuccess(ctx, msg, clientConnection);
                 break;
             case CONTINUE_AUTHENTICATION:
-                onReceivedContinue(ctx, msg, reAuthOngoing);
+                onReceivedContinue(ctx, msg, clientConnection);
                 break;
             case REAUTHENTICATE:
-                onReceivedReAuthenticate(ctx, msg, authOngoing, reAuthOngoing);
+                onReceivedReAuthenticate(ctx, msg, clientConnection);
                 break;
         }
     }
 
-    private void onReceivedSuccess(final @NotNull ChannelHandlerContext ctx, final @NotNull AUTH msg, final boolean reAuthOngoing) {
+    private void onReceivedSuccess(
+            final @NotNull ChannelHandlerContext ctx,
+            final @NotNull AUTH msg,
+            final @NotNull ClientConnection clientConnection) {
+
         final String reasonString = String.format(ReasonStrings.DISCONNECT_PROTOCOL_ERROR_REASON_CODE, msg.getType().name());
-        if (reAuthOngoing) {
+        if (clientConnection.getClientState() == ClientState.RE_AUTHENTICATING) {
             disconnector.disconnect(
                     ctx.channel(),
                     SUCCESS_AUTH_RECEIVED_FROM_CLIENT,
@@ -117,14 +120,22 @@ public class AuthHandler extends SimpleChannelInboundHandler<AUTH> {
         }
     }
 
-    private void onReceivedContinue(final @NotNull ChannelHandlerContext ctx, final @NotNull AUTH msg, final boolean reAuthOngoing) {
-        authService.authenticateAuth(ctx, msg, reAuthOngoing);
+    private void onReceivedContinue(
+            final @NotNull ChannelHandlerContext ctx,
+            final @NotNull AUTH msg,
+            final @NotNull ClientConnection clientConnection) {
+        authService.authenticateAuth(ctx, clientConnection, msg);
     }
 
-    private void onReceivedReAuthenticate(final @NotNull ChannelHandlerContext ctx, final @NotNull AUTH msg, final boolean authOngoing, final boolean reAuthOngoing) {
-        if (reAuthOngoing || authOngoing) {
+    private void onReceivedReAuthenticate(
+            final @NotNull ChannelHandlerContext ctx,
+            final @NotNull AUTH msg,
+            final @NotNull ClientConnection clientConnection) {
+
+        final ClientState clientState = clientConnection.getClientState();
+        if (clientState == ClientState.AUTHENTICATING || clientState == ClientState.RE_AUTHENTICATING) {
             final String reasonString = String.format(ReasonStrings.DISCONNECT_PROTOCOL_ERROR_REASON_CODE, msg.getType().name());
-            if (reAuthOngoing) {
+            if (clientState == ClientState.RE_AUTHENTICATING) {
                 disconnector.disconnect(
                         ctx.channel(),
                         REAUTHENTICATE_DURING_RE_AUTH,
@@ -147,7 +158,7 @@ public class AuthHandler extends SimpleChannelInboundHandler<AUTH> {
             return;
         }
 
-        ctx.channel().attr(ChannelAttributes.RE_AUTH_ONGOING).set(true);
-        authService.authenticateReAuth(ctx, msg);
+        clientConnection.proposeClientState(ClientState.RE_AUTHENTICATING);
+        authService.authenticateAuth(ctx, clientConnection, msg);
     }
 }

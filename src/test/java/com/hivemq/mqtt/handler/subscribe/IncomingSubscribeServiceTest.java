@@ -20,9 +20,10 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.Futures;
-import com.hivemq.configuration.HivemqId;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.configuration.service.MqttConfigurationService;
 import com.hivemq.configuration.service.RestrictionsConfigurationService;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.auth.parameter.TopicPermission;
 import com.hivemq.extension.sdk.api.packets.auth.DefaultAuthorizationBehaviour;
 import com.hivemq.extensions.packets.general.ModifiableDefaultPermissionsImpl;
@@ -100,17 +101,19 @@ public class IncomingSubscribeServiceTest {
 
     private EmbeddedChannel channel;
     private IncomingSubscribeService incomingSubscribeService;
-    private HivemqId hivemqId;
+
+    private @NotNull ClientConnection clientConnection;
 
     @Before
     public void setUp() throws Exception {
 
         MockitoAnnotations.initMocks(this);
-        hivemqId = new HivemqId();
-        incomingSubscribeService = new IncomingSubscribeService(clientSessionSubscriptionPersistence, retainedMessagePersistence, sharedSubscriptionService, retainedMessagesSender, mqttConfigurationService, restrictionsConfigurationService, new MqttServerDisconnectorImpl(eventLog, hivemqId));
+        incomingSubscribeService = new IncomingSubscribeService(clientSessionSubscriptionPersistence, retainedMessagePersistence, sharedSubscriptionService, retainedMessagesSender, mqttConfigurationService, restrictionsConfigurationService, new MqttServerDisconnectorImpl(eventLog));
 
         channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.CLIENT_ID).set("client");
+        clientConnection = new ClientConnection(channel, null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId("client");
 
         when(clientSessionSubscriptionPersistence.addSubscription(anyString(), any(Topic.class))).thenReturn(Futures.immediateFuture(null));
         when(clientSessionSubscriptionPersistence.addSubscriptions(anyString(), any(ImmutableSet.class))).thenReturn(Futures.<Void>immediateFuture(null));
@@ -279,8 +282,7 @@ public class IncomingSubscribeServiceTest {
     @Test
     public void test_subscribe_wildcard_disabled_mqtt5() {
         when(mqttConfigurationService.wildcardSubscriptionsEnabled()).thenReturn(false);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv5);
         final Topic topic = new Topic("#", QoS.EXACTLY_ONCE);
 
         final SUBSCRIBE subscribe = new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(topic)), 10);
@@ -288,15 +290,14 @@ public class IncomingSubscribeServiceTest {
         incomingSubscribeService.processSubscribe(ctx, subscribe, false);
 
         assertFalse(channel.isActive());
-        
+
         verify(clientSessionSubscriptionPersistence, never()).addSubscriptions(any(), any());
     }
 
     @Test
     public void test_subscribe_wildcard_disabled_mqtt3_1_1() {
         when(mqttConfigurationService.wildcardSubscriptionsEnabled()).thenReturn(false);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1_1);
-
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1_1);
         final Topic topic = new Topic("#", QoS.EXACTLY_ONCE);
 
         final SUBSCRIBE subscribe = new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(topic)), 10);
@@ -304,15 +305,14 @@ public class IncomingSubscribeServiceTest {
         incomingSubscribeService.processSubscribe(ctx, subscribe, false);
 
         assertFalse(channel.isActive());
-        
+
         verify(clientSessionSubscriptionPersistence, never()).addSubscriptions(any(), any());
     }
 
     @Test
     public void test_subscribe_wildcard_disabled_mqtt3_1() {
         when(mqttConfigurationService.wildcardSubscriptionsEnabled()).thenReturn(false);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1);
-
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1);
         final Topic topic = new Topic("#", QoS.EXACTLY_ONCE);
 
         final SUBSCRIBE subscribe = new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(topic)), 10);
@@ -326,8 +326,7 @@ public class IncomingSubscribeServiceTest {
     @Test
     public void test_shared_subscription_disabled_mqtt5() {
         when(mqttConfigurationService.sharedSubscriptionsEnabled()).thenReturn(false);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv5);
         final Topic topic = new Topic("$share/group1/topic1", QoS.EXACTLY_ONCE);
 
         final SUBSCRIBE subscribe = new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(topic)), 10);
@@ -343,8 +342,7 @@ public class IncomingSubscribeServiceTest {
     public void test_shared_subscription_disabled_mqtt3_1_1() {
         when(mqttConfigurationService.sharedSubscriptionsEnabled()).thenReturn(false);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1_1);
-
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1_1);
         final Topic topic = new Topic("$share/group1/topic1", QoS.EXACTLY_ONCE);
 
         final SUBSCRIBE subscribe = new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(topic)), 10);
@@ -360,8 +358,7 @@ public class IncomingSubscribeServiceTest {
     public void test_shared_subscription_disabled_mqtt3_1() {
         when(mqttConfigurationService.sharedSubscriptionsEnabled()).thenReturn(false);
 
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1);
-
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1);
         final Topic topic = new Topic("$share/group1/topic1", QoS.EXACTLY_ONCE);
 
         final SUBSCRIBE subscribe = new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(topic)), 10);
@@ -384,7 +381,7 @@ public class IncomingSubscribeServiceTest {
         final ModifiableDefaultPermissionsImpl permissions = new ModifiableDefaultPermissionsImpl();
         permissions.add(new TopicPermissionBuilderImpl(new TestConfigurationBootstrap().getFullConfigurationService()).topicFilter("#").type(TopicPermission.PermissionType.ALLOW).build());
 
-        channel.attr(ChannelAttributes.AUTH_PERMISSIONS).set(permissions);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setAuthPermissions(permissions);
 
         incomingSubscribeService.processSubscribe(ctx, subscribe, false);
 
@@ -406,7 +403,7 @@ public class IncomingSubscribeServiceTest {
         final ModifiableDefaultPermissionsImpl permissions = new ModifiableDefaultPermissionsImpl();
         permissions.add(new TopicPermissionBuilderImpl(new TestConfigurationBootstrap().getFullConfigurationService()).topicFilter("#").type(TopicPermission.PermissionType.DENY).build());
 
-        channel.attr(ChannelAttributes.AUTH_PERMISSIONS).set(permissions);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setAuthPermissions(permissions);
 
         incomingSubscribeService.processSubscribe(ctx, subscribe, false);
 
@@ -430,7 +427,7 @@ public class IncomingSubscribeServiceTest {
         final ModifiableDefaultPermissionsImpl permissions = new ModifiableDefaultPermissionsImpl();
         permissions.add(new TopicPermissionBuilderImpl(new TestConfigurationBootstrap().getFullConfigurationService()).topicFilter("#").type(TopicPermission.PermissionType.ALLOW).build());
 
-        channel.attr(ChannelAttributes.AUTH_PERMISSIONS).set(permissions);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setAuthPermissions(permissions);
 
         incomingSubscribeService.processSubscribe(ctx, subscribe, false);
 
@@ -456,7 +453,7 @@ public class IncomingSubscribeServiceTest {
         final ModifiableDefaultPermissionsImpl permissions = new ModifiableDefaultPermissionsImpl();
         permissions.add(new TopicPermissionBuilderImpl(new TestConfigurationBootstrap().getFullConfigurationService()).topicFilter("#").type(TopicPermission.PermissionType.DENY).build());
 
-        channel.attr(ChannelAttributes.AUTH_PERMISSIONS).set(permissions);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setAuthPermissions(permissions);
 
         incomingSubscribeService.processSubscribe(ctx, subscribe, false);
 
@@ -489,7 +486,7 @@ public class IncomingSubscribeServiceTest {
         permissions.add(new TopicPermissionBuilderImpl(new TestConfigurationBootstrap().getFullConfigurationService()).topicFilter("test4").type(TopicPermission.PermissionType.ALLOW).build());
         permissions.setDefaultBehaviour(DefaultAuthorizationBehaviour.DENY);
 
-        channel.attr(ChannelAttributes.AUTH_PERMISSIONS).set(permissions);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setAuthPermissions(permissions);
 
         incomingSubscribeService.processSubscribe(ctx, subscribe, false);
 
@@ -534,7 +531,7 @@ public class IncomingSubscribeServiceTest {
 
         final SUBSCRIBE subscribe = new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(topic1, topic2, topic3)), 10);
 
-        channel.attr(ChannelAttributes.AUTH_PERMISSIONS).set(null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setAuthPermissions(null);
 
         incomingSubscribeService.processSubscribe(ctx, subscribe,
                 new Mqtt5SubAckReasonCode[]{Mqtt5SubAckReasonCode.GRANTED_QOS_1, null, null},

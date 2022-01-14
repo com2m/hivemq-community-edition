@@ -21,10 +21,10 @@ import com.google.common.primitives.ImmutableIntArray;
 import com.google.common.util.concurrent.Futures;
 import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.configuration.service.InternalConfigurations;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.handler.publish.PublishFlowHandler;
 import com.hivemq.mqtt.handler.publish.PublishFlushHandler;
 import com.hivemq.mqtt.handler.publish.PublishStatus;
-import com.hivemq.mqtt.message.MessageIDPools;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.dropping.MessageDroppedService;
 import com.hivemq.mqtt.message.pool.MessageIDPool;
@@ -54,7 +54,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import util.InitFutureUtilsExecutorRule;
-import util.TestChannelAttribute;
 import util.TestMessageUtil;
 import util.TestSingleWriterFactory;
 
@@ -74,64 +73,77 @@ import static org.mockito.Mockito.*;
  */
 public class PublishPollServiceImplTest {
 
-    private AutoCloseable closeableMock;
+    private @NotNull AutoCloseable closeableMock;
 
     @Rule
-    public InitFutureUtilsExecutorRule initFutureUtilsExecutorRule = new InitFutureUtilsExecutorRule();
+    public @NotNull InitFutureUtilsExecutorRule initFutureUtilsExecutorRule = new InitFutureUtilsExecutorRule();
 
     @Mock
-    MessageIDPools messageIDPools;
-
-    @Mock
+    @NotNull
     MessageIDPool messageIDPool;
 
     @Mock
+    @NotNull
     ClientQueuePersistence clientQueuePersistence;
 
     @Mock
+    @NotNull
     ChannelPersistence channelPersistence;
 
     @Mock
+    @NotNull
     PublishPayloadPersistence publishPayloadPersistence;
 
     @Mock
+    @NotNull
     Channel channel;
 
     @Mock
+    @NotNull
     ChannelFuture channelFuture;
 
     @Mock
+    @NotNull
     ChannelPipeline pipeline;
 
     @Mock
+    @NotNull
     MessageDroppedService messageDroppedService;
 
     @Mock
+    @NotNull
     SharedSubscriptionService sharedSubscriptionService;
 
     @Mock
+    @NotNull
     PublishFlushHandler publishFlushHandler;
 
-    private PublishPollService publishPollService;
+    private @NotNull PublishPollService publishPollService;
 
-    private SingleWriterService singleWriterService;
+    private @NotNull SingleWriterService singleWriterService;
+    private ClientConnection clientConnection;
 
     @Before
     public void setUp() throws Exception {
         closeableMock = MockitoAnnotations.openMocks(this);
-        when(messageIDPools.forClient(anyString())).thenReturn(messageIDPool);
         when(channelPersistence.get(anyString())).thenReturn(channel);
         when(channel.pipeline()).thenReturn(pipeline);
-        when(channel.attr(ChannelAttributes.CLIENT_RECEIVE_MAXIMUM)).thenReturn(new TestChannelAttribute<>(null));
+
+        clientConnection = spy(new ClientConnection(channel, publishFlushHandler));
+        when(clientConnection.getMessageIDPool()).thenReturn(messageIDPool);
+
+        final Attribute<ClientConnection> clientConnectionAttribute = mock(Attribute.class);
+        when(channel.attr(ChannelAttributes.CLIENT_CONNECTION)).thenReturn(clientConnectionAttribute);
+        when(clientConnectionAttribute.get()).thenReturn(clientConnection);
+
         when(channel.writeAndFlush(any())).thenReturn(channelFuture);
-        when(channel.attr(ChannelAttributes.CLIENT_CONNECTION)).thenReturn(new TestChannelAttribute<>(new ClientConnection(publishFlushHandler)));
 
         InternalConfigurations.PUBLISH_POLL_BATCH_SIZE = 50;
         InternalConfigurations.MAX_INFLIGHT_WINDOW_SIZE = 50;
 
         singleWriterService = TestSingleWriterFactory.defaultSingleWriter();
 
-        publishPollService = new PublishPollServiceImpl(messageIDPools, clientQueuePersistence, channelPersistence,
+        publishPollService = new PublishPollServiceImpl(clientQueuePersistence, channelPersistence,
                 publishPayloadPersistence, messageDroppedService, sharedSubscriptionService, singleWriterService);
     }
 
@@ -147,7 +159,7 @@ public class PublishPollServiceImplTest {
         when(messageIDPool.takeNextId()).thenReturn(1);
         when(clientQueuePersistence.readNew(eq("client"), eq(false), any(ImmutableIntArray.class), anyLong())).thenReturn(Futures.immediateFuture(ImmutableList.of(createPublish(1), createPublish(1))));
         when(channel.isActive()).thenReturn(true);
-        when(channel.attr(ChannelAttributes.IN_FLIGHT_MESSAGES)).thenReturn(new TestChannelAttribute<>(new AtomicInteger(0)));
+        clientConnection.setInFlightMessages(new AtomicInteger(0));
 
         publishPollService.pollNewMessages("client");
 
@@ -160,13 +172,14 @@ public class PublishPollServiceImplTest {
     public void test_new_messages_inflight_batch_size() throws NoMessageIdAvailableException {
 
         InternalConfigurations.PUBLISH_POLL_BATCH_SIZE = 1;
-        when(channel.attr(ChannelAttributes.CLIENT_RECEIVE_MAXIMUM)).thenReturn(new TestChannelAttribute<>(10));
+
+        clientConnection.setClientReceiveMaximum(10);
 
         when(messageIDPool.takeNextId()).thenReturn(1);
         when(clientQueuePersistence.readNew(eq("client"), eq(false), any(ImmutableIntArray.class), anyLong())).thenReturn(Futures.immediateFuture(ImmutableList.of(createPublish(1))));
         when(channel.isActive()).thenReturn(true);
-        when(channel.attr(ChannelAttributes.IN_FLIGHT_MESSAGES)).thenReturn(new TestChannelAttribute<>(new AtomicInteger(0)));
-        when(channel.attr(ChannelAttributes.IN_FLIGHT_MESSAGES_SENT)).thenReturn(new TestChannelAttribute<>(true));
+        clientConnection.setInFlightMessages(new AtomicInteger(0));
+        clientConnection.setInFlightMessagesSent(true);
 
 
         publishPollService.pollNewMessages("client");
@@ -181,8 +194,8 @@ public class PublishPollServiceImplTest {
         when(messageIDPool.takeNextId()).thenReturn(1);
         when(clientQueuePersistence.readNew(eq("client"), eq(false), any(ImmutableIntArray.class), anyLong())).thenReturn(Futures.immediateFuture(ImmutableList.of(createPublish(1))));
         when(channel.isActive()).thenReturn(false);
-        when(channel.attr(ChannelAttributes.IN_FLIGHT_MESSAGES)).thenReturn(new TestChannelAttribute<>(new AtomicInteger(0)));
-        when(channel.attr(ChannelAttributes.IN_FLIGHT_MESSAGES_SENT)).thenReturn(new TestChannelAttribute<>(true));
+        clientConnection.setInFlightMessages(new AtomicInteger(0));
+        clientConnection.setInFlightMessagesSent(true);
 
         publishPollService.pollNewMessages("client");
         final ArgumentCaptor<List<PublishWithFuture>> argumentCaptor = ArgumentCaptor.forClass(List.class);
@@ -201,7 +214,7 @@ public class PublishPollServiceImplTest {
 
         when(channel.isActive()).thenReturn(true);
         when(channel.newPromise()).thenReturn(mock(ChannelPromise.class));
-        when(channel.attr(ChannelAttributes.IN_FLIGHT_MESSAGES)).thenReturn(new TestChannelAttribute<>(new AtomicInteger(0)));
+        clientConnection.setInFlightMessages(new AtomicInteger(0));
 
         publishPollService.pollInflightMessages("client", channel);
 
@@ -217,7 +230,7 @@ public class PublishPollServiceImplTest {
                 .thenReturn(Futures.immediateFuture(ImmutableList.of(createPublish(1))));
 
         when(channel.isActive()).thenReturn(true);
-        when(channel.attr(ChannelAttributes.IN_FLIGHT_MESSAGES)).thenReturn(new TestChannelAttribute<>(new AtomicInteger(0)));
+        clientConnection.setInFlightMessages(new AtomicInteger(0));
 
         publishPollService.pollInflightMessages("client", channel);
 
@@ -228,15 +241,12 @@ public class PublishPollServiceImplTest {
 
     @Test
     public void test_inflight_messages_empty() throws NoMessageIdAvailableException {
-        final Attribute attribute = mock(Attribute.class);
-        when(attribute.get()).thenReturn(true);
-        when(channel.attr(ChannelAttributes.IN_FLIGHT_MESSAGES_SENT)).thenReturn(attribute);
+        clientConnection.setInFlightMessagesSent(true);
 
         when(clientQueuePersistence.readInflight(eq("client"), anyLong(), anyInt())).thenReturn(Futures.immediateFuture(ImmutableList.of()));
         publishPollService.pollInflightMessages("client", channel);
 
         verify(messageIDPool, never()).takeIfAvailable(anyInt());
-        verify(attribute).set(true);
     }
 
     @Test
@@ -255,8 +265,8 @@ public class PublishPollServiceImplTest {
         when(messageIDPool.takeNextId()).thenReturn(2).thenReturn(3);
         when(channel.isActive()).thenReturn(true);
         final AtomicInteger inFlightCount = new AtomicInteger(0);
-        when(channel.attr(ChannelAttributes.IN_FLIGHT_MESSAGES)).thenReturn(new TestChannelAttribute<>(inFlightCount));
-        when(channel.attr(ChannelAttributes.IN_FLIGHT_MESSAGES_SENT)).thenReturn(new TestChannelAttribute<>(true));
+        clientConnection.setInFlightMessages(inFlightCount);
+        clientConnection.setInFlightMessagesSent(true);
 
         when(pipeline.get(PublishFlowHandler.class)).thenReturn(pubflishFlowHandler);
 
@@ -286,8 +296,8 @@ public class PublishPollServiceImplTest {
 
         when(messageIDPool.takeNextId()).thenReturn(2).thenReturn(3);
         when(channel.isActive()).thenReturn(true);
-        when(channel.attr(ChannelAttributes.IN_FLIGHT_MESSAGES)).thenReturn(new TestChannelAttribute<>(new AtomicInteger(1)));
-        when(channel.attr(ChannelAttributes.IN_FLIGHT_MESSAGES_SENT)).thenReturn(new TestChannelAttribute<>(true));
+        clientConnection.setInFlightMessages(new AtomicInteger(1));
+        clientConnection.setInFlightMessagesSent(true);
 
         publishPollService.pollSharedPublishes("group/topic");
 
@@ -306,8 +316,8 @@ public class PublishPollServiceImplTest {
         when(channel.isActive()).thenReturn(true);
 
         when(pipeline.get(PublishFlowHandler.class)).thenReturn(pubflishFlowHandler);
-        when(channel.attr(ChannelAttributes.IN_FLIGHT_MESSAGES)).thenReturn(new TestChannelAttribute<>(new AtomicInteger(1)));
-        when(channel.attr(ChannelAttributes.IN_FLIGHT_MESSAGES_SENT)).thenReturn(new TestChannelAttribute<>(true));
+        clientConnection.setInFlightMessages(new AtomicInteger(1));
+        clientConnection.setInFlightMessagesSent(true);
 
         publishPollService.pollSharedPublishes("group/topic");
 
@@ -319,8 +329,8 @@ public class PublishPollServiceImplTest {
         final PublishFlowHandler pubflishFlowHandler = mock(PublishFlowHandler.class);
 
         when(channel.isActive()).thenReturn(true);
-        when(channel.attr(ChannelAttributes.IN_FLIGHT_MESSAGES)).thenReturn(new TestChannelAttribute<>(new AtomicInteger(0)));
-        when(channel.attr(ChannelAttributes.IN_FLIGHT_MESSAGES_SENT)).thenReturn(new TestChannelAttribute<>(true));
+        clientConnection.setInFlightMessages(new AtomicInteger(0));
+        clientConnection.setInFlightMessagesSent(true);
         when(pipeline.get(PublishFlowHandler.class)).thenReturn(pubflishFlowHandler);
 
         final PUBLISH publish = TestMessageUtil.createMqtt3Publish(QoS.AT_LEAST_ONCE);

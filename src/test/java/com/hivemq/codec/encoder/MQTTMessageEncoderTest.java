@@ -15,7 +15,9 @@
  */
 package com.hivemq.codec.encoder;
 
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.configuration.service.SecurityConfigurationService;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.message.PINGRESP;
 import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.mqtt.message.QoS;
@@ -41,22 +43,23 @@ import util.TestMessageUtil;
 
 import java.nio.charset.StandardCharsets;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 public class MQTTMessageEncoderTest {
 
-    private EmbeddedChannel channel;
+    private @NotNull EmbeddedChannel channel;
 
     @Mock
-    private MessageDroppedService messageDroppedService;
+    private @NotNull MessageDroppedService messageDroppedService;
 
     @Mock
-    private SecurityConfigurationService securityConfigurationService;
+    private @NotNull SecurityConfigurationService securityConfigurationService;
 
     @Before
     public void setUp() throws Exception {
         channel = new EmbeddedChannel(new TestMessageEncoder(messageDroppedService, securityConfigurationService));
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1);
     }
 
     @Test
@@ -64,7 +67,7 @@ public class MQTTMessageEncoderTest {
 
         channel.writeOutbound(new CONNACK(Mqtt3ConnAckReturnCode.ACCEPTED));
         final ByteBuf buf = channel.readOutbound();
-        assertEquals(true, buf.readableBytes() > 0);
+        assertTrue(buf.readableBytes() > 0);
     }
 
     @Test
@@ -72,7 +75,7 @@ public class MQTTMessageEncoderTest {
 
         channel.writeOutbound(new PINGRESP());
         final ByteBuf buf = channel.readOutbound();
-        assertEquals(true, buf.readableBytes() > 0);
+        assertTrue(buf.readableBytes() > 0);
     }
 
     @Test
@@ -80,7 +83,7 @@ public class MQTTMessageEncoderTest {
 
         channel.writeOutbound(new PUBACK(10));
         final ByteBuf buf = channel.readOutbound();
-        assertEquals(true, buf.readableBytes() > 0);
+        assertTrue(buf.readableBytes() > 0);
     }
 
     @Test
@@ -88,7 +91,7 @@ public class MQTTMessageEncoderTest {
 
         channel.writeOutbound(new PUBREC(10));
         final ByteBuf buf = channel.readOutbound();
-        assertEquals(true, buf.readableBytes() > 0);
+        assertTrue(buf.readableBytes() > 0);
     }
 
     @Test
@@ -96,7 +99,7 @@ public class MQTTMessageEncoderTest {
 
         channel.writeOutbound(new PUBREL(10));
         final ByteBuf buf = channel.readOutbound();
-        assertEquals(true, buf.readableBytes() > 0);
+        assertTrue(buf.readableBytes() > 0);
     }
 
     @Test
@@ -104,7 +107,7 @@ public class MQTTMessageEncoderTest {
 
         channel.writeOutbound(new PUBCOMP(10));
         final ByteBuf buf = channel.readOutbound();
-        assertEquals(true, buf.readableBytes() > 0);
+        assertTrue(buf.readableBytes() > 0);
     }
 
 
@@ -113,7 +116,7 @@ public class MQTTMessageEncoderTest {
 
         channel.writeOutbound(new SUBACK(10, Mqtt5SubAckReasonCode.fromCode(0)));
         final ByteBuf buf = channel.readOutbound();
-        assertEquals(true, buf.readableBytes() > 0);
+        assertTrue(buf.readableBytes() > 0);
     }
 
 
@@ -122,16 +125,16 @@ public class MQTTMessageEncoderTest {
 
         channel.writeOutbound(new UNSUBACK(10));
         final ByteBuf buf = channel.readOutbound();
-        assertEquals(true, buf.readableBytes() > 0);
+        assertTrue(buf.readableBytes() > 0);
     }
 
 
     @Test
     public void test_publish_encoded() {
 
-        final PUBLISH publish = TestMessageUtil.createMqtt3Publish("hivemqId", "topic", QoS.EXACTLY_ONCE, "payload".getBytes(StandardCharsets.UTF_8), true);
+        final PUBLISH publish = TestMessageUtil.createMqtt3Publish("clusterid", "topic", QoS.EXACTLY_ONCE, "payload".getBytes(StandardCharsets.UTF_8), true);
         channel.writeOutbound(publish);
         final ByteBuf buf = channel.readOutbound();
-        assertEquals(true, buf.readableBytes() > 0);
+        assertTrue(buf.readableBytes() > 0);
     }
 }

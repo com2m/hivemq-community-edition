@@ -15,6 +15,7 @@
  */
 package com.hivemq.codec.decoder.mqtt3;
 
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.bootstrap.ioc.lazysingleton.LazySingleton;
 import com.hivemq.codec.decoder.AbstractMqttConnectDecoder;
 import com.hivemq.configuration.HivemqId;
@@ -135,7 +136,8 @@ public class Mqtt31ConnectDecoder extends AbstractMqttConnectDecoder {
         } else {
             clientId = Strings.getPrefixedString(buf, utf8StringLength);
         }
-        channel.attr(ChannelAttributes.CLIENT_ID).set(clientId);
+        final ClientConnection clientConnection = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get();
+        clientConnection.setClientId(clientId);
 
         final MqttWillPublish willPublish;
 
@@ -160,7 +162,7 @@ public class Mqtt31ConnectDecoder extends AbstractMqttConnectDecoder {
                 buf.clear();
                 return null;
             }
-            channel.attr(ChannelAttributes.AUTH_USERNAME).set(userName);
+            clientConnection.setAuthUsername(userName);
         } else {
             userName = null;
         }
@@ -168,22 +170,24 @@ public class Mqtt31ConnectDecoder extends AbstractMqttConnectDecoder {
         final byte[] password;
         if (isPasswordFlag) {
             password = Bytes.getPrefixedBytes(buf);
-            channel.attr(ChannelAttributes.AUTH_PASSWORD).set(password);
+            clientConnection.setAuthPassword(password);
         } else {
             password = null;
         }
 
-        channel.attr(ChannelAttributes.CONNECT_KEEP_ALIVE).set(keepAlive);
-        channel.attr(ChannelAttributes.CLEAN_START).set(isCleanSessionFlag);
+        clientConnection.setConnectKeepAlive(keepAlive);
+        clientConnection.setCleanStart(isCleanSessionFlag);
+
+        final long sessionExpiryInterval = isCleanSessionFlag ? 0 : maxSessionExpiryInterval;
+        clientConnection.setClientSessionExpiryInterval(sessionExpiryInterval);
 
         return new CONNECT.Mqtt3Builder().withProtocolVersion(ProtocolVersion.MQTTv3_1)
                 .withClientIdentifier(clientId)
                 .withUsername(userName)
                 .withPassword(password)
                 .withCleanStart(isCleanSessionFlag)
-                .withSessionExpiryInterval(isCleanSessionFlag ? 0 : maxSessionExpiryInterval)
+                .withSessionExpiryInterval(sessionExpiryInterval)
                 .withKeepAlive(keepAlive)
                 .withWillPublish(willPublish).build();
     }
-
 }

@@ -16,6 +16,8 @@
 package com.hivemq.extensions.handler;
 
 import com.google.common.collect.ImmutableMap;
+import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientState;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.async.TimeoutFallback;
@@ -41,14 +43,15 @@ import com.hivemq.logging.EventLog;
 import com.hivemq.mqtt.message.connack.CONNACK;
 import com.hivemq.util.ChannelAttributes;
 import com.hivemq.util.Exceptions;
-import io.netty.channel.*;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelPromise;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -94,7 +97,8 @@ public class ConnackOutboundInterceptorHandler {
             final @NotNull ChannelPromise promise) {
 
         final Channel channel = ctx.channel();
-        final String clientId = channel.attr(ChannelAttributes.CLIENT_ID).get();
+        final ClientConnection clientConnection = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get();
+        final String clientId = clientConnection.getClientId();
         if (clientId == null) {
             ctx.write(connack, promise);
             return;
@@ -109,8 +113,7 @@ public class ConnackOutboundInterceptorHandler {
 
         final ClientInformation clientInfo = ExtensionInformationUtil.getAndSetClientInformation(channel, clientId);
         final ConnectionInformation connectionInfo = ExtensionInformationUtil.getAndSetConnectionInformation(channel);
-        final boolean requestResponseInformation =
-                Objects.requireNonNullElse(channel.attr(ChannelAttributes.REQUEST_RESPONSE_INFORMATION).get(), false);
+        final boolean requestResponseInformation = clientConnection.isRequestResponseInformation();
 
         final ConnackOutboundProviderInputImpl providerInput =
                 new ConnackOutboundProviderInputImpl(serverInformation, clientInfo, connectionInfo);
@@ -196,8 +199,12 @@ public class ConnackOutboundInterceptorHandler {
         @Override
         public void run() {
             if (outputHolder.get().isPrevent()) {
+                final ClientConnection clientConnection = ctx.channel().attr(ChannelAttributes.CLIENT_CONNECTION).get();
+                clientConnection.proposeClientState(ClientState.DISCONNECTING);
+
                 eventLog.clientWasDisconnected(
                         ctx.channel(), "Connection prevented by extension in CONNACK outbound interceptor");
+                clientConnection.proposeClientState(ClientState.DISCONNECTED_BY_SERVER);
                 ctx.channel().close();
             } else {
                 ctx.writeAndFlush(CONNACK.from(inputHolder.get().getConnackPacket()), promise);

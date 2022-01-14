@@ -22,6 +22,7 @@ import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.bootstrap.ioc.lazysingleton.LazySingleton;
 import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
@@ -129,13 +130,12 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
         return builder.build();
     }
 
-    @NotNull
     @Override
-    public ListenableFuture<Void> clientDisconnected(@NotNull final String client, final boolean sendWill, final long sessionExpiry) {
+    public @NotNull ListenableFuture<Void> clientDisconnected(final @NotNull String client, final boolean sendWill, final long sessionExpiry) {
         checkNotNull(client, "Client id must not be null");
         final long timestamp = System.currentTimeMillis();
         final SettableFuture<Void> resultFuture = SettableFuture.create();
-        singleWriter.submit(client, (SingleWriterService.Task<Void>) (bucketIndex, queueBuckets, queueIndex) -> {
+        singleWriter.submit(client, (SingleWriterService.Task<Void>) (bucketIndex) -> {
             final ClientSession disconnectSession = localPersistence.disconnect(client, timestamp, sendWill, bucketIndex, sessionExpiry);
             if (sendWill) {
                 pendingWillMessages.addWill(client, disconnectSession);
@@ -174,7 +174,7 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
         }
         final ClientSession clientSession = new ClientSession(true, clientSessionExpiryInterval, sessionWill, queueLimit);
         final ListenableFuture<ConnectResult> submitFuture =
-                singleWriter.submit(client, (bucketIndex, queueBuckets, queueIndex) -> {
+                singleWriter.submit(client, (bucketIndex) -> {
                     final Long previousTimestamp = localPersistence.getTimestamp(client, bucketIndex);
                     final ClientSession previousClientSession = localPersistence.getSession(client, bucketIndex, false);
                     localPersistence.put(client, clientSession, timestamp, bucketIndex);
@@ -243,10 +243,10 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
             log.trace("Ignoring forced client disconnect request for client '{}', because client is not connected.", clientId);
             return Futures.immediateFuture(false);
         }
-
-        channel.attr(ChannelAttributes.PREVENT_LWT).set(preventLwtMessage);
+        final ClientConnection clientConnection = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get();
+        clientConnection.setPreventLwt(preventLwtMessage);
         if (session.getSessionExpiryInterval() != SESSION_EXPIRY_NOT_SET) {
-            channel.attr(ChannelAttributes.CLIENT_SESSION_EXPIRY_INTERVAL).set(session.getSessionExpiryInterval());
+            clientConnection.setClientSessionExpiryInterval(session.getSessionExpiryInterval());
         }
 
         final String logMessage = String.format("Disconnecting client with clientId '%s' forcibly via extension system.", clientId);
@@ -283,11 +283,9 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
     @NotNull
     @Override
     public ListenableFuture<Set<String>> getAllClients() {
-        final List<ListenableFuture<Set<String>>> futures = singleWriter.submitToAllQueues((bucketIndex, queueBuckets, queueIndex) -> {
+        final List<ListenableFuture<Set<String>>> futures = singleWriter.submitToAllBucketsParallel((bucketIndex) -> {
             final Set<String> clientSessions = new HashSet<>();
-            for (final Integer bucket : queueBuckets) {
-                clientSessions.addAll(localPersistence.getAllClients(bucket));
-            }
+            clientSessions.addAll(localPersistence.getAllClients(bucketIndex));
             return clientSessions;
         });
         return FutureUtils.combineSetResults(Futures.allAsList(futures));
@@ -310,7 +308,7 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
         checkNotNull(clientId, "Client id must not be null");
 
         final ListenableFuture<Boolean> setTTlFuture =
-                singleWriter.submit(clientId, (bucketIndex, queueBuckets, queueIndex) -> {
+                singleWriter.submit(clientId, (bucketIndex) -> {
 
                     final boolean clientSessionExists = localPersistence.getSession(clientId) != null;
 
@@ -417,20 +415,11 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
     @Override
     public ListenableFuture<Map<String, PendingWillMessages.PendingWill>> pendingWills() {
 
-        final ListenableFuture<List<Map<String, PendingWillMessages.PendingWill>>> singleWriterFutures =
-                singleWriter.submitToAllQueuesAsList((bucketIndex, queueBuckets, queueIndex) -> {
-                    final ImmutableMap.Builder<String, PendingWillMessages.PendingWill> queueWills =
-                            ImmutableMap.builder();
-                    for (final Integer queueBucket : queueBuckets) {
-                        final Map<String, PendingWillMessages.PendingWill> bucketMap =
-                                localPersistence.getPendingWills(queueBucket);
-                        queueWills.putAll(bucketMap);
-                    }
-                    return queueWills.build();
-                });
+        final List<ListenableFuture<Map<String, PendingWillMessages.PendingWill>>> futureList =
+                singleWriter.submitToAllBucketsParallel(localPersistence::getPendingWills);
 
         final SettableFuture<Map<String, PendingWillMessages.PendingWill>> settableFuture = SettableFuture.create();
-        FutureUtils.addPersistenceCallback(singleWriterFutures, new FutureCallback<>() {
+        FutureUtils.addPersistenceCallback(Futures.allAsList(futureList), new FutureCallback<>() {
             @Override
             public void onSuccess(@Nullable final List<Map<String, PendingWillMessages.PendingWill>> result) {
 
@@ -458,7 +447,7 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
     @Override
     public ListenableFuture<Void> removeWill(@NotNull final String clientId) {
         checkNotNull(clientId, "Client id must not be null");
-        return singleWriter.submit(clientId, (bucketIndex, queueBuckets, queueIndex) -> {
+        return singleWriter.submit(clientId, (bucketIndex) -> {
             localPersistence.removeWill(clientId, bucketIndex);
             return null;
         });
@@ -470,7 +459,7 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
                 // Chunker.SingleWriterCall interface
                 (bucket, lastKey, maxResults) -> singleWriter.submit(bucket,
                         // actual single writer call
-                        (bucketIndex, ignored1, ignored2) ->
+                        (bucketIndex) ->
                                 localPersistence.getAllClientsChunk(
                                         bucketIndex,
                                         lastKey,

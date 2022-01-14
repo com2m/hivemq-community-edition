@@ -15,11 +15,15 @@
  */
 package com.hivemq.extensions;
 
+import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.client.parameter.ClientTlsInformation;
 import com.hivemq.extension.sdk.api.client.parameter.TlsInformation;
 import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.security.auth.SslClientCertificate;
+import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.embedded.EmbeddedChannel;
+import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mockito;
 
@@ -30,7 +34,6 @@ import java.security.cert.X509Certificate;
 import java.util.Date;
 import java.util.Set;
 
-import static com.hivemq.util.ChannelAttributes.*;
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.when;
 
@@ -40,17 +43,25 @@ import static org.mockito.Mockito.when;
  */
 public class ExtensionInformationUtilTest {
 
+    private @NotNull EmbeddedChannel channel;
+    private ClientConnection clientConnection;
+
+    @Before
+    public void setUp() throws Exception {
+        channel = new EmbeddedChannel();
+        clientConnection = new ClientConnection(channel, null);
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+    }
+
     @Test
     public void test_get_tls_fails_no_cipher() {
 
-        final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-
-        channel.attr(AUTH_PROTOCOL).set("1.3");
+        clientConnection.setAuthProtocol("1.3");
 
         final SslClientCertificate clientCertificate = Mockito.mock(SslClientCertificate.class);
 
-        channel.attr(AUTH_CERTIFICATE).set(clientCertificate);
+        clientConnection.setAuthCertificate(clientCertificate);
 
         final X509Certificate[] chain = new X509Certificate[3];
         chain[0] = new TestCert();
@@ -68,15 +79,11 @@ public class ExtensionInformationUtilTest {
 
     @Test
     public void test_get_tls_fails_no_protocol() {
-
-        final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-
-        channel.attr(AUTH_CIPHER_SUITE).set("cipher");
+        clientConnection.setAuthCipherSuite("cipher");
 
         final SslClientCertificate clientCertificate = Mockito.mock(SslClientCertificate.class);
 
-        channel.attr(AUTH_CERTIFICATE).set(clientCertificate);
+        clientConnection.setAuthCertificate(clientCertificate);
 
         final X509Certificate[] chain = new X509Certificate[3];
         chain[0] = new TestCert();
@@ -94,12 +101,8 @@ public class ExtensionInformationUtilTest {
 
     @Test
     public void test_get_tls_no_cert() {
-
-        final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-
-        channel.attr(AUTH_CIPHER_SUITE).set("cipher");
-        channel.attr(AUTH_PROTOCOL).set("TLSv1.2");
+        clientConnection.setAuthCipherSuite("cipher");
+        clientConnection.setAuthProtocol("TLSv1.2");
 
         final ClientTlsInformation clientTlsInformation = ExtensionInformationUtil.getTlsInformationFromChannel(channel);
         assertNotNull(clientTlsInformation);
@@ -112,15 +115,12 @@ public class ExtensionInformationUtilTest {
     @Test
     public void test_get_tls_with_cert() {
 
-        final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-
-        channel.attr(AUTH_CIPHER_SUITE).set("cipher");
-        channel.attr(AUTH_PROTOCOL).set("TLSv1.2");
+        clientConnection.setAuthCipherSuite("cipher");
+        clientConnection.setAuthProtocol("TLSv1.2");
 
         final SslClientCertificate clientCertificate = Mockito.mock(SslClientCertificate.class);
 
-        channel.attr(AUTH_CERTIFICATE).set(clientCertificate);
+        clientConnection.setAuthCertificate(clientCertificate);
 
         final X509Certificate[] chain = new X509Certificate[3];
         chain[0] = new TestCert();
@@ -138,19 +138,16 @@ public class ExtensionInformationUtilTest {
         assertEquals("TLSv1.2", clientTlsInformation.getProtocol());
         assertTrue(clientTlsInformation.getHostname().isEmpty());
         assertTrue(clientTlsInformation.getClientCertificate().isPresent());
-        assertNotNull(((TlsInformation)clientTlsInformation).getCertificate());
-        assertNotNull(((TlsInformation)clientTlsInformation).getCertificateChain());
+        assertNotNull(((TlsInformation) clientTlsInformation).getCertificate());
+        assertNotNull(((TlsInformation) clientTlsInformation).getCertificateChain());
     }
 
     @Test
     public void test_get_tls_with_sni() {
 
-        final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-
-        channel.attr(AUTH_CIPHER_SUITE).set("cipher");
-        channel.attr(AUTH_PROTOCOL).set("TLSv1.2");
-        channel.attr(AUTH_SNI_HOSTNAME).set("test.hostname.domain");
+        clientConnection.setAuthCipherSuite("cipher");
+        clientConnection.setAuthProtocol("TLSv1.2");
+        clientConnection.setAuthSniHostname("test.hostname.domain");
 
         final ClientTlsInformation clientTlsInformation = ExtensionInformationUtil.getTlsInformationFromChannel(channel);
         assertNotNull(clientTlsInformation);
@@ -165,16 +162,13 @@ public class ExtensionInformationUtilTest {
     @Test
     public void test_get_tls_with_everything() {
 
-        final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-
-        channel.attr(AUTH_CIPHER_SUITE).set("cipher");
-        channel.attr(AUTH_PROTOCOL).set("TLSv1.2");
-        channel.attr(AUTH_SNI_HOSTNAME).set("test.hostname.domain");
+        clientConnection.setAuthCipherSuite("cipher");
+        clientConnection.setAuthProtocol("TLSv1.2");
+        clientConnection.setAuthSniHostname("test.hostname.domain");
 
         final SslClientCertificate clientCertificate = Mockito.mock(SslClientCertificate.class);
 
-        channel.attr(AUTH_CERTIFICATE).set(clientCertificate);
+        clientConnection.setAuthCertificate(clientCertificate);
 
         final X509Certificate[] chain = new X509Certificate[3];
         chain[0] = new TestCert();
@@ -193,8 +187,8 @@ public class ExtensionInformationUtilTest {
         assertTrue(clientTlsInformation.getHostname().isPresent());
         assertEquals("test.hostname.domain", clientTlsInformation.getHostname().get());
         assertTrue(clientTlsInformation.getClientCertificate().isPresent());
-        assertNotNull(((TlsInformation)clientTlsInformation).getCertificate());
-        assertNotNull(((TlsInformation)clientTlsInformation).getCertificateChain());
+        assertNotNull(((TlsInformation) clientTlsInformation).getCertificate());
+        assertNotNull(((TlsInformation) clientTlsInformation).getCertificateChain());
     }
 
 

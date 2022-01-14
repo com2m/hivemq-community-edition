@@ -3,20 +3,19 @@ import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.gradle.api.tasks.testing.logging.TestLogEvent
 
 plugins {
-    id("java")
-    id("java-library")
-    id("maven-publish")
+    java
+    `java-library`
+    `maven-publish`
+    signing
+    id("io.github.gradle-nexus.publish-plugin")
     id("com.github.johnrengelman.shadow")
-    id("com.github.hierynomus.license")
-    id("org.owasp.dependencycheck")
     id("com.github.sgtsilvio.gradle.utf8")
     id("com.github.sgtsilvio.gradle.metadata")
     id("com.github.sgtsilvio.gradle.javadoc-links")
+    id("com.github.breadmoirai.github-release")
+    id("com.github.hierynomus.license")
+    id("org.owasp.dependencycheck")
     id("com.github.ben-manes.versions")
-
-    /* Publishing Plugins */
-    id("io.github.gradle-nexus.publish-plugin")
-    id("signing")
 
     /* Code Quality Plugins */
     id("jacoco")
@@ -41,29 +40,24 @@ metadata {
         apache2()
     }
     developers {
-        developer {
-            id.set("cschaebe")
-            name.set("Christoph Schaebel")
+        register("cschaebe") {
+            fullName.set("Christoph Schaebel")
             email.set("christoph.schaebel@hivemq.com")
         }
-        developer {
-            id.set("lbrandl")
-            name.set("Lukas Brandl")
+        register("lbrandl") {
+            fullName.set("Lukas Brandl")
             email.set("lukas.brandl@hivemq.com")
         }
-        developer {
-            id.set("flimpoeck")
-            name.set("Florian Limpoeck")
+        register("flimpoeck") {
+            fullName.set("Florian Limpoeck")
             email.set("florian.limpoeck@hivemq.com")
         }
-        developer {
-            id.set("sauroter")
-            name.set("Georg Held")
+        register("sauroter") {
+            fullName.set("Georg Held")
             email.set("georg.held@hivemq.com")
         }
-        developer {
-            id.set("SgtSilvio")
-            name.set("Silvio Giebl")
+        register("SgtSilvio") {
+            fullName.set("Silvio Giebl")
             email.set("silvio.giebl@hivemq.com")
         }
     }
@@ -151,12 +145,14 @@ dependencies {
     implementation("com.google.guava:guava:${property("guava.version")}") {
         exclude("org.checkerframework", "checker-qual")
         exclude("com.google.errorprone", "error_prone_annotations")
-        exclude("org.codehaus.mojo", "animal-sniffer-annotations")
     }
     // com.google.code.findbugs:jsr305 (transitive dependency of com.google.guava:guava) is used in imports
     implementation("net.openhft:zero-allocation-hashing:${property("zero-allocation-hashing.version")}")
     implementation("com.fasterxml.jackson.core:jackson-databind:${property("jackson.version")}")
     implementation("org.jctools:jctools-core:${property("jctools.version")}")
+
+    /* primitive data structures */
+    implementation("org.eclipse.collections:eclipse-collections:${property("ecliplse.collections.version")}")
 }
 
 
@@ -177,6 +173,8 @@ dependencies {
 }
 
 tasks.test {
+    minHeapSize = "128m"
+    maxHeapSize = "2048m"
     jvmArgs(
         "-Dfile.encoding=UTF-8",
         "--add-opens",
@@ -190,8 +188,6 @@ tasks.test {
         "--add-exports",
         "java.base/jdk.internal.misc=ALL-UNNAMED"
     )
-    minHeapSize = "128m"
-    maxHeapSize = "2048m"
 
     val inclusions = rootDir.resolve("inclusions.txt")
     val exclusions = rootDir.resolve("exclusions.txt")
@@ -213,7 +209,7 @@ tasks.test {
 tasks.jar {
     manifest.attributes(
         "Implementation-Title" to "HiveMQ",
-        "Implementation-Vendor" to metadata.organization!!.name.get(),
+        "Implementation-Vendor" to metadata.organization.get().name.get(),
         "Implementation-Version" to project.version,
         "HiveMQ-Version" to project.version,
         "Main-Class" to "com.hivemq.HiveMQServer"
@@ -248,8 +244,7 @@ tasks.javadoc {
 
     doLast {
         javaexec {
-            main = "-jar"
-            args("$projectDir/gradle/tools/javadoc-cleaner-1.0.jar")
+            classpath(projectDir.resolve("gradle/tools/javadoc-cleaner-1.0.jar"))
         }
     }
 
@@ -422,9 +417,8 @@ val updateThirdPartyLicenses by tasks.registering {
     dependsOn(tasks.downloadLicenses)
     doLast {
         javaexec {
-            main = "-jar"
+            classpath(projectDir.resolve("gradle/tools/license-third-party-tool-2.0.jar"))
             args(
-                "$projectDir/gradle/tools/license-third-party-tool-2.0.jar",
                 "$buildDir/reports/license/dependency-license.xml",
                 "$projectDir/src/distribution/third-party-licenses/licenses",
                 "$projectDir/src/distribution/third-party-licenses/licenses.html"
@@ -463,4 +457,16 @@ nexusPublishing {
     repositories {
         sonatype()
     }
+}
+
+githubRelease {
+    token(System.getenv("GITHUB_TOKEN"))
+    tagName(project.version.toString())
+    releaseAssets(hivemqZip)
+    allowUploadToExisting(true)
+}
+
+val javaComponent = components["java"] as AdhocComponentWithVariants
+javaComponent.withVariantsFromConfiguration(configurations.shadowRuntimeElements.get()) {
+    skip()
 }

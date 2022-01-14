@@ -16,7 +16,9 @@
 package com.hivemq.extensions.client.parameter;
 
 import com.google.common.collect.Lists;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.configuration.service.entity.*;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.client.parameter.ClientTlsInformation;
 import com.hivemq.extension.sdk.api.client.parameter.Listener;
 import com.hivemq.extension.sdk.api.client.parameter.ListenerType;
@@ -24,7 +26,9 @@ import com.hivemq.extension.sdk.api.client.parameter.TlsInformation;
 import com.hivemq.extension.sdk.api.packets.general.MqttVersion;
 import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.security.auth.SslClientCertificate;
+import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.embedded.EmbeddedChannel;
+import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mockito;
 
@@ -36,7 +40,6 @@ import java.util.Date;
 import java.util.Optional;
 import java.util.Set;
 
-import static com.hivemq.util.ChannelAttributes.*;
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.when;
 
@@ -47,6 +50,16 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings("NullabilityAnnotations")
 public class ConnectionInformationImplTest {
 
+    private @NotNull ClientConnection clientConnection;
+    private @NotNull EmbeddedChannel channel;
+
+    @Before
+    public void setUp() throws Exception {
+        channel = new EmbeddedChannel();
+        clientConnection = new ClientConnection(channel, null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+    }
+
     @Test(expected = NullPointerException.class)
     public void test_null_channel() {
         new ConnectionInformationImpl(null);
@@ -54,53 +67,34 @@ public class ConnectionInformationImplTest {
 
     @Test
     public void test_mqtt_v31() {
-
-        final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(MQTT_VERSION).set(ProtocolVersion.MQTTv3_1);
-
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv3_1);
         final ConnectionInformationImpl connectionInformation = new ConnectionInformationImpl(channel);
-
         assertEquals(MqttVersion.V_3_1, connectionInformation.getMqttVersion());
     }
 
     @Test
     public void test_mqtt_v311() {
-
-        final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(MQTT_VERSION).set(ProtocolVersion.MQTTv3_1_1);
-
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv3_1_1);
         final ConnectionInformationImpl connectionInformation = new ConnectionInformationImpl(channel);
-
         assertEquals(MqttVersion.V_3_1_1, connectionInformation.getMqttVersion());
     }
 
     @Test
     public void test_mqtt_v5() {
-
-        final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
         final ConnectionInformationImpl connectionInformation = new ConnectionInformationImpl(channel);
-
         assertEquals(MqttVersion.V_5, connectionInformation.getMqttVersion());
     }
 
 
     @Test(expected = NullPointerException.class)
     public void test_mqtt_version_not_set() {
-
-        final EmbeddedChannel channel = new EmbeddedChannel();
-
         new ConnectionInformationImpl(channel);
-
     }
 
     @Test
     public void test_minimum_information() {
-
-        final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
         final ConnectionInformationImpl connectionInformation = new ConnectionInformationImpl(channel);
 
         assertEquals(MqttVersion.V_5, connectionInformation.getMqttVersion());
@@ -113,10 +107,7 @@ public class ConnectionInformationImplTest {
 
     @Test
     public void test_inet_address() {
-
-        final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
         final ConnectionInformationImpl connectionInformation = new ConnectionInformationImpl(channel);
 
         //testing real values with integration test
@@ -125,10 +116,8 @@ public class ConnectionInformationImplTest {
 
     @Test
     public void test_tcp_listener() {
-
-        final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-        channel.attr(LISTENER).set(new TcpListener(1337, "127.0.0.1"));
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
+        clientConnection.setConnectedListener(new TcpListener(1337, "127.0.0.1"));
 
         final ConnectionInformationImpl connectionInformation = new ConnectionInformationImpl(channel);
 
@@ -146,10 +135,8 @@ public class ConnectionInformationImplTest {
 
     @Test
     public void test_tls_tcp_listener() {
-
-        final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-        channel.attr(LISTENER).set(new TlsTcpListener(1337, "127.0.0.1", createDefaultTls().build()));
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
+        clientConnection.setConnectedListener(new TlsTcpListener(1337, "127.0.0.1", createDefaultTls().build()));
 
         final ConnectionInformationImpl connectionInformation = new ConnectionInformationImpl(channel);
 
@@ -168,9 +155,8 @@ public class ConnectionInformationImplTest {
     @Test
     public void test_websocket_listener() {
 
-        final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-        channel.attr(LISTENER).set(new WebsocketListener.Builder().port(1337).bindAddress("127.0.0.1").build());
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
+        clientConnection.setConnectedListener(new WebsocketListener.Builder().port(1337).bindAddress("127.0.0.1").build());
 
         final ConnectionInformationImpl connectionInformation = new ConnectionInformationImpl(channel);
 
@@ -188,11 +174,8 @@ public class ConnectionInformationImplTest {
 
     @Test
     public void test_tls_websocket_listener() {
-
-
-        final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-        channel.attr(LISTENER).set(new TlsWebsocketListener.Builder().port(1337).bindAddress("127.0.0.1").tls(createDefaultTls().build()).build());
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
+        clientConnection.setConnectedListener(new TlsWebsocketListener.Builder().port(1337).bindAddress("127.0.0.1").tls(createDefaultTls().build()).build());
 
         final ConnectionInformationImpl connectionInformation = new ConnectionInformationImpl(channel);
 
@@ -210,15 +193,13 @@ public class ConnectionInformationImplTest {
 
     @Test
     public void test_full_tls_information() {
-
-        final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-        channel.attr(AUTH_CIPHER_SUITE).set("cipher");
-        channel.attr(AUTH_PROTOCOL).set("1.3");
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
+        clientConnection.setAuthCipherSuite("cipher");
+        clientConnection.setAuthProtocol("1.3");
 
         final SslClientCertificate clientCertificate = Mockito.mock(SslClientCertificate.class);
 
-        channel.attr(AUTH_CERTIFICATE).set(clientCertificate);
+        clientConnection.setAuthCertificate(clientCertificate);
 
         final X509Certificate[] chain = new X509Certificate[3];
         chain[0] = new TestCert();
@@ -245,16 +226,14 @@ public class ConnectionInformationImplTest {
 
     @Test
     public void test_full_client_tls_information() {
-
-        final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-        channel.attr(AUTH_CIPHER_SUITE).set("cipher");
-        channel.attr(AUTH_SNI_HOSTNAME).set("sni-hostname");
-        channel.attr(AUTH_PROTOCOL).set("1.3");
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
+        clientConnection.setAuthCipherSuite("cipher");
+        clientConnection.setAuthSniHostname("sni-hostname");
+        clientConnection.setAuthProtocol("1.3");
 
         final SslClientCertificate clientCertificate = Mockito.mock(SslClientCertificate.class);
 
-        channel.attr(AUTH_CERTIFICATE).set(clientCertificate);
+        clientConnection.setAuthCertificate(clientCertificate);
 
         final X509Certificate[] chain = new X509Certificate[3];
         chain[0] = new TestCert();
@@ -288,11 +267,10 @@ public class ConnectionInformationImplTest {
 
     @Test
     public void test_cipher_protocol_only_client_tls_information() {
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
 
-        final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-        channel.attr(AUTH_CIPHER_SUITE).set("random-ecdsa-cipher");
-        channel.attr(AUTH_PROTOCOL).set("1.3");
+        clientConnection.setAuthCipherSuite("random-ecdsa-cipher");
+        clientConnection.setAuthProtocol("1.3");
 
         final ConnectionInformationImpl connectionInformation = new ConnectionInformationImpl(channel);
 
@@ -312,11 +290,10 @@ public class ConnectionInformationImplTest {
 
     @Test
     public void test_cipher_protocol_only_tls_information() {
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
 
-        final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(MQTT_VERSION).set(ProtocolVersion.MQTTv5);
-        channel.attr(AUTH_CIPHER_SUITE).set("random-ecdsa-cipher");
-        channel.attr(AUTH_PROTOCOL).set("1.3");
+        clientConnection.setAuthCipherSuite("random-ecdsa-cipher");
+        clientConnection.setAuthProtocol("1.3");
 
         final ConnectionInformationImpl connectionInformation = new ConnectionInformationImpl(channel);
 
@@ -349,7 +326,7 @@ public class ConnectionInformationImplTest {
         }
 
         @Override
-        public void checkValidity(final Date date) {
+        public void checkValidity(Date date) {
 
         }
 
@@ -434,12 +411,12 @@ public class ConnectionInformationImplTest {
         }
 
         @Override
-        public void verify(final PublicKey key) {
+        public void verify(PublicKey key) {
 
         }
 
         @Override
-        public void verify(final PublicKey key, final String sigProvider) {
+        public void verify(PublicKey key, String sigProvider) {
 
         }
 
@@ -469,7 +446,7 @@ public class ConnectionInformationImplTest {
         }
 
         @Override
-        public byte[] getExtensionValue(final String oid) {
+        public byte[] getExtensionValue(String oid) {
             return new byte[0];
         }
     }

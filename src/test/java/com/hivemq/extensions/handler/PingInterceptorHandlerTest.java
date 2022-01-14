@@ -15,6 +15,7 @@
  */
 package com.hivemq.extensions.handler;
 
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.interceptor.pingreq.PingReqInboundInterceptor;
@@ -66,22 +67,22 @@ import static org.mockito.Mockito.when;
  */
 public class PingInterceptorHandlerTest {
 
-    public static AtomicBoolean isTriggered = new AtomicBoolean();
+    public static @NotNull AtomicBoolean isTriggered = new AtomicBoolean();
     @Rule
-    public TemporaryFolder temporaryFolder = new TemporaryFolder();
-    private PluginTaskExecutor executor1;
-    private EmbeddedChannel channel;
+    public @NotNull TemporaryFolder temporaryFolder = new TemporaryFolder();
+    private @NotNull PluginTaskExecutor executor1;
+    private @NotNull EmbeddedChannel channel;
     @Mock
-    private PluginOutPutAsyncer asyncer;
+    private @NotNull PluginOutPutAsyncer asyncer;
 
     @Mock
-    private HiveMQExtension plugin;
+    private @NotNull HiveMQExtension plugin;
 
     @Mock
-    private HiveMQExtensions hiveMQExtensions;
+    private @NotNull HiveMQExtensions hiveMQExtensions;
 
     @Mock
-    private PluginTaskExecutorService pluginTaskExecutorService;
+    private @NotNull PluginTaskExecutorService pluginTaskExecutorService;
 
     @Before
     public void setUp() throws Exception {
@@ -91,8 +92,9 @@ public class PingInterceptorHandlerTest {
         executor1.postConstruct();
 
         channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.CLIENT_ID).set("client");
-        channel.attr(ChannelAttributes.REQUEST_RESPONSE_INFORMATION).set(true);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId("client");
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setRequestResponseInformation(true);
         when(plugin.getId()).thenReturn("plugin");
 
         asyncer = new PluginOutputAsyncerImpl(Mockito.mock(ShutdownHooks.class));
@@ -102,7 +104,7 @@ public class PingInterceptorHandlerTest {
                 new PingInterceptorHandler(pluginTaskExecutorService, asyncer, hiveMQExtensions);
         channel.pipeline().addLast("test", new ChannelOutboundHandlerAdapter() {
             @Override
-            public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+            public void write(@NotNull ChannelHandlerContext ctx, @NotNull Object msg, @NotNull ChannelPromise promise) throws Exception {
                 handler.handleOutboundPingResp(ctx, ((PINGRESP) msg), promise);
             }
         });
@@ -141,9 +143,8 @@ public class PingInterceptorHandlerTest {
         final PingReqInboundInterceptor interceptor = getIsolatedInboundInterceptor("SimplePingReqTestInterceptor");
         clientContext.addPingReqInboundInterceptor(interceptor);
 
-        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1);
-
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1);
         when(hiveMQExtensions.getExtensionForClassloader(any(IsolatedExtensionClassloader.class))).thenReturn(plugin);
 
         channel.writeInbound(new PINGREQ());
@@ -168,9 +169,8 @@ public class PingInterceptorHandlerTest {
                 getIsolatedInboundInterceptor("AdvancedPingReqTestInterceptor");
         clientContext.addPingReqInboundInterceptor(interceptor);
 
-        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1);
-
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1);
         when(hiveMQExtensions.getExtensionForClassloader(any(IsolatedExtensionClassloader.class))).thenReturn(plugin);
 
         channel.writeInbound(new PINGREQ());
@@ -194,9 +194,8 @@ public class PingInterceptorHandlerTest {
                 getIsolatedOutboundInterceptor("SimplePingRespTestInterceptor");
         clientContext.addPingRespOutboundInterceptor(interceptor);
 
-        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1);
-
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1);
         when(hiveMQExtensions.getExtensionForClassloader(any(IsolatedExtensionClassloader.class))).thenReturn(plugin);
 
         channel.writeOutbound(new PINGRESP());
@@ -220,9 +219,8 @@ public class PingInterceptorHandlerTest {
                 getIsolatedOutboundInterceptor("AdvancedPingRespTestInterceptor");
         clientContext.addPingRespOutboundInterceptor(interceptor);
 
-        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1);
-
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1);
         when(hiveMQExtensions.getExtensionForClassloader(any(IsolatedExtensionClassloader.class))).thenReturn(plugin);
 
         channel.writeOutbound(new PINGRESP());

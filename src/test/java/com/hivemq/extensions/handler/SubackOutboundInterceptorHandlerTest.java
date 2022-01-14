@@ -16,6 +16,7 @@
 package com.hivemq.extensions.handler;
 
 import com.google.common.collect.ImmutableList;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
@@ -65,22 +66,29 @@ import static org.mockito.MockitoAnnotations.initMocks;
 
 /**
  * @author Robin Atherton
+ * @since 4.3.0
  */
 public class SubackOutboundInterceptorHandlerTest {
 
-    public static AtomicBoolean isTriggered = new AtomicBoolean();
     @Rule
-    public TemporaryFolder temporaryFolder = new TemporaryFolder();
+    public @NotNull TemporaryFolder temporaryFolder = new TemporaryFolder();
+
     @Mock
-    private HiveMQExtension extension;
+    private @NotNull HiveMQExtension extension;
+
     @Mock
-    private HiveMQExtensions hiveMQExtensions;
+    private @NotNull HiveMQExtensions hiveMQExtensions;
+
     @Mock
-    private ClientContextImpl clientContext;
+    private @NotNull ClientContextImpl clientContext;
+
     @Mock
-    private FullConfigurationService configurationService;
-    private PluginTaskExecutor executor;
-    private EmbeddedChannel channel;
+    private @NotNull FullConfigurationService configurationService;
+
+    private @NotNull PluginTaskExecutor executor;
+    private @NotNull EmbeddedChannel channel;
+    public static @NotNull AtomicBoolean isTriggered = new AtomicBoolean();
+    private @NotNull PluginOutputAsyncerImpl asyncer;
 
     @Before
     public void setup() {
@@ -90,9 +98,10 @@ public class SubackOutboundInterceptorHandlerTest {
         executor.postConstruct();
 
         channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.CLIENT_ID).set("client");
-        channel.attr(ChannelAttributes.REQUEST_RESPONSE_INFORMATION).set(true);
-        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId("client");
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setRequestResponseInformation(true);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
         when(extension.getId()).thenReturn("extension");
 
         configurationService = new TestConfigurationBootstrap().getFullConfigurationService();
@@ -123,8 +132,8 @@ public class SubackOutboundInterceptorHandlerTest {
         final SubackOutboundInterceptor interceptor = getIsolatedOutboundInterceptor("SimpleSubackTestInterceptor");
         clientContext.addSubackOutboundInterceptor(interceptor);
 
-        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1);
 
         when(hiveMQExtensions.getExtensionForClassloader(any(IsolatedExtensionClassloader.class))).thenReturn(extension);
 
@@ -147,8 +156,8 @@ public class SubackOutboundInterceptorHandlerTest {
         final SubackOutboundInterceptor interceptor = getIsolatedOutboundInterceptor("TestModifySubackInterceptor");
         clientContext.addSubackOutboundInterceptor(interceptor);
 
-        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1);
 
         when(hiveMQExtensions.getExtensionForClassloader(any(IsolatedExtensionClassloader.class))).thenReturn(extension);
 
@@ -172,8 +181,8 @@ public class SubackOutboundInterceptorHandlerTest {
         final SubackOutboundInterceptor interceptor = getIsolatedOutboundInterceptor("TestExceptionSubackInterceptor");
         clientContext.addSubackOutboundInterceptor(interceptor);
 
-        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1);
 
         when(hiveMQExtensions.getExtensionForClassloader(any(IsolatedExtensionClassloader.class))).thenReturn(extension);
 
@@ -196,8 +205,8 @@ public class SubackOutboundInterceptorHandlerTest {
                 getIsolatedOutboundInterceptor("TestIndexOutofBoundsSubackInterceptor");
         clientContext.addSubackOutboundInterceptor(interceptor);
 
-        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1);
 
         when(hiveMQExtensions.getExtensionForClassloader(any(IsolatedExtensionClassloader.class))).thenReturn(extension);
 

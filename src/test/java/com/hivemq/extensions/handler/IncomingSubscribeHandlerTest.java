@@ -16,6 +16,7 @@
 package com.hivemq.extensions.handler;
 
 import com.google.common.collect.Lists;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.bootstrap.netty.ChannelHandlerNames;
 import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.configuration.service.FullConfigurationService;
@@ -35,6 +36,9 @@ import com.hivemq.extensions.executor.PluginTaskExecutorService;
 import com.hivemq.extensions.executor.PluginTaskExecutorServiceImpl;
 import com.hivemq.extensions.executor.task.PluginTaskExecutor;
 import com.hivemq.extensions.packets.general.ModifiableDefaultPermissionsImpl;
+import com.hivemq.logging.EventLog;
+import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnector;
+import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnectorImpl;
 import com.hivemq.mqtt.handler.subscribe.SubscribeHandler;
 import com.hivemq.mqtt.message.Message;
 import com.hivemq.mqtt.message.ProtocolVersion;
@@ -92,6 +96,7 @@ public class IncomingSubscribeHandlerTest {
     private SubscribeHandler subscribeHandler;
     private IncomingSubscribeHandler incomingSubscribeHandler;
     private PluginTaskExecutorService pluginTaskExecutorService;
+    private MqttServerDisconnector mqttServerDisconnector;
 
     private PluginTaskExecutor executor1;
 
@@ -103,20 +108,23 @@ public class IncomingSubscribeHandlerTest {
     @Mock
     private HiveMQExtension plugin;
 
+    @Mock
+    private EventLog eventLog;
+
     private PluginAuthorizerService pluginAuthorizerService;
 
     private FullConfigurationService configurationService;
 
-
     private EmbeddedChannel channel;
-    private ChannelHandlerContext channelHandlerContext;
 
     private AtomicReference<Message> messageAtomicReference;
+    private ClientConnection clientConnection;
 
     @Before
     public void setUp() throws Exception {
 
         MockitoAnnotations.initMocks(this);
+        clientConnection = new ClientConnection(channel, null);
         executor1 = new PluginTaskExecutor(new AtomicLong());
         executor1.postConstruct();
 
@@ -127,8 +135,10 @@ public class IncomingSubscribeHandlerTest {
         messageAtomicReference = new AtomicReference<>();
         pluginAuthorizerService = new TestAuthService(messageAtomicReference);
 
+        mqttServerDisconnector = new MqttServerDisconnectorImpl(eventLog);
+
         pluginTaskExecutorService = new PluginTaskExecutorServiceImpl(() -> executor1, mock(ShutdownHooks.class));
-        incomingSubscribeHandler = new IncomingSubscribeHandler(pluginTaskExecutorService, asyncer, hiveMQExtensions, pluginAuthorizerService, configurationService);
+        incomingSubscribeHandler = new IncomingSubscribeHandler(pluginTaskExecutorService, asyncer, hiveMQExtensions, pluginAuthorizerService, configurationService, mqttServerDisconnector);
 
         subscribeHandler = new SubscribeHandler(incomingSubscribeHandler);
 
@@ -143,10 +153,10 @@ public class IncomingSubscribeHandlerTest {
 
     private void createChannel() {
         channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.CLIENT_ID).set("test_client");
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId("test_client");
         channel.pipeline().addFirst(subscribeHandler);
         channel.pipeline().addFirst(ChannelHandlerNames.MQTT_MESSAGE_ENCODER, new DummyHandler());
-        channelHandlerContext = channel.pipeline().context(SubscribeHandler.class);
     }
 
     @Test(timeout = 5000, expected = ClosedChannelException.class)
@@ -161,7 +171,7 @@ public class IncomingSubscribeHandlerTest {
     @Test(timeout = 5000)
     public void test_read_subscribe_client_id_not_set() {
 
-        channel.attr(ChannelAttributes.CLIENT_ID).set(null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId(null);
 
         channel.writeInbound(TestMessageUtil.createFullMqtt5Subscribe());
 
@@ -183,7 +193,7 @@ public class IncomingSubscribeHandlerTest {
 
         final ClientContextImpl clientContext = new ClientContextImpl(hiveMQExtensions, new ModifiableDefaultPermissionsImpl());
 
-        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
 
         channel.writeInbound(TestMessageUtil.createFullMqtt5Subscribe());
 
@@ -200,8 +210,8 @@ public class IncomingSubscribeHandlerTest {
 
         clientContext.addSubscribeInboundInterceptor(isolatedInterceptors.get(0));
 
-        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
 
         when(hiveMQExtensions.getExtensionForClassloader(any(IsolatedExtensionClassloader.class))).thenReturn(plugin);
 
@@ -227,8 +237,8 @@ public class IncomingSubscribeHandlerTest {
 
         clientContext.addSubscribeInboundInterceptor(isolatedInterceptors.get(0));
 
-        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1_1);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv3_1_1);
 
         when(hiveMQExtensions.getExtensionForClassloader(any(IsolatedExtensionClassloader.class))).thenReturn(plugin);
 
@@ -245,7 +255,7 @@ public class IncomingSubscribeHandlerTest {
     }
 
     @Test(timeout = 5000)
-    public void test_read_subscribe_context_has_interceptors_throws_exception() throws Exception {
+    public void test_read_subscribe_context_has_interceptors_throws_exception_mqtt5() throws Exception {
 
         final ClientContextImpl clientContext = new ClientContextImpl(hiveMQExtensions, new ModifiableDefaultPermissionsImpl());
 
@@ -253,8 +263,8 @@ public class IncomingSubscribeHandlerTest {
 
         clientContext.addSubscribeInboundInterceptor(isolatedInterceptors.get(1));
 
-        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
 
         final CountDownLatch subackLatch = new CountDownLatch(1);
 
@@ -284,6 +294,49 @@ public class IncomingSubscribeHandlerTest {
     }
 
     @Test(timeout = 5000)
+    public void test_read_subscribe_context_has_interceptors_throws_exception_mqtt3_1() throws Exception {
+
+        final ClientContextImpl clientContext = new ClientContextImpl(hiveMQExtensions, new ModifiableDefaultPermissionsImpl());
+
+        final List<SubscribeInboundInterceptor> isolatedInterceptors = getIsolatedInterceptor();
+
+        clientContext.addSubscribeInboundInterceptor(isolatedInterceptors.get(1));
+
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId("test_client");
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
+
+        final CountDownLatch subackLatch = new CountDownLatch(1);
+        final CountDownLatch disconnectLatch = new CountDownLatch(1);
+
+        channel.pipeline().addFirst(new ChannelOutboundHandlerAdapter() {
+            @Override
+            public void write(final ChannelHandlerContext ctx, final Object msg, final ChannelPromise promise) throws Exception {
+                if (msg instanceof SUBACK) {
+                    subackLatch.countDown();
+                }
+
+                super.write(ctx, msg, promise);
+            }
+        });
+        channel.closeFuture().addListener((future) -> disconnectLatch.countDown());
+
+        when(hiveMQExtensions.getExtensionForClassloader(any(IsolatedExtensionClassloader.class))).thenReturn(plugin);
+
+        channel.writeInbound(new SUBSCRIBE(1, new Topic("topic", QoS.AT_LEAST_ONCE)));
+
+        while (subackLatch.getCount() != 0 && disconnectLatch.getCount() != 0) {
+            channel.runPendingTasks();
+            channel.runScheduledPendingTasks();
+        }
+
+        assertEquals(0, disconnectLatch.getCount());
+        assertEquals(1, subackLatch.getCount());
+
+    }
+
+    @Test(timeout = 5000)
     public void test_read_subscribe_context_has_interceptors_timeouts_failure_mqtt3() throws Exception {
 
         final ClientContextImpl clientContext = new ClientContextImpl(hiveMQExtensions, new ModifiableDefaultPermissionsImpl());
@@ -292,8 +345,8 @@ public class IncomingSubscribeHandlerTest {
 
         clientContext.addSubscribeInboundInterceptor(isolatedInterceptors.get(2));
 
-        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv3_1_1);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv3_1_1);
 
         final CountDownLatch subackLatch = new CountDownLatch(1);
 
@@ -331,8 +384,8 @@ public class IncomingSubscribeHandlerTest {
 
         clientContext.addSubscribeInboundInterceptor(isolatedInterceptors.get(2));
 
-        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
 
         final CountDownLatch subackLatch = new CountDownLatch(1);
 
@@ -368,8 +421,8 @@ public class IncomingSubscribeHandlerTest {
 
         clientContext.addSubscribeInboundInterceptor(isolatedInterceptors.get(2));
 
-        channel.attr(ChannelAttributes.EXTENSION_CLIENT_CONTEXT).set(clientContext);
-        channel.attr(ChannelAttributes.MQTT_VERSION).set(ProtocolVersion.MQTTv5);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
+        clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
 
         final CountDownLatch subackLatch = new CountDownLatch(1);
 
