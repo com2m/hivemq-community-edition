@@ -3,13 +3,13 @@ FROM gradle:jdk11 AS builder
 # Make tmp directory and set workdir.
 RUN mkdir /tmp/hivemq-source
 WORKDIR /tmp/hivemq-source
-ARG HIVEMQ_VERSION=2021.2
+ARG HIVEMQ_VERSION=2021.3
 
 COPY ./ ./
 
 # Install dos2unix (for docker issue).
-RUN apt-get -o Acquire::Check-Date=false update
-RUN apt-get install -y apt-utils
+RUN apt -o Acquire::Check-Date=false update
+RUN apt install -y apt-utils
 RUN apt install dos2unix
 RUN dos2unix ./gradlew
 
@@ -21,9 +21,9 @@ RUN ./gradlew clean build hivemqZip -x test && ls -la && ls -la ./build && ls -l
 RUN unzip ./build/zip/hivemq-ce-${HIVEMQ_VERSION}.zip -d ./build/zip/
 RUN find ./build/zip/hivemq-ce-${HIVEMQ_VERSION} -type f -print0 | xargs -0 dos2unix
 
-FROM docker.com2m.de/iot/core/iot-base-image:adoptopenjdk-jre-11.0.5_10-openj9-0.17.0-alpine-3
+FROM docker.com2m.de/iot/core/iot-base-image:zulu-openjdk-17.0.3-alpine-0
 
-ARG HIVEMQ_VERSION=2021.2
+ARG HIVEMQ_VERSION=2021.3
 ENV HIVEMQ_GID=10000
 ENV HIVEMQ_UID=10000
 
@@ -37,17 +37,8 @@ ENV HIVEMQ_ALLOW_ALL_CLIENTS "false"
 ENV LANG=en_US.UTF-8
 
 RUN set -x \
-        && apt-get update && apt-get install -y --no-install-recommends curl gnupg-agent gnupg dirmngr \
-        && curl -fSL "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$(dpkg --print-architecture)" -o /usr/local/bin/gosu \
-        && curl -fSL "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$(dpkg --print-architecture).asc" -o /usr/local/bin/gosu.asc \
-        && export GNUPGHOME="$(mktemp -d)" \
-        && gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys B42F6819007F00F88E364FD4036A9C25BF357DD4 \
-        && gpg --batch --verify /usr/local/bin/gosu.asc /usr/local/bin/gosu \
-        && rm -rf "$GNUPGHOME" /usr/local/bin/gosu.asc \
-        && { command -v gpgconf && gpgconf --kill all || :; } \
-        && chmod +x /usr/local/bin/gosu \
-        && gosu nobody true \
-        && apt-get purge -y gpg dirmngr && rm -rf /var/lib/apt/lists/*
+	&& apk update \
+	&& apk add --no-cache tini
 
 COPY config.xml /opt/config.xml
 COPY docker-entrypoint.sh /opt/docker-entrypoint.sh
