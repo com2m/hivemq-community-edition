@@ -8,8 +8,8 @@ ARG HIVEMQ_VERSION=2021.3
 COPY ./ ./
 
 # Install dos2unix (for docker issue).
-RUN apt-get -o Acquire::Check-Date=false update
-RUN apt-get install -y apt-utils
+RUN apt -o Acquire::Check-Date=false update
+RUN apt install -y apt-utils
 RUN apt install dos2unix
 RUN dos2unix ./gradlew
 
@@ -21,7 +21,7 @@ RUN ./gradlew clean build hivemqZip -x test && ls -la && ls -la ./build && ls -l
 RUN unzip ./build/zip/hivemq-ce-${HIVEMQ_VERSION}.zip -d ./build/zip/
 RUN find ./build/zip/hivemq-ce-${HIVEMQ_VERSION} -type f -print0 | xargs -0 dos2unix
 
-FROM docker.com2m.de/iot/core/iot-base-image:adoptopenjdk-jre-11.0.12_7-openj9-0.27.0-alpine-0
+FROM docker.com2m.de/iot/core/iot-base-image:zulu-openjdk-17.0.3-alpine-0
 
 ARG HIVEMQ_VERSION=2021.3
 ENV HIVEMQ_GID=10000
