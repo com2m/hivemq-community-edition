@@ -1,4 +1,7 @@
+ARG BASE_IMAGE_TAG=zulu-openjdk-17.0.3-alpine-2
+
 FROM gradle:jdk11 AS builder
+ARG BASE_IMAGE_TAG
 
 # Make tmp directory and set workdir.
 RUN mkdir /tmp/hivemq-source
@@ -21,7 +24,7 @@ RUN ./gradlew clean build hivemqZip -x test && ls -la && ls -la ./build && ls -l
 RUN unzip ./build/zip/hivemq-ce-${HIVEMQ_VERSION}.zip -d ./build/zip/
 RUN find ./build/zip/hivemq-ce-${HIVEMQ_VERSION} -type f -print0 | xargs -0 dos2unix
 
-FROM docker.com2m.de/iot/core/iot-base-image:zulu-openjdk-17.0.3-alpine-0
+FROM docker.com2m.de/iot/core/iot-base-image:$BASE_IMAGE_TAG
 
 ARG HIVEMQ_VERSION=2021.3
 ENV HIVEMQ_GID=10000
@@ -65,11 +68,30 @@ RUN sed -i -e 's|eval \\"java\\" "$HOME_OPT" "$JAVA_OPTS" -jar "$JAR_PATH"|exec 
 
 RUN sed -i -e 's|exec "java" "${HOME_OPT}" "${HEAPDUMP_PATH_OPT}" ${JAVA_OPTS} -jar "${JAR_PATH}"|exec "java" "${HOME_OPT}" "${HEAPDUMP_PATH_OPT}" ${JAVA_OPTS} -XX:OnOutOfMemoryError="kill 0" -jar "${JAR_PATH}"|' /opt/hivemq/bin/run.sh
 
+RUN apk add libstdc++ --no-cache
+
+RUN rm -rf /opt/hivemq/extensions/hivemq-allow-all-extension
+
+ADD cronjobs /tmp/cronjobs
+RUN cat /tmp/cronjobs | crontab -
+RUN rm /tmp/cronjobs
+
+RUN mkdir -p /opt/hivemq/default-cert
+RUN mkdir -p /opt/hivemq/cert
+
+RUN chmod -R 777 /opt/hivemq
+RUN chmod -R 777 /opt/hivemq-ce-2021.3
+
+ADD check_extension.sh /opt/check_extension.sh
+RUN chmod +x /opt/check_extension.sh
+
 # Make broker data persistent throughout stop/start cycles
 VOLUME /opt/hivemq/data
 
 # Persist log data
 VOLUME /opt/hivemq/log
+
+VOLUME /opt/hivemq/cert
 
 #mqtt-clients
 EXPOSE 1883
