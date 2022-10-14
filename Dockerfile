@@ -1,29 +1,5 @@
 ARG BASE_IMAGE_TAG=zulu-openjdk-17.0.3-alpine-2
 
-FROM gradle:jdk11 AS builder
-ARG BASE_IMAGE_TAG
-
-# Make tmp directory and set workdir.
-RUN mkdir /tmp/hivemq-source
-WORKDIR /tmp/hivemq-source
-ARG HIVEMQ_VERSION=2021.3
-
-COPY ./ ./
-
-# Install dos2unix (for docker issue).
-RUN apt -o Acquire::Check-Date=false update
-RUN apt install -y apt-utils
-RUN apt install dos2unix
-RUN dos2unix ./gradlew
-
-# Copy source code and build HiveMQ.
-RUN whoami
-RUN ./gradlew clean build hivemqZip -x test && ls -la && ls -la ./build && ls -la ./build/zip
-
-# Unzip HiveMQ and run dos2unix on every file (issue with docker).
-RUN unzip ./build/zip/hivemq-ce-${HIVEMQ_VERSION}.zip -d ./build/zip/
-RUN find ./build/zip/hivemq-ce-${HIVEMQ_VERSION} -type f -print0 | xargs -0 dos2unix
-
 FROM docker.com2m.de/iot/core/iot-base-image:$BASE_IMAGE_TAG
 
 ARG HIVEMQ_VERSION=2021.3
@@ -47,7 +23,7 @@ COPY config.xml /opt/config.xml
 COPY docker-entrypoint.sh /opt/docker-entrypoint.sh
 
 # HiveMQ setup
-COPY --from=builder /tmp/hivemq-source/build/zip/hivemq-ce-${HIVEMQ_VERSION} /opt/hivemq-ce-${HIVEMQ_VERSION}
+COPY build/zip/hivemq-ce-${HIVEMQ_VERSION} /opt/hivemq-ce-${HIVEMQ_VERSION}
 RUN ln -s /opt/hivemq-ce-${HIVEMQ_VERSION} /opt/hivemq
 
 RUN ls -la /opt
