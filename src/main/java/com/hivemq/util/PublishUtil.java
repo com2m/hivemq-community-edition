@@ -19,6 +19,10 @@ import com.hivemq.configuration.entity.mqtt.MqttConfigurationDefaults;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.publish.PUBLISH;
+import com.hivemq.mqtt.message.pubrel.PUBREL;
+import org.slf4j.Logger;
+
+import static org.slf4j.LoggerFactory.getLogger;
 
 /**
  * Various utilities for dealing with Publishes or data from Publishes
@@ -27,6 +31,7 @@ import com.hivemq.mqtt.message.publish.PUBLISH;
  * @author Silvio Giebl
  */
 public class PublishUtil {
+    private static final Logger log = getLogger(PublishUtil.class);
 
     /**
      * Returns the minimum QoS of both passed QoS
@@ -47,7 +52,25 @@ public class PublishUtil {
      * @return whether the given PUBLISH is expired.
      */
     public static boolean checkExpiry(final @NotNull PUBLISH publish) {
-        return checkExpiry(publish.getTimestamp(), publish.getMessageExpiryInterval());
+        boolean isExpired = checkExpiry(publish.getTimestamp(), publish.getMessageExpiryInterval());
+        if (isExpired) {
+            log.warn("PUBLISH packet has expired: topic={}, timestamp={}, expiryInterval={}s, qos={}", publish.getTopic(), publish.getTimestamp(), publish.getMessageExpiryInterval(), publish.getQoS());
+        }
+        return isExpired;
+    }
+
+    /**
+     * Checks whether the given PUBREL is expired.
+     *
+     * @param pubrel the PUBREL to check.
+     * @return whether the given PUBREL is expired.
+     */
+    public static boolean checkExpiry(final @NotNull PUBREL pubrel) {
+        boolean isExpired = checkExpiry(pubrel.getPublishTimestamp(), pubrel.getExpiryInterval());
+        if (isExpired) {
+            log.warn("PUBREL packet has expired: packet identifier={}, timestamp={}, expiryInterval={}s, reason code={}", pubrel.getPacketIdentifier(), pubrel.getPublishTimestamp(), pubrel.getExpiryInterval(), pubrel.getReasonCode());
+        }
+        return isExpired;
     }
 
     /**
