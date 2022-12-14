@@ -31,7 +31,7 @@ import static org.slf4j.LoggerFactory.getLogger;
  * @author Silvio Giebl
  */
 public class PublishUtil {
-    private static final Logger log = getLogger(Validators.class);
+    private static final Logger log = getLogger(PublishUtil.class);
 
     /**
      * Returns the minimum QoS of both passed QoS
