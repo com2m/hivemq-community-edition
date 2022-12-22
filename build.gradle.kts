@@ -61,26 +61,6 @@ metadata {
             fullName.set("Silvio Giebl")
             email.set("silvio.giebl@hivemq.com")
         }
-        developer {
-            id.set("cschaebe")
-            fullName.set("Christoph Schaebel")
-            email.set("christoph.schaebel@hivemq.com")
-        }
-        developer {
-            id.set("lbrandl")
-            fullName.set("Lukas Brandl")
-            email.set("lukas.brandl@hivemq.com")
-        }
-        developer {
-            id.set("flimpoeck")
-            fullName.set("Florian Limpoeck")
-            email.set("florian.limpoeck@hivemq.com")
-        }
-        developer {
-            id.set("sauroter")
-            fullName.set("Georg Held")
-            email.set("georg.held@hivemq.com")
-        }
     }
     github {
         org.set("hivemq")
