@@ -54,11 +54,7 @@ The ideal place for questions or discussions about the HiveMQ Community Edition 
 
 === Quick Start
 
-<<<<<<< HEAD
 * Download the latest https://github.com/hivemq/hivemq-community-edition/releases/download/2022.1/hivemq-ce-2022.1.zip[HiveMQ CE binary package].
-=======
-* Download the latest https://github.com/hivemq/hivemq-community-edition/releases/download/2021.2/hivemq-ce-2021.2.zip[HiveMQ CE binary package].
->>>>>>> b657ef87 (updated hivemq ce to 2021.2)
 * Unzip the package.
 * Run the run.sh (Linux/OSX) or run.bat (Windows) in the bin folder of the package.
 

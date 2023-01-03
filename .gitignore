@@ -1,6 +1,9 @@
 # Gradle
 .gradle
 build/
+.java-version
+.DS_Store
+.gradletasknamecache
 
 # IntelliJ
 out/

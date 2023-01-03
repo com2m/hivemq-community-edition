@@ -32,6 +32,7 @@ import static org.slf4j.LoggerFactory.getLogger;
  */
 public class PublishUtil {
     private static final Logger log = getLogger(PublishUtil.class);
+
     /**
      * Returns the minimum QoS of both passed QoS
      *
