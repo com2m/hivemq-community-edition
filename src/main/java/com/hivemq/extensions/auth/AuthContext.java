@@ -33,9 +33,6 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
-/**
- * @author Silvio Giebl
- */
 abstract class AuthContext<T extends AuthOutput<?>> extends PluginInOutTaskContext<T> implements Supplier<T> {
 
     private static final Logger log = LoggerFactory.getLogger(AuthContext.class);
@@ -123,7 +120,7 @@ abstract class AuthContext<T extends AuthOutput<?>> extends PluginInOutTaskConte
         } catch (final RejectedExecutionException ex) {
             if (!ctx.executor().isShutdown()) {
                 log.error("Execution of authentication was rejected for client with IP {}.",
-                        ChannelUtils.getChannelIP(ctx.channel()).or("UNKNOWN"), ex);
+                        ChannelUtils.getChannelIP(ctx.channel()).orElse("UNKNOWN"), ex);
             }
         }
     }

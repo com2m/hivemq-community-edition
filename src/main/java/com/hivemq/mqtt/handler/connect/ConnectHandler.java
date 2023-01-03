@@ -39,7 +39,8 @@ import com.hivemq.extensions.handler.tasks.PublishAuthorizerResult;
 import com.hivemq.extensions.packets.general.ModifiableDefaultPermissionsImpl;
 import com.hivemq.extensions.services.auth.Authorizers;
 import com.hivemq.limitation.TopicAliasLimiter;
-import com.hivemq.mqtt.handler.MessageHandler;
+import com.hivemq.mqtt.handler.KeepAliveDisconnectHandler;
+import com.hivemq.mqtt.handler.KeepAliveDisconnectService;
 import com.hivemq.mqtt.handler.connack.MqttConnacker;
 import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnector;
 import com.hivemq.mqtt.handler.publish.DefaultPermissionsEvaluator;
@@ -53,9 +54,9 @@ import com.hivemq.mqtt.message.mqtt5.Mqtt5UserProperties;
 import com.hivemq.mqtt.message.reason.Mqtt5ConnAckReasonCode;
 import com.hivemq.mqtt.message.reason.Mqtt5DisconnectReasonCode;
 import com.hivemq.mqtt.services.PublishPollService;
-import com.hivemq.persistence.ChannelPersistence;
 import com.hivemq.persistence.clientsession.ClientSessionPersistence;
 import com.hivemq.persistence.clientsession.SharedSubscriptionService;
+import com.hivemq.persistence.connection.ConnectionPersistence;
 import com.hivemq.util.*;
 import io.netty.channel.*;
 import io.netty.handler.timeout.IdleStateHandler;
@@ -72,23 +73,20 @@ import java.util.concurrent.TimeUnit;
 
 import static com.hivemq.bootstrap.netty.ChannelHandlerNames.*;
 import static com.hivemq.configuration.service.InternalConfigurations.AUTH_DENY_UNAUTHENTICATED_CONNECTIONS;
+import static com.hivemq.mqtt.message.connack.CONNACK.KEEP_ALIVE_NOT_SET;
 import static com.hivemq.mqtt.message.connack.Mqtt5CONNACK.DEFAULT_MAXIMUM_PACKET_SIZE_NO_LIMIT;
-import static com.hivemq.mqtt.message.connect.Mqtt5CONNECT.*;
 
 /**
  * The handler which is responsible for CONNECT messages
- *
- * @author Dominik Obermaier
- * @author Christoph Schäbel
  */
 @Singleton
 @ChannelHandler.Sharable
-public class ConnectHandler extends SimpleChannelInboundHandler<CONNECT> implements MessageHandler<CONNECT> {
+public class ConnectHandler extends SimpleChannelInboundHandler<CONNECT> {
 
     private static final @NotNull Logger log = LoggerFactory.getLogger(ConnectHandler.class);
 
     private final @NotNull ClientSessionPersistence clientSessionPersistence;
-    private final @NotNull ChannelPersistence channelPersistence;
+    private final @NotNull ConnectionPersistence connectionPersistence;
     private final @NotNull FullConfigurationService configurationService;
     private final @NotNull Provider<PublishFlowHandler> publishFlowHandlerProvider;
     private final @NotNull Provider<FlowControlHandler> flowControlHandlerProvider;
@@ -100,6 +98,7 @@ public class ConnectHandler extends SimpleChannelInboundHandler<CONNECT> impleme
     private final @NotNull PluginAuthenticatorService pluginAuthenticatorService;
     private final @NotNull PluginAuthorizerService pluginAuthorizerService;
     private final @NotNull MqttServerDisconnector mqttServerDisconnector;
+    private final @NotNull KeepAliveDisconnectService keepAliveDisconnectService;
 
     private int maxClientIdLength;
     private long configuredSessionExpiryInterval;
@@ -111,7 +110,7 @@ public class ConnectHandler extends SimpleChannelInboundHandler<CONNECT> impleme
     @Inject
     public ConnectHandler(
             final @NotNull ClientSessionPersistence clientSessionPersistence,
-            final @NotNull ChannelPersistence channelPersistence,
+            final @NotNull ConnectionPersistence connectionPersistence,
             final @NotNull FullConfigurationService configurationService,
             final @NotNull Provider<PublishFlowHandler> publishFlowHandlerProvider,
             final @NotNull Provider<FlowControlHandler> flowControlHandlerProvider,
@@ -122,10 +121,11 @@ public class ConnectHandler extends SimpleChannelInboundHandler<CONNECT> impleme
             final @NotNull PluginAuthenticatorService pluginAuthenticatorService,
             final @NotNull Authorizers authorizers,
             final @NotNull PluginAuthorizerService pluginAuthorizerService,
-            final @NotNull MqttServerDisconnector mqttServerDisconnector) {
+            final @NotNull MqttServerDisconnector mqttServerDisconnector,
+            final @NotNull KeepAliveDisconnectService keepAliveDisconnectService) {
 
         this.clientSessionPersistence = clientSessionPersistence;
-        this.channelPersistence = channelPersistence;
+        this.connectionPersistence = connectionPersistence;
         this.configurationService = configurationService;
         this.publishFlowHandlerProvider = publishFlowHandlerProvider;
         this.flowControlHandlerProvider = flowControlHandlerProvider;
@@ -137,6 +137,7 @@ public class ConnectHandler extends SimpleChannelInboundHandler<CONNECT> impleme
         this.authorizers = authorizers;
         this.pluginAuthorizerService = pluginAuthorizerService;
         this.mqttServerDisconnector = mqttServerDisconnector;
+        this.keepAliveDisconnectService = keepAliveDisconnectService;
     }
 
     @PostConstruct
@@ -156,8 +157,7 @@ public class ConnectHandler extends SimpleChannelInboundHandler<CONNECT> impleme
     @Override
     protected void channelRead0(final @NotNull ChannelHandlerContext ctx, final @NotNull CONNECT connect)
             throws Exception {
-
-        overwriteNotSetValues(connect);
+        adjustValuesAccordingToSettings(connect);
 
         if (!checkClientId(ctx, connect)) {
             return;
@@ -238,28 +238,11 @@ public class ConnectHandler extends SimpleChannelInboundHandler<CONNECT> impleme
         clientConnection.setAuthConnect(null);
     }
 
-    @Override
-    public void overwriteNotSetValues(final @NotNull CONNECT connect) {
-
-        if (connect.getSessionExpiryInterval() == SESSION_EXPIRY_NOT_SET) {
-            connect.setSessionExpiryInterval(SESSION_EXPIRE_ON_DISCONNECT);
-        }
-        if (connect.getReceiveMaximum() == RECEIVE_MAXIMUM_NOT_SET) {
-            connect.setReceiveMaximum(DEFAULT_RECEIVE_MAXIMUM);
-        }
-        if (connect.getTopicAliasMaximum() == TOPIC_ALIAS_MAXIMUM_NOT_SET) {
-            connect.setTopicAliasMaximum(DEFAULT_TOPIC_ALIAS_MAXIMUM);
-        }
-        if (connect.getMaximumPacketSize() == MAXIMUM_PACKET_SIZE_NOT_SET) {
-            connect.setMaximumPacketSize(DEFAULT_MAXIMUM_PACKET_SIZE_NO_LIMIT);
-        }
+    private void adjustValuesAccordingToSettings(final @NotNull CONNECT connect) {
         if (connect.getWillPublish() != null) {
             final MqttWillPublish willPublish = connect.getWillPublish();
             if (willPublish.getMessageExpiryInterval() > maxMessageExpiryInterval) {
                 willPublish.setMessageExpiryInterval(maxMessageExpiryInterval);
-            }
-            if (willPublish.getDelayInterval() == MqttWillPublish.WILL_DELAY_INTERVAL_NOT_SET) {
-                willPublish.setDelayInterval(MqttWillPublish.WILL_DELAY_INTERVAL_DEFAULT);
             }
         }
     }
@@ -645,8 +628,8 @@ public class ConnectHandler extends SimpleChannelInboundHandler<CONNECT> impleme
             return;
         }
 
-        final ClientConnection persistedClientConnection = channelPersistence.persistIfAbsent(msg.getClientIdentifier(), clientConnection);
-        // We have written our ClientConnection to the ChannelPersistence. We are now able to connect.
+        final ClientConnection persistedClientConnection = connectionPersistence.persistIfAbsent(clientConnection);
+        // We have written our ClientConnection to the ConnectionPersistence. We are now able to connect.
         if (persistedClientConnection == clientConnection) {
             afterTakeover(ctx, msg);
             return;
@@ -699,8 +682,7 @@ public class ConnectHandler extends SimpleChannelInboundHandler<CONNECT> impleme
                 log.trace("Client {} specified a keepAlive value of {}s. Using keepAlive of {}s. The maximum timeout before disconnecting is {}s",
                         msg.getClientIdentifier(), msg.getKeepAlive(), keepAlive, keepAliveValue);
             }
-            ctx.pipeline().addFirst(MQTT_KEEPALIVE_IDLE_NOTIFIER_HANDLER, new IdleStateHandler(keepAliveValue.intValue(), 0, 0, TimeUnit.SECONDS));
-            ctx.pipeline().addAfter(MQTT_KEEPALIVE_IDLE_NOTIFIER_HANDLER, MQTT_KEEPALIVE_IDLE_HANDLER, new KeepAliveIdleHandler(mqttServerDisconnector));
+            ctx.pipeline().addFirst(MQTT_KEEPALIVE_IDLE_HANDLER, new KeepAliveDisconnectHandler(keepAliveValue.intValue(), TimeUnit.SECONDS, keepAliveDisconnectService));
         } else {
             if (log.isTraceEnabled()) {
                 log.trace("Client {} specified keepAlive of 0. Disabling PING mechanism", msg.getClientIdentifier());

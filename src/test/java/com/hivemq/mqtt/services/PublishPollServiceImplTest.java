@@ -20,6 +20,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.primitives.ImmutableIntArray;
 import com.google.common.util.concurrent.Futures;
 import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientState;
 import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.handler.publish.PublishFlowHandler;
@@ -35,10 +36,10 @@ import com.hivemq.mqtt.message.publish.PubrelWithFuture;
 import com.hivemq.mqtt.message.pubrel.PUBREL;
 import com.hivemq.mqtt.topic.SubscriberWithQoS;
 import com.hivemq.mqtt.topic.SubscriptionFlags;
-import com.hivemq.persistence.ChannelPersistence;
 import com.hivemq.persistence.SingleWriterService;
 import com.hivemq.persistence.clientqueue.ClientQueuePersistence;
 import com.hivemq.persistence.clientsession.SharedSubscriptionService;
+import com.hivemq.persistence.connection.ConnectionPersistence;
 import com.hivemq.persistence.payload.PublishPayloadPersistence;
 import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.Channel;
@@ -61,16 +62,10 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyInt;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.*;
 
-/**
- * @author Lukas Brandl
- */
 public class PublishPollServiceImplTest {
 
     private @NotNull AutoCloseable closeableMock;
@@ -88,7 +83,7 @@ public class PublishPollServiceImplTest {
 
     @Mock
     @NotNull
-    ChannelPersistence channelPersistence;
+    ConnectionPersistence connectionPersistence;
 
     @Mock
     @NotNull
@@ -126,11 +121,13 @@ public class PublishPollServiceImplTest {
     @Before
     public void setUp() throws Exception {
         closeableMock = MockitoAnnotations.openMocks(this);
-        when(channelPersistence.get(anyString())).thenReturn(channel);
         when(channel.pipeline()).thenReturn(pipeline);
 
         clientConnection = spy(new ClientConnection(channel, publishFlushHandler));
+        clientConnection.proposeClientState(ClientState.AUTHENTICATED);
         when(clientConnection.getMessageIDPool()).thenReturn(messageIDPool);
+
+        when(connectionPersistence.get(anyString())).thenReturn(clientConnection);
 
         final Attribute<ClientConnection> clientConnectionAttribute = mock(Attribute.class);
         when(channel.attr(ChannelAttributes.CLIENT_CONNECTION)).thenReturn(clientConnectionAttribute);
@@ -139,11 +136,11 @@ public class PublishPollServiceImplTest {
         when(channel.writeAndFlush(any())).thenReturn(channelFuture);
 
         InternalConfigurations.PUBLISH_POLL_BATCH_SIZE = 50;
-        InternalConfigurations.MAX_INFLIGHT_WINDOW_SIZE = 50;
+        InternalConfigurations.MAX_INFLIGHT_WINDOW_SIZE_MESSAGES = 50;
 
         singleWriterService = TestSingleWriterFactory.defaultSingleWriter();
 
-        publishPollService = new PublishPollServiceImpl(clientQueuePersistence, channelPersistence,
+        publishPollService = new PublishPollServiceImpl(clientQueuePersistence, connectionPersistence,
                 publishPayloadPersistence, messageDroppedService, sharedSubscriptionService, singleWriterService);
     }
 
@@ -256,8 +253,8 @@ public class PublishPollServiceImplTest {
         when(sharedSubscriptionService.getSharedSubscriber(anyString())).thenReturn(ImmutableSet.of(
                 new SubscriberWithQoS("client1", 2, flags, 1),
                 new SubscriberWithQoS("client2", 2, flags, 2)));
-        when(channelPersistence.get("client1")).thenReturn(channel);
-        when(channelPersistence.get("client2")).thenReturn(null);
+        when(connectionPersistence.get("client1")).thenReturn(clientConnection);
+        when(connectionPersistence.get("client2")).thenReturn(null);
 
         when(clientQueuePersistence.readShared(eq("group/topic"), anyInt(), anyLong())).thenReturn(Futures.immediateFuture(
                 ImmutableList.of(createPublish(1), createPublish(1), TestMessageUtil.createMqtt3Publish(QoS.AT_MOST_ONCE))));
@@ -292,7 +289,7 @@ public class PublishPollServiceImplTest {
         final byte flags = SubscriptionFlags.getDefaultFlags(true, false, false);
         when(sharedSubscriptionService.getSharedSubscriber(anyString())).thenReturn(ImmutableSet.of(
                 new SubscriberWithQoS("client1", 2, flags, 1)));
-        when(channelPersistence.get("client1")).thenReturn(channel);
+        when(connectionPersistence.get("client1")).thenReturn(clientConnection);
 
         when(messageIDPool.takeNextId()).thenReturn(2).thenReturn(3);
         when(channel.isActive()).thenReturn(true);
@@ -310,7 +307,7 @@ public class PublishPollServiceImplTest {
         final byte flags = SubscriptionFlags.getDefaultFlags(true, false, false);
         when(sharedSubscriptionService.getSharedSubscriber(anyString())).thenReturn(ImmutableSet.of(
                 new SubscriberWithQoS("client1", 2, flags, 1)));
-        when(channelPersistence.get("client1")).thenReturn(channel);
+        when(connectionPersistence.get("client1")).thenReturn(clientConnection);
 
         when(messageIDPool.takeNextId()).thenReturn(2).thenReturn(3);
         when(channel.isActive()).thenReturn(true);

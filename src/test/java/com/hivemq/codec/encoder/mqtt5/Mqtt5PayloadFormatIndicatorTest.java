@@ -13,18 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.hivemq.mqtt.handler;
+package com.hivemq.codec.encoder.mqtt5;
 
-import com.hivemq.extension.sdk.api.annotations.NotNull;
+import org.junit.Test;
+import util.EnumTestUtil;
 
-/**
- * implement this Handler to overwrite any values which are not set in their decoders.
- *
- * @author Florian Limpöck
- * @since 4.0.0
- */
-public interface MessageHandler<T> {
+public class Mqtt5PayloadFormatIndicatorTest {
 
-    void overwriteNotSetValues(final @NotNull T message);
+    @Test
+    public void test_all_fromCode() {
+        EnumTestUtil.assertAllValueOfWithFallback(
+                Mqtt5PayloadFormatIndicator.class,
+                Mqtt5PayloadFormatIndicator::getCode,
+                Mqtt5PayloadFormatIndicator::fromCode,
+                null);
+    }
 
 }

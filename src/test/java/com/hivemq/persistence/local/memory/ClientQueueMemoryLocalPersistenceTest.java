@@ -48,7 +48,7 @@ import static com.hivemq.configuration.service.MqttConfigurationService.QueuedMe
 import static com.hivemq.configuration.service.MqttConfigurationService.QueuedMessagesStrategy.DISCARD_OLDEST;
 import static com.hivemq.persistence.clientqueue.ClientQueuePersistenceImpl.SHARED_IN_FLIGHT_MARKER;
 import static org.junit.Assert.*;
-import static org.mockito.Matchers.anyString;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 /**
@@ -79,7 +79,7 @@ public class ClientQueueMemoryLocalPersistenceTest {
 
         InternalConfigurations.PERSISTENCE_BUCKET_COUNT.set(bucketCount);
         InternalConfigurations.QOS_0_MEMORY_HARD_LIMIT_DIVISOR.set(10000);
-        InternalConfigurations.QOS_0_MEMORY_LIMIT_PER_CLIENT.set(1024);
+        InternalConfigurations.QOS_0_MEMORY_LIMIT_PER_CLIENT_BYTES.set(1024);
         InternalConfigurations.RETAINED_MESSAGE_QUEUE_SIZE.set(5);
 
         metricRegistry = new MetricRegistry();
@@ -90,7 +90,7 @@ public class ClientQueueMemoryLocalPersistenceTest {
 
     @After
     public void tearDown() throws Exception {
-        InternalConfigurations.EXPIRE_INFLIGHT_PUBRELS = false;
+        InternalConfigurations.EXPIRE_INFLIGHT_PUBRELS_ENABLED = false;
     }
 
     @Test
@@ -704,7 +704,7 @@ public class ClientQueueMemoryLocalPersistenceTest {
     @Test
     public void test_clean_up_expired_pubrels_configured() throws InterruptedException {
 
-        InternalConfigurations.EXPIRE_INFLIGHT_PUBRELS = true;
+        InternalConfigurations.EXPIRE_INFLIGHT_PUBRELS_ENABLED = true;
 
         metricRegistry = new MetricRegistry();
         persistence = new ClientQueueMemoryLocalPersistence(
@@ -1062,7 +1062,7 @@ public class ClientQueueMemoryLocalPersistenceTest {
     @Test
     public void test_read_byte_limit_respected_qos0() {
 
-        InternalConfigurations.QOS_0_MEMORY_LIMIT_PER_CLIENT.set(1024 * 100);
+        InternalConfigurations.QOS_0_MEMORY_LIMIT_PER_CLIENT_BYTES.set(1024 * 100);
 
         metricRegistry = new MetricRegistry();
         persistence = new ClientQueueMemoryLocalPersistence(
@@ -1095,7 +1095,7 @@ public class ClientQueueMemoryLocalPersistenceTest {
     @Test
     public void test_read_byte_limit_respected_qos1() {
 
-        InternalConfigurations.QOS_0_MEMORY_LIMIT_PER_CLIENT.set(1024 * 100);
+        InternalConfigurations.QOS_0_MEMORY_LIMIT_PER_CLIENT_BYTES.set(1024 * 100);
 
         metricRegistry = new MetricRegistry();
         persistence = new ClientQueueMemoryLocalPersistence(
@@ -1138,7 +1138,7 @@ public class ClientQueueMemoryLocalPersistenceTest {
     @Test
     public void test_read_byte_limit_respected_qos0_and_qos1() {
 
-        InternalConfigurations.QOS_0_MEMORY_LIMIT_PER_CLIENT.set(1024 * 100);
+        InternalConfigurations.QOS_0_MEMORY_LIMIT_PER_CLIENT_BYTES.set(1024 * 100);
 
         metricRegistry = new MetricRegistry();
         persistence = new ClientQueueMemoryLocalPersistence(

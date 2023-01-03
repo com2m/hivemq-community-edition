@@ -23,14 +23,14 @@ import com.hivemq.extension.sdk.api.annotations.NotNull;
 public enum PersistenceType {
     FILE, FILE_NATIVE;
 
-    private static final PersistenceType DEFAULT = FILE_NATIVE;
+    private static final @NotNull PersistenceType @NotNull [] VALUES = values();
 
-    @NotNull
-    public static PersistenceType forCode(final int code){
-        if (code < 0 || code >= values().length) {
-            throw new IllegalArgumentException("No persistence type found for code: " + code);
+    public static @NotNull PersistenceType forCode(final int code) {
+        try {
+            return VALUES[code];
+        } catch (final ArrayIndexOutOfBoundsException e) {
+            throw new IllegalArgumentException("No persistence type found for code: " + code, e);
         }
-        return values()[code];
     }
 
 }

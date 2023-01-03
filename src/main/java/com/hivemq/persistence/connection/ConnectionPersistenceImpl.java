@@ -13,8 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.hivemq.persistence;
+package com.hivemq.persistence.connection;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
@@ -39,13 +40,10 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * @author Dominik Obermaier
- */
 @Singleton
-public class ChannelPersistenceImpl implements ChannelPersistence {
+public class ConnectionPersistenceImpl implements ConnectionPersistence {
 
-    private static final Logger log = LoggerFactory.getLogger(ChannelPersistenceImpl.class);
+    private static final Logger log = LoggerFactory.getLogger(ConnectionPersistenceImpl.class);
 
     private final @NotNull Map<String, ClientConnection> clientConnectionMap;
     private final @NotNull Map<String, Channel> serverChannelMap;
@@ -54,28 +52,22 @@ public class ChannelPersistenceImpl implements ChannelPersistence {
     private final int shutdownPartitionSize;
 
     @Inject
-    public ChannelPersistenceImpl() {
+    public ConnectionPersistenceImpl() {
         shutdownLegacy = InternalConfigurations.NETTY_SHUTDOWN_LEGACY;
-        shutdownPartitionSize = InternalConfigurations.NETTY_SHUTDOWN_PARTITION_SIZE;
+        shutdownPartitionSize = InternalConfigurations.NETTY_COUNT_OF_CONNECTIONS_IN_SHUTDOWN_PARTITION;
         interrupted = new AtomicBoolean(false);
         clientConnectionMap = new ConcurrentHashMap<>();
         serverChannelMap = new ConcurrentHashMap<>();
     }
 
     @Override
-    public @Nullable Channel get(final @NotNull String clientId) {
-        final ClientConnection clientConnection = getClientConnection(clientId);
-        return clientConnection == null ? null : clientConnection.getChannel();
-    }
-
-    @Override
-    public @Nullable ClientConnection getClientConnection(final @NotNull String clientId) {
+    public @Nullable ClientConnection get(final @NotNull String clientId) {
         return clientConnectionMap.get(clientId);
     }
 
     @Override
-    public @NotNull ClientConnection persistIfAbsent(final @NotNull String clientId, final @NotNull ClientConnection clientConnection) {
-        return clientConnectionMap.computeIfAbsent(clientId, id -> clientConnection);
+    public @NotNull ClientConnection persistIfAbsent(final @NotNull ClientConnection clientConnection) {
+        return clientConnectionMap.computeIfAbsent(clientConnection.getClientId(), id -> clientConnection);
     }
 
     @Override
@@ -84,25 +76,8 @@ public class ChannelPersistenceImpl implements ChannelPersistence {
     }
 
     @Override
-    public long size() {
-        return clientConnectionMap.size();
-    }
-
-    @NotNull
-    @Override
-    public Set<Map.Entry<String, ClientConnection>> entries() {
-        return clientConnectionMap.entrySet();
-    }
-
-
-    @Override
     public void addServerChannel(final @NotNull String listenerName, final @NotNull Channel channel) {
         serverChannelMap.put(listenerName, channel);
-    }
-
-    @Override
-    public @NotNull Set<Map.Entry<String, Channel>> getServerChannels() {
-        return serverChannelMap.entrySet();
     }
 
     @Override
@@ -206,5 +181,10 @@ public class ChannelPersistenceImpl implements ChannelPersistence {
         Futures.whenAllComplete(closeFutures).run(() -> {
             shutDownPartition(connectionPartitions, index + 1, closeFuture);
         }, MoreExecutors.directExecutor());
+    }
+
+    @VisibleForTesting
+    public @NotNull Set<Map.Entry<String, ClientConnection>> entries() {
+        return clientConnectionMap.entrySet();
     }
 }

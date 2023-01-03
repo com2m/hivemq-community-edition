@@ -46,9 +46,6 @@ import java.nio.ByteBuffer;
 
 import static com.hivemq.util.ChannelUtils.getChannelIP;
 
-/**
- * @author Florian Limpöck
- */
 @Singleton
 public class MqttConnackerImpl implements MqttConnacker {
 
@@ -61,9 +58,9 @@ public class MqttConnackerImpl implements MqttConnacker {
 
     @Inject
     public MqttConnackerImpl(final @NotNull EventLog eventLog) {
-        this.connackWithReasonCode = InternalConfigurations.CONNACK_WITH_REASON_CODE.get();
-        this.connackWithReasonString = InternalConfigurations.CONNACK_WITH_REASON_STRING.get();
         this.eventLog = eventLog;
+        connackWithReasonCode = InternalConfigurations.CONNACK_WITH_REASON_CODE_ENABLED.get();
+        connackWithReasonString = InternalConfigurations.CONNACK_WITH_REASON_STRING_ENABLED.get();
     }
 
     @Override
@@ -138,7 +135,7 @@ public class MqttConnackerImpl implements MqttConnacker {
             final @Nullable String eventLogMessage) {
 
         if (log.isDebugEnabled() && logMessage != null && !logMessage.isEmpty()) {
-            log.debug(logMessage, getChannelIP(channel).or("UNKNOWN"));
+            log.debug(logMessage, getChannelIP(channel).orElse("UNKNOWN"));
         }
 
         if (eventLogMessage != null && !eventLogMessage.isEmpty()) {

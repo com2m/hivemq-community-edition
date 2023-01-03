@@ -22,12 +22,12 @@ import com.hivemq.configuration.service.PersistenceConfigurationService;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.topic.tree.LocalTopicTree;
 import com.hivemq.mqtt.topic.tree.TopicTreeImpl;
-import com.hivemq.persistence.ChannelPersistence;
-import com.hivemq.persistence.ChannelPersistenceImpl;
 import com.hivemq.persistence.PersistenceStartup;
 import com.hivemq.persistence.clientqueue.ClientQueuePersistence;
 import com.hivemq.persistence.clientqueue.ClientQueuePersistenceImpl;
 import com.hivemq.persistence.clientsession.*;
+import com.hivemq.persistence.connection.ConnectionPersistence;
+import com.hivemq.persistence.connection.ConnectionPersistenceImpl;
 import com.hivemq.persistence.ioc.provider.local.IncomingMessageFlowPersistenceLocalProvider;
 import com.hivemq.persistence.local.IncomingMessageFlowLocalPersistence;
 import com.hivemq.persistence.payload.PublishPayloadNoopPersistenceImpl;
@@ -40,9 +40,6 @@ import com.hivemq.persistence.retained.RetainedMessagePersistenceProvider;
 
 import javax.inject.Singleton;
 
-/**
- * @author Dominik Obermaier
- */
 class LocalPersistenceModule extends SingletonModule<Class<LocalPersistenceModule>> {
 
     private final @NotNull Injector persistenceInjector;
@@ -70,8 +67,8 @@ class LocalPersistenceModule extends SingletonModule<Class<LocalPersistenceModul
         bind(RetainedMessagePersistence.class).toProvider(RetainedMessagePersistenceProvider.class)
                 .in(LazySingleton.class);
 
-        /* Channel */
-        bind(ChannelPersistence.class).to(ChannelPersistenceImpl.class).in(Singleton.class);
+        /* Connection */
+        bind(ConnectionPersistence.class).to(ConnectionPersistenceImpl.class).in(Singleton.class);
 
         /* Client Session */
         bind(ClientSessionPersistence.class).toProvider(ClientSessionPersistenceProvider.class).in(LazySingleton.class);

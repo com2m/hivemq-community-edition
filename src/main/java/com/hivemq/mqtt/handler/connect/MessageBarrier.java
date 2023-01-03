@@ -36,10 +36,6 @@ import java.util.Queue;
 
 /**
  * A message barrier which blocks (or queues) messages if they are sent before the connection was approved
- *
- * @author Dominik Obermaier
- * @author Christoph Schäbel
- * @author Silvio Giebl
  */
 public class MessageBarrier extends ChannelDuplexHandler {
 
@@ -54,8 +50,8 @@ public class MessageBarrier extends ChannelDuplexHandler {
     private final @NotNull MqttServerDisconnector serverDisconnector;
     private final @NotNull Queue<Message> messageQueue = new LinkedList<>();
 
-    private boolean connectReceived = false;
-    private boolean connackSent = false;
+    private boolean connectReceived;
+    private boolean connackSent;
 
     public MessageBarrier(final @NotNull MqttServerDisconnector serverDisconnector) {
         this.serverDisconnector = serverDisconnector;
@@ -114,7 +110,7 @@ public class MessageBarrier extends ChannelDuplexHandler {
         if (log.isTraceEnabled()) {
             log.trace("Suspending read operations for MQTT client with id {} and IP {}",
                     channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().getClientId(),
-                    ChannelUtils.getChannelIP(channel).or("UNKNOWN"));
+                    ChannelUtils.getChannelIP(channel).orElse("UNKNOWN"));
         }
         channel.config().setAutoRead(false);
     }
@@ -123,7 +119,7 @@ public class MessageBarrier extends ChannelDuplexHandler {
         if (log.isTraceEnabled()) {
             log.trace("Restarting read operations for MQTT client with id {} and IP {}",
                     channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().getClientId(),
-                    ChannelUtils.getChannelIP(channel).or("UNKNOWN"));
+                    ChannelUtils.getChannelIP(channel).orElse("UNKNOWN"));
         }
         channel.config().setAutoRead(true);
     }

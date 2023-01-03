@@ -31,9 +31,6 @@ import java.util.NoSuchElementException;
 
 import static com.hivemq.bootstrap.netty.ChannelHandlerNames.SSL_HANDLER;
 
-/**
- * @author Christoph Schäbel
- */
 public class SslSniHandler extends SniHandler {
 
     private static final Logger log = LoggerFactory.getLogger(SslSniHandler.class);
@@ -56,7 +53,7 @@ public class SslSniHandler extends SniHandler {
         if (hostname != null) {
             ctx.channel().attr(ChannelAttributes.CLIENT_CONNECTION).get().setAuthSniHostname(hostname);
             if (log.isTraceEnabled()) {
-                log.trace("Client with IP '{}' sent SNI hostname '{}'", ChannelUtils.getChannelIP(ctx.channel()).or("UNKNOWN"), hostname);
+                log.trace("Client with IP '{}' sent SNI hostname '{}'", ChannelUtils.getChannelIP(ctx.channel()).orElse("UNKNOWN"), hostname);
             }
         }
 

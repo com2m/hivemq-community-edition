@@ -69,11 +69,6 @@ import static com.hivemq.mqtt.message.reason.Mqtt5SubAckReasonCode.fromCode;
 
 /**
  * The service which is responsible for handling the subscriptions of MQTT clients
- *
- * @author Dominik Obermaier
- * @author Christian Götz
- * @author Christoph Schäbel
- * @author Florian Limpöck
  */
 @Singleton
 public class IncomingSubscribeService {
@@ -273,7 +268,7 @@ public class IncomingSubscribeService {
                     return;
                 } else {
                     final Mqtt5SubAckReasonCode reasonCode = fromCode(topic.getQoS().getQosNumber());
-                    answerCodes[i] = reasonCode != null ? reasonCode : Mqtt5SubAckReasonCode.UNSPECIFIED_ERROR;
+                    answerCodes[i] = reasonCode != null ? reasonCode : UNSPECIFIED_ERROR;
                 }
             }
 
@@ -398,7 +393,7 @@ public class IncomingSubscribeService {
 
     private void handleInsufficientPermissionsV31(final ChannelHandlerContext ctx, final ClientData clientData, final Topic topic) {
         log.debug("MQTT v3.1 Client '{}' (IP: {}) is not authorized to subscribe to topic '{}' with QoS '{}'. Disconnecting client.",
-                clientData.getClientId(), ChannelUtils.getChannelIP(ctx.channel()).or("UNKNOWN"), topic.getTopic(), topic.getQoS().getQosNumber());
+                clientData.getClientId(), ChannelUtils.getChannelIP(ctx.channel()).orElse("UNKNOWN"), topic.getTopic(), topic.getQoS().getQosNumber());
         mqttServerDisconnector.disconnect(
                 ctx.channel(),
                 null, //already logged

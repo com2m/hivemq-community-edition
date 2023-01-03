@@ -28,7 +28,6 @@ import java.net.InetAddress;
 import java.util.Optional;
 
 /**
- * @author Florian Limpöck
  * @since 4.0.0
  */
 public class ConnectionInformationImpl implements ConnectionInformation {
@@ -41,11 +40,11 @@ public class ConnectionInformationImpl implements ConnectionInformation {
 
     public ConnectionInformationImpl(final @NotNull Channel channel) {
         Preconditions.checkNotNull(channel);
-        this.mqttVersion = ExtensionInformationUtil.mqttVersionFromChannel(channel);
-        this.inetAddress = ChannelUtils.getChannelAddress(channel).orNull();
-        this.listener = ExtensionInformationUtil.getListenerFromChannel(channel);
-        this.tlsInformation = ExtensionInformationUtil.getTlsInformationFromChannel(channel);
-        this.connectionAttributeStore = new ConnectionAttributeStoreImpl(channel);
+        mqttVersion = ExtensionInformationUtil.mqttVersionFromChannel(channel);
+        inetAddress = ChannelUtils.getChannelAddress(channel).orElse(null);
+        listener = ExtensionInformationUtil.getListenerFromChannel(channel);
+        tlsInformation = ExtensionInformationUtil.getTlsInformationFromChannel(channel);
+        connectionAttributeStore = new ConnectionAttributeStoreImpl(channel);
 
     }
 

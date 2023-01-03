@@ -48,11 +48,6 @@ import java.util.Optional;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 
-/**
- * @author Dominik Obermaier
- * @author Georg Held
- * @author Christoph Schäbel
- */
 @Singleton
 public class ExtensionLoaderImpl implements ExtensionLoader {
 
@@ -77,18 +72,20 @@ public class ExtensionLoaderImpl implements ExtensionLoader {
     }
 
     @ReadOnly
-    @NotNull
-    public <T extends ExtensionMain> ImmutableList<HiveMQExtensionEvent> loadExtensions(
-            @NotNull final Path extensionFolder, final boolean permissive, @NotNull final Class<T> desiredExtensionClass) {
-
+    public <T extends ExtensionMain> @NotNull ImmutableList<HiveMQExtensionEvent> loadExtensions(
+            final @NotNull Path extensionFolder,
+            final boolean permissive,
+            final @NotNull Class<T> desiredExtensionClass) {
         checkNotNull(desiredExtensionClass, "extension class must not be null");
         checkNotNull(extensionFolder, "extension folder must not be null");
-
 
         try {
             checkArgument(Files.exists(extensionFolder), "%s does not exist", extensionFolder.toAbsolutePath());
             checkArgument(Files.isReadable(extensionFolder), "%s is not readable", extensionFolder.toAbsolutePath());
-            checkArgument(Files.isDirectory(extensionFolder), "%s is not a directory", extensionFolder.toAbsolutePath());
+            checkArgument(
+                    Files.isDirectory(extensionFolder),
+                    "%s is not a directory",
+                    extensionFolder.toAbsolutePath());
         } catch (final @NotNull IllegalArgumentException exception) {
             if (permissive) {
                 log.warn("Extension folder could not be used: \"{}\"", exception.getMessage());
@@ -102,7 +99,8 @@ public class ExtensionLoaderImpl implements ExtensionLoader {
             final Collection<Path> folders = ExtensionUtil.findAllExtensionFolders(extensionFolder);
 
             for (final Path folder : folders) {
-                final HiveMQExtensionEvent hivemqExtension = processSingleExtensionFolder(folder, desiredExtensionClass);
+                final HiveMQExtensionEvent hivemqExtension =
+                        processSingleExtensionFolder(folder, desiredExtensionClass);
                 if (hivemqExtension != null) {
                     extensions.add(hivemqExtension);
                 }
@@ -110,16 +108,189 @@ public class ExtensionLoaderImpl implements ExtensionLoader {
         } catch (final IOException e) {
             log.error("Could not read extensions. Original exception:", e);
         }
-
         return extensions.build();
     }
 
     @VisibleForTesting
-    @NotNull <T extends ExtensionMain> Optional<Class<? extends T>> loadFromUrls(
-            @NotNull final Collection<URL> urls,
-            @NotNull final Class<T> desiredExtensionClass,
-            @NotNull final String extensionId) {
+    public <T extends ExtensionMain> @Nullable HiveMQExtensionEvent processSingleExtensionFolder(
+            final @NotNull Path extensionFolder, final @NotNull Class<T> desiredClass) {
+        final Optional<HiveMQExtensionEntity> xmlEntityOptional =
+                HiveMQExtensionXMLReader.getExtensionEntityFromXML(extensionFolder, true);
+        if (xmlEntityOptional.isEmpty()) {
+            return null;
+        }
 
+        final HiveMQExtensionEntity xmlEntity = xmlEntityOptional.get();
+        final String[] folderContents = extensionFolder.toFile().list();
+        if (folderContents == null || folderContents.length < 1) {
+            return null;
+        }
+
+        final boolean folderEnabled = !extensionFolder.resolve("DISABLED").toFile().exists();
+
+        // ignore, if this extension with this state is already known to HiveMQ
+        if (hiveMQExtensions.isHiveMQExtensionKnown(xmlEntity.getId(), extensionFolder, folderEnabled)) {
+            return null;
+        }
+
+        // ignore, if folder and extension disabled
+        final boolean extensionEnabled = hiveMQExtensions.isHiveMQExtensionEnabled(xmlEntity.getId());
+        if (!folderEnabled && !extensionEnabled) {
+            return null;
+        }
+
+        final String fileName = extensionFolder.getFileName().toString();
+
+        // check for matching directory name and extensionId
+        if (!fileName.equals(xmlEntity.getId())) {
+            log.warn(
+                    "Found extension directory name not matching to id, ignoring extension with id \"{}\" at {}",
+                    xmlEntity.getId(),
+                    extensionFolder);
+            return null;
+        }
+
+        // check if folder is disabled
+        if (!folderEnabled) {
+            // extension is always enabled here
+            return new HiveMQExtensionEvent(HiveMQExtensionEvent.Change.DISABLE,
+                    xmlEntity.getId(),
+                    xmlEntity.getStartPriority(),
+                    extensionFolder,
+                    false);
+        }
+
+        if (hiveMQExtensions.isHiveMQExtensionIDKnown(xmlEntity.getId()) && extensionEnabled) {
+            log.warn("An extension with id \"{}\" is already loaded, ignoring extension at {}",
+                    xmlEntity.getId(),
+                    extensionFolder);
+            return null;
+        }
+
+        // load the extension
+        final HiveMQExtension hiveMQExtension = loadSingleExtension(extensionFolder, xmlEntity, desiredClass);
+        if (hiveMQExtension == null) {
+            return null;
+        }
+
+        hiveMQExtensions.addHiveMQExtension(hiveMQExtension);
+
+        return new HiveMQExtensionEvent(HiveMQExtensionEvent.Change.ENABLE,
+                hiveMQExtension.getId(),
+                hiveMQExtension.getStartPriority(),
+                extensionFolder,
+                false);
+    }
+
+    @Override
+    public @Nullable HiveMQExtensionEvent loadEmbeddedExtension(final @NotNull EmbeddedExtension embeddedExtension) {
+        final HiveMQEmbeddedExtensionImpl extension = new HiveMQEmbeddedExtensionImpl(embeddedExtension.getId(),
+                embeddedExtension.getVersion(),
+                embeddedExtension.getName(),
+                embeddedExtension.getAuthor(),
+                embeddedExtension.getPriority(),
+                embeddedExtension.getStartPriority(),
+                embeddedExtension.getExtensionMain(),
+                true);
+
+        final HiveMQExtensionEvent hiveMQExtensionEvent = new HiveMQExtensionEvent(HiveMQExtensionEvent.Change.ENABLE,
+                embeddedExtension.getId(),
+                embeddedExtension.getStartPriority(),
+                extension.getExtensionFolderPath(),
+                true);
+        hiveMQExtensions.addHiveMQExtension(extension);
+
+        final ClassLoader extensionClassloader = extension.getExtensionClassloader();
+        if (extensionClassloader == null) {
+            throw new IllegalStateException("The extensions class loader must not be null at loading stage");
+        }
+
+        // need wrapper to load static context and classes (we cannot close the classloader here,
+        // since the lifecycle of the embedded extension ends outside this method call)
+        //noinspection resource
+        final IsolatedExtensionClassloader isolatedExtensionClassloader =
+                new IsolatedExtensionClassloader(extensionClassloader, HiveMQServer.class.getClassLoader());
+        isolatedExtensionClassloader.loadClassesWithStaticContext();
+
+        try {
+            staticInitializer.initialize(embeddedExtension.getId(), extensionClassloader);
+        } catch (final ExtensionLoadingException e) {
+            log.warn(
+                    "Embedded extension with id \"{}\" cannot be started, the extension will be disabled. reason: {}",
+                    embeddedExtension.getId(),
+                    e.getMessage());
+            log.debug("Original exception", e);
+            Exceptions.rethrowError(e);
+            return null;
+        }
+        return hiveMQExtensionEvent;
+    }
+
+    <T extends ExtensionMain> @Nullable HiveMQExtension loadSingleExtension(
+            final @NotNull Path extensionFolder,
+            final @NotNull HiveMQExtensionEntity xmlEntity,
+            final @NotNull Class<T> desiredClass) {
+        final ImmutableList.Builder<Path> jarPaths = ImmutableList.builder();
+        try (final DirectoryStream<Path> stream = Files.newDirectoryStream(extensionFolder)) {
+            for (final Path path : stream) {
+                if (path.toString().endsWith(".jar")) {
+                    log.trace("Found extension jar {}", path);
+                    jarPaths.add(path);
+                }
+            }
+        } catch (final IOException e) {
+            if (log.isTraceEnabled()) {
+                log.trace("Could not read extension folder {}. Original exception:", extensionFolder, e);
+            }
+            return null;
+        }
+
+        final ImmutableList.Builder<URL> urls = ImmutableList.builder();
+        for (final Path path : jarPaths.build()) {
+            try {
+                urls.add(path.toUri().toURL());
+            } catch (final MalformedURLException e) {
+                log.warn("Could not add " + path.toAbsolutePath() +
+                        " to the list of files considered for extension discovery");
+                log.debug("Original exception:", e);
+            }
+        }
+
+        final Optional<Class<? extends T>> classOptional = loadFromUrls(urls.build(), desiredClass, xmlEntity.getId());
+        if (classOptional.isEmpty()) {
+            try {
+                ExtensionUtil.disableExtensionFolder(extensionFolder);
+            } catch (final IOException e) {
+                log.warn("An extension in folder \"" + extensionFolder + "\" could not be disabled: ", e);
+            }
+            return null;
+        }
+
+        final Class<? extends T> extensionMainClass = classOptional.get();
+        try {
+            final T instance = extensionMainClass.getDeclaredConstructor().newInstance();
+            return hiveMQExtensionFactory.createHiveMQExtension(instance, extensionFolder, xmlEntity, true);
+        } catch (final NoSuchMethodException e) {
+            log.warn("Extension {} cannot be loaded. The {} has no constructor without parameters, " +
+                            "a no-arg constructor for a ExtensionMain is required by HiveMQ.",
+                    extensionFolder.toAbsolutePath(),
+                    extensionMainClass);
+        } catch (final Exception e) {
+            log.warn("Extension {} cannot be loaded. The class {} cannot be instantiated, reason: {}",
+                    extensionFolder.toAbsolutePath(),
+                    extensionMainClass.getCanonicalName(),
+                    e.getMessage());
+            log.debug("Original exception:", e);
+        }
+        return null;
+    }
+
+    @VisibleForTesting
+    @SuppressWarnings("UnstableApiUsage")
+    <T extends ExtensionMain> @NotNull Optional<Class<? extends T>> loadFromUrls(
+            final @NotNull Collection<URL> urls,
+            final @NotNull Class<T> desiredExtensionClass,
+            final @NotNull String extensionId) {
         checkNotNull(desiredExtensionClass, "extension class must not be null");
         checkNotNull(urls, "urls must not be null");
 
@@ -130,28 +301,21 @@ public class ExtensionLoaderImpl implements ExtensionLoader {
         final TypeToken<T> type = TypeToken.of(desiredExtensionClass);
         final ImmutableList.Builder<Class<? extends T>> desiredExtensions = ImmutableList.builder();
 
-
         /*
          * We are using a Service Loader mechanism similar to the original Java service
-         * loader mechanism (e.g read from META-INF/services).
+         * loader mechanism (e.g. read from META-INF/services).
          * We are not using the default JDK Service Loader, though, because it returns direct instances of the
          * desired Extension classes.
          */
-
         try {
             final ImmutableList.Builder<Class<? extends ExtensionMain>> allImplementations = ImmutableList.builder();
-
             for (final URL extensionFileUrl : urls) {
-
-
-                //We are creating an isolated extension classloader for each extension.
+                // we are creating an isolated extension classloader for each extension
                 final URL[] classpath = {extensionFileUrl};
 
                 final IsolatedExtensionClassloader extensionClassloader =
                         new IsolatedExtensionClassloader(classpath, getClass().getClassLoader());
-
                 extensionClassloader.loadClassesWithStaticContext();
-
                 if (!initializeStaticContext(extensionId, extensionClassloader)) {
                     return Optional.empty();
                 }
@@ -171,8 +335,8 @@ public class ExtensionLoaderImpl implements ExtensionLoader {
 
             for (final Class<? extends ExtensionMain> implementation : allImplementations.build()) {
                 if (type.getRawType().isAssignableFrom(implementation)) {
-                    @SuppressWarnings("unchecked") final Class<? extends T> extensionClass =
-                            (Class<? extends T>) implementation;
+                    //noinspection unchecked
+                    final Class<? extends T> extensionClass = (Class<? extends T>) implementation;
                     desiredExtensions.add(extensionClass);
                 } else {
                     log.debug("Extension {} is not a {} Extension and will be ignored",
@@ -190,11 +354,9 @@ public class ExtensionLoaderImpl implements ExtensionLoader {
         }
 
         final ImmutableList<Class<? extends T>> desired = desiredExtensions.build();
-
         if (desired.size() == 1) {
             return Optional.of(desired.get(0));
         }
-
         if (desired.size() == 0) {
             log.warn(
                     "No implementation of the interface ExtensionMain found in the extension with id \"{}\". The extension will be disabled.",
@@ -207,188 +369,8 @@ public class ExtensionLoaderImpl implements ExtensionLoader {
         return Optional.empty();
     }
 
-    @VisibleForTesting
-    @Nullable
-    public <T extends ExtensionMain> HiveMQExtensionEvent processSingleExtensionFolder(
-            @NotNull final Path extensionFolder, @NotNull final Class<T> desiredClass) {
-
-        final Optional<HiveMQExtensionEntity> xmlEntityOptional =
-                HiveMQExtensionXMLReader.getExtensionEntityFromXML(extensionFolder, true);
-        if (!xmlEntityOptional.isPresent()) {
-            return null;
-        }
-
-        final HiveMQExtensionEntity xmlEntity = xmlEntityOptional.get();
-
-        final String[] folderContents = extensionFolder.toFile().list();
-        if (folderContents == null || folderContents.length < 1) {
-            return null;
-        }
-
-        final boolean folderEnabled = !extensionFolder.resolve("DISABLED").toFile().exists();
-
-        //ignore, if this extension with this state is already known to HiveMQ
-        if (hiveMQExtensions.isHiveMQExtensionKnown(xmlEntity.getId(), extensionFolder, folderEnabled)) {
-            return null;
-        }
-
-        final boolean extensionEnabled = hiveMQExtensions.isHiveMQExtensionEnabled(xmlEntity.getId());
-
-        //ignore, if folder and extension disabled.
-        if (!folderEnabled && !extensionEnabled) {
-            return null;
-        }
-
-        final String fileName = extensionFolder.getFileName().toString();
-
-        //check for matching directory name and extensionId
-        if (!fileName.equals(xmlEntity.getId())) {
-            log.warn(
-                    "Found extension directory name not matching to id, ignoring extension with id \"{}\" at {}",
-                    xmlEntity.getId(),
-                    extensionFolder);
-            return null;
-        }
-
-        //check if folder is disabled
-        if (!folderEnabled) {
-            //extension is always enabled here
-            return new HiveMQExtensionEvent(HiveMQExtensionEvent.Change.DISABLE,
-                    xmlEntity.getId(),
-                    xmlEntity.getStartPriority(),
-                    extensionFolder,
-                    false);
-        }
-
-        if (hiveMQExtensions.isHiveMQExtensionIDKnown(xmlEntity.getId()) && extensionEnabled) {
-            log.warn("An extension with id \"{}\" is already loaded, ignoring extension at {}",
-                    xmlEntity.getId(),
-                    extensionFolder);
-            return null;
-        }
-
-        //load the extension
-        final HiveMQExtension hiveMQExtension = loadSingleExtension(extensionFolder, xmlEntity, desiredClass);
-
-        if (hiveMQExtension == null) {
-            return null;
-        }
-
-        hiveMQExtensions.addHiveMQExtension(hiveMQExtension);
-
-        return new HiveMQExtensionEvent(HiveMQExtensionEvent.Change.ENABLE,
-                hiveMQExtension.getId(),
-                hiveMQExtension.getStartPriority(),
-                extensionFolder,
-                false);
-    }
-
-    @Override
-    public @Nullable HiveMQExtensionEvent loadEmbeddedExtension(final @NotNull EmbeddedExtension embeddedExtension) {
-
-
-        final HiveMQEmbeddedExtensionImpl extension =
-                new HiveMQEmbeddedExtensionImpl(embeddedExtension.getId(),
-                        embeddedExtension.getVersion(),
-                        embeddedExtension.getName(),
-                        embeddedExtension.getAuthor(),
-                        embeddedExtension.getPriority(),
-                        embeddedExtension.getStartPriority(),
-                        embeddedExtension.getExtensionMain(),
-                        true);
-
-        final HiveMQExtensionEvent hiveMQExtensionEvent =
-                new HiveMQExtensionEvent(HiveMQExtensionEvent.Change.ENABLE, embeddedExtension.getId(), embeddedExtension.getStartPriority(), extension.getExtensionFolderPath(), true);
-        hiveMQExtensions.addHiveMQExtension(extension);
-
-        final ClassLoader extensionClassloader = extension.getExtensionClassloader();
-        if(extensionClassloader == null){
-            throw new IllegalStateException("The extensions class loader must not be null at loading stage");
-        }
-
-        //need wrapper to load static context and classes.
-        final IsolatedExtensionClassloader isolatedExtensionClassloader = new IsolatedExtensionClassloader(extensionClassloader, HiveMQServer.class.getClassLoader());
-        isolatedExtensionClassloader.loadClassesWithStaticContext();
-
-        try {
-            staticInitializer.initialize(embeddedExtension.getId(), extensionClassloader);
-        } catch (final ExtensionLoadingException e) {
-            log.warn(
-                    "Embedded extension with id \"{}\" cannot be started, the extension will be disabled. reason: {}",
-                    embeddedExtension.getId(),
-                    e.getMessage());
-            log.debug("Original exception", e);
-            Exceptions.rethrowError(e);
-            return null;
-        }
-
-        return hiveMQExtensionEvent;
-    }
-
-    @Nullable <T extends ExtensionMain> HiveMQExtension loadSingleExtension(
-            @NotNull final Path extensionFolder,
-            @NotNull final HiveMQExtensionEntity xmlEntity,
-            @NotNull final Class<T> desiredClass) {
-        final ImmutableList.Builder<Path> jarPaths = ImmutableList.builder();
-        try (final DirectoryStream<Path> stream = Files.newDirectoryStream(extensionFolder)) {
-            for (final Path path : stream) {
-                if (path.toString().endsWith(".jar")) {
-                    log.trace("Found extension jar {}", path.toString());
-                    jarPaths.add(path);
-                }
-            }
-        } catch (final IOException e) {
-            log.error("Could not read extension folder {}. Original exception:", extensionFolder, e);
-            return null;
-        }
-
-        final ImmutableList.Builder<URL> urls = ImmutableList.builder();
-        for (final Path path : jarPaths.build()) {
-            try {
-                urls.add(path.toUri().toURL());
-            } catch (final MalformedURLException e) {
-                log.warn("Could not add " + path.toAbsolutePath().toString() +
-                        " to the list of files considered for extension discovery");
-                log.debug("Original exception:", e);
-            }
-        }
-
-        final Optional<Class<? extends T>> classOptional = loadFromUrls(urls.build(), desiredClass, xmlEntity.getId());
-
-        if (!classOptional.isPresent()) {
-            try {
-                ExtensionUtil.disableExtensionFolder(extensionFolder);
-            } catch (final IOException e) {
-                log.warn("An extension in folder \"" + extensionFolder.toString() + "\" could not be disabled: ", e);
-            }
-            return null;
-        }
-
-        final Class<? extends T> extensionMainClass = classOptional.get();
-
-        final T instance;
-        try {
-            instance = extensionMainClass.getDeclaredConstructor().newInstance();
-        } catch (final NoSuchMethodException nsme) {
-            log.warn("Extension {} cannot be loaded. The {} has no constructor without parameters, " +
-                            "a no-arg constructor for a ExtensionMain is required by HiveMQ.",
-                    extensionFolder.toAbsolutePath().toString(),
-                    extensionMainClass);
-            return null;
-        } catch (final Exception e) {
-            log.warn("Extension {} cannot be loaded. The class {} cannot be instantiated, reason: {}",
-                    extensionFolder.toAbsolutePath().toString(),
-                    extensionMainClass.getCanonicalName(),
-                    e.getMessage());
-            log.debug("Original exception:", e);
-            return null;
-        }
-
-        return hiveMQExtensionFactory.createHiveMQExtension(instance, extensionFolder, xmlEntity, true);
-    }
-
     private boolean initializeStaticContext(
-            @NotNull final String hiveMQExtensionID, @NotNull final IsolatedExtensionClassloader classloader) {
+            final @NotNull String hiveMQExtensionID, final @NotNull IsolatedExtensionClassloader classloader) {
         try {
             staticInitializer.initialize(hiveMQExtensionID, classloader);
         } catch (final Throwable e) {

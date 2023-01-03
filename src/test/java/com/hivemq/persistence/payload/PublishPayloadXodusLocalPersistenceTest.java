@@ -32,7 +32,7 @@ import org.junit.rules.TemporaryFolder;
 import java.util.List;
 
 import static org.junit.Assert.*;
-import static org.mockito.Matchers.anyString;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -52,7 +52,7 @@ public class PublishPayloadXodusLocalPersistenceTest {
     public void before() throws Exception {
         localPersistenceFileUtil = mock(LocalPersistenceFileUtil.class);
         InternalConfigurations.PERSISTENCE_CLOSE_RETRIES.set(3);
-        InternalConfigurations.PERSISTENCE_CLOSE_RETRY_INTERVAL.set(5);
+        InternalConfigurations.PERSISTENCE_CLOSE_RETRY_INTERVAL_MSEC.set(5);
         InternalConfigurations.PAYLOAD_PERSISTENCE_BUCKET_COUNT.set(8);
         when(localPersistenceFileUtil.getVersionedLocalPersistenceFolder(anyString(), anyString())).thenReturn(
                 temporaryFolder.newFolder());

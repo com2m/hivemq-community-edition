@@ -22,7 +22,7 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import static org.junit.Assert.assertEquals;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -69,10 +69,8 @@ public class ExtensionPriorityComparatorTest {
 
     @NotNull
     private HiveMQExtension getHiveMQPlugin(final int priority) {
-        final HiveMQExtension plugin = mock(HiveMQExtension.class);
-        when(plugin.getPriority()).thenReturn(priority);
-        return plugin;
+        final HiveMQExtension extension = mock(HiveMQExtension.class);
+        when(extension.getPriority()).thenReturn(priority);
+        return extension;
     }
-
-
 }

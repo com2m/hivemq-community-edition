@@ -13,6 +13,9 @@ out/
 !.idea/inspectionProfiles
 !.idea/runConfigurations
 
+.java-version
+.DS_Store
+
 # Eclipse
 .classpath
 .project

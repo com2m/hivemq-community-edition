@@ -27,9 +27,9 @@ import com.hivemq.mqtt.message.publish.PUBLISH;
 import com.hivemq.mqtt.message.publish.PUBLISHFactory;
 import com.hivemq.mqtt.services.PublishPollService;
 import com.hivemq.mqtt.topic.tree.LocalTopicTree;
-import com.hivemq.persistence.ChannelPersistence;
 import com.hivemq.persistence.SingleWriterService;
 import com.hivemq.persistence.clientsession.ClientSession;
+import com.hivemq.persistence.connection.ConnectionPersistence;
 import com.hivemq.persistence.local.ClientSessionLocalPersistence;
 import com.hivemq.persistence.local.xodus.bucket.BucketUtils;
 import com.hivemq.persistence.payload.PublishPayloadPersistence;
@@ -50,17 +50,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.hivemq.configuration.service.MqttConfigurationService.QueuedMessagesStrategy;
 import static org.junit.Assert.assertEquals;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyBoolean;
-import static org.mockito.Matchers.anyInt;
-import static org.mockito.Matchers.anyLong;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-/**
- * @author Lukas Brandl
- */
 @SuppressWarnings("NullabilityAnnotations")
 public class ClientQueuePersistenceImplTest {
 
@@ -88,7 +80,7 @@ public class ClientQueuePersistenceImplTest {
     LocalTopicTree topicTree;
 
     @Mock
-    private ChannelPersistence channelPersistence;
+    private ConnectionPersistence connectionPersistence;
     @Mock
     private PublishPollService publishPollService;
 
@@ -106,7 +98,7 @@ public class ClientQueuePersistenceImplTest {
         when(mqttConfigurationService.getQueuedMessagesStrategy()).thenReturn(QueuedMessagesStrategy.DISCARD);
         clientQueuePersistence =
                 new ClientQueuePersistenceImpl(localPersistence, singleWriterService, mqttConfigurationService,
-                        clientSessionLocalPersistence, messageDroppedService, topicTree, channelPersistence,
+                        clientSessionLocalPersistence, messageDroppedService, topicTree, connectionPersistence,
                         publishPollService);
     }
 
@@ -138,12 +130,13 @@ public class ClientQueuePersistenceImplTest {
     public void test_publish_avaliable() {
 
         final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
+        final ClientConnection clientConnection = new ClientConnection(channel, null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
         channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setInFlightMessagesSent(true);
         channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setInFlightMessages(new AtomicInteger(0));
 
         when(clientSessionLocalPersistence.getSession("client")).thenReturn(new ClientSession(true, 1000L));
-        when(channelPersistence.get("client")).thenReturn(channel);
+        when(connectionPersistence.get("client")).thenReturn(clientConnection);
         clientQueuePersistence.publishAvailable("client");
         channel.runPendingTasks();
 
@@ -154,14 +147,15 @@ public class ClientQueuePersistenceImplTest {
     public void test_publish_avaliable_channel_inactive() {
 
         final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
+        final ClientConnection clientConnection = new ClientConnection(channel, null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
         channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setInFlightMessagesSent(true);
         channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setInFlightMessages(new AtomicInteger(0));
 
         channel.close();
 
         when(clientSessionLocalPersistence.getSession("client")).thenReturn(new ClientSession(true, 1000L));
-        when(channelPersistence.get("client")).thenReturn(channel);
+        when(connectionPersistence.get("client")).thenReturn(clientConnection);
         clientQueuePersistence.publishAvailable("client");
         channel.runPendingTasks();
         verify(publishPollService, never()).pollNewMessages("client", channel);
@@ -171,11 +165,12 @@ public class ClientQueuePersistenceImplTest {
     public void test_publish_avaliable_inflight_messages_not_sent() {
 
         final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
+        final ClientConnection clientConnection = new ClientConnection(channel, null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
         channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setInFlightMessages(new AtomicInteger(0));
 
         when(clientSessionLocalPersistence.getSession("client")).thenReturn(new ClientSession(true, 1000L));
-        when(channelPersistence.get("client")).thenReturn(channel);
+        when(connectionPersistence.get("client")).thenReturn(clientConnection);
 
         clientQueuePersistence.publishAvailable("client");
         channel.runPendingTasks();
@@ -186,12 +181,13 @@ public class ClientQueuePersistenceImplTest {
     public void test_publish_avaliable_inflight_messages_sending() {
 
         final EmbeddedChannel channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
+        final ClientConnection clientConnection = new ClientConnection(channel, null);
+        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
         channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setInFlightMessagesSent(true);
         channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setInFlightMessages(new AtomicInteger(10));
 
         when(clientSessionLocalPersistence.getSession("client")).thenReturn(new ClientSession(true, 1000L));
-        when(channelPersistence.get("client")).thenReturn(channel);
+        when(connectionPersistence.get("client")).thenReturn(clientConnection);
 
         clientQueuePersistence.publishAvailable("client");
         channel.runPendingTasks();
@@ -202,7 +198,7 @@ public class ClientQueuePersistenceImplTest {
     public void test_publish_avaliable_channel_null() {
 
         when(clientSessionLocalPersistence.getSession("client")).thenReturn(new ClientSession(true, 1000L));
-        when(channelPersistence.get("client")).thenReturn(null);
+        when(connectionPersistence.get("client")).thenReturn(null);
         clientQueuePersistence.publishAvailable("client");
         verify(publishPollService, never()).pollNewMessages(eq("client"), any(Channel.class));
     }

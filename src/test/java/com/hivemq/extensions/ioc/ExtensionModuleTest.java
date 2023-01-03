@@ -52,11 +52,11 @@ import com.hivemq.mqtt.services.PublishDistributor;
 import com.hivemq.mqtt.services.PublishPollService;
 import com.hivemq.mqtt.topic.tree.LocalTopicTree;
 import com.hivemq.mqtt.topic.tree.TopicTreeImpl;
-import com.hivemq.persistence.ChannelPersistence;
 import com.hivemq.persistence.clientqueue.ClientQueuePersistence;
 import com.hivemq.persistence.clientsession.ClientSessionPersistence;
 import com.hivemq.persistence.clientsession.ClientSessionSubscriptionPersistence;
 import com.hivemq.persistence.clientsession.SharedSubscriptionService;
+import com.hivemq.persistence.connection.ConnectionPersistence;
 import com.hivemq.persistence.ioc.annotation.Persistence;
 import com.hivemq.persistence.payload.PublishPayloadPersistence;
 import com.hivemq.persistence.qos.IncomingMessageFlowPersistence;
@@ -65,7 +65,6 @@ import io.netty.channel.group.ChannelGroup;
 import io.netty.handler.traffic.GlobalTrafficShapingHandler;
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.MockitoAnnotations;
 import util.TestConfigurationBootstrap;
 
 import java.util.concurrent.ExecutorService;
@@ -74,9 +73,6 @@ import static org.junit.Assert.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-/**
- * @author Georg Held
- */
 @SuppressWarnings("NullabilityAnnotations")
 public class ExtensionModuleTest {
 
@@ -84,8 +80,6 @@ public class ExtensionModuleTest {
 
     @Before
     public void setUp() throws Exception {
-        MockitoAnnotations.initMocks(this);
-
         injector = Guice.createInjector(new AbstractModule() {
             @Override
             protected void configure() {
@@ -94,7 +88,7 @@ public class ExtensionModuleTest {
                 when(metricsHolder.getMetricRegistry()).thenReturn(new MetricRegistry());
                 install(new ExtensionModule());
                 bind(SystemInformation.class).toInstance(new SystemInformationImpl());
-                bind(ChannelPersistence.class).toInstance(mock(ChannelPersistence.class));
+                bind(ConnectionPersistence.class).toInstance(mock(ConnectionPersistence.class));
                 bind(FullConfigurationService.class).toInstance(new TestConfigurationBootstrap().getFullConfigurationService());
                 bind(MqttConfigurationService.class).toInstance(mock(MqttConfigurationService.class));
                 bind(RestrictionsConfigurationService.class).toInstance(mock(RestrictionsConfigurationService.class));

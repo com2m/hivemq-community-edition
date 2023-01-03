@@ -40,7 +40,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.Assert.*;
-import static org.mockito.Matchers.anyString;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 /**
@@ -71,7 +71,7 @@ public class RetainedMessageXodusLocalPersistenceTest {
         closeableMock = MockitoAnnotations.openMocks(this);
 
         InternalConfigurations.PERSISTENCE_CLOSE_RETRIES.set(3);
-        InternalConfigurations.PERSISTENCE_CLOSE_RETRY_INTERVAL.set(5);
+        InternalConfigurations.PERSISTENCE_CLOSE_RETRY_INTERVAL_MSEC.set(5);
         InternalConfigurations.PERSISTENCE_BUCKET_COUNT.set(BUCKETSIZE);
         when(localPersistenceFileUtil.getVersionedLocalPersistenceFolder(anyString(), anyString())).thenReturn(
                 temporaryFolder.newFolder());

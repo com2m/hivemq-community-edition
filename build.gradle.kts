@@ -3,19 +3,20 @@ import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.gradle.api.tasks.testing.logging.TestLogEvent
 
 plugins {
-    java
-    `java-library`
-    `maven-publish`
-    signing
-    id("io.github.gradle-nexus.publish-plugin")
+    id("java")
+    id("java-library")
+    id("maven-publish")
     id("com.github.johnrengelman.shadow")
+    id("com.github.hierynomus.license")
+    id("org.owasp.dependencycheck")
     id("com.github.sgtsilvio.gradle.utf8")
     id("com.github.sgtsilvio.gradle.metadata")
     id("com.github.sgtsilvio.gradle.javadoc-links")
-    id("com.github.breadmoirai.github-release")
-    id("com.github.hierynomus.license")
-    id("org.owasp.dependencycheck")
     id("com.github.ben-manes.versions")
+
+    /* Publishing Plugins */
+    id("io.github.gradle-nexus.publish-plugin")
+    id("signing")
 
     /* Code Quality Plugins */
     id("jacoco")
@@ -145,6 +146,7 @@ dependencies {
     implementation("com.google.guava:guava:${property("guava.version")}") {
         exclude("org.checkerframework", "checker-qual")
         exclude("com.google.errorprone", "error_prone_annotations")
+        exclude("org.codehaus.mojo", "animal-sniffer-annotations")
     }
     // com.google.code.findbugs:jsr305 (transitive dependency of com.google.guava:guava) is used in imports
     implementation("net.openhft:zero-allocation-hashing:${property("zero-allocation-hashing.version")}")
@@ -152,7 +154,7 @@ dependencies {
     implementation("org.jctools:jctools-core:${property("jctools.version")}")
 
     /* primitive data structures */
-    implementation("org.eclipse.collections:eclipse-collections:${property("ecliplse.collections.version")}")
+    implementation("org.eclipse.collections:eclipse-collections:${property("eclipse.collections.version")}")
 }
 
 
@@ -166,6 +168,8 @@ dependencies {
     testImplementation("org.jboss.shrinkwrap:shrinkwrap-api:${property("shrinkwrap.version")}")
     testRuntimeOnly("org.jboss.shrinkwrap:shrinkwrap-impl-base:${property("shrinkwrap.version")}")
     testImplementation("net.bytebuddy:byte-buddy:${property("bytebuddy.version")}")
+    testImplementation("org.javassist:javassist:${property("javassist.version")}")
+    testImplementation("org.awaitility:awaitility:${property("awaitility.version")}")
     testImplementation("com.github.tomakehurst:wiremock-standalone:${property("wiremock.version")}")
     testImplementation("com.github.stefanbirkner:system-rules:${property("system-rules.version")}") {
         exclude("junit", "junit-dep")
@@ -244,7 +248,7 @@ tasks.javadoc {
 
     doLast {
         javaexec {
-            classpath(projectDir.resolve("gradle/tools/javadoc-cleaner-1.0.jar"))
+            args("$projectDir/gradle/tools/javadoc-cleaner-1.0.jar")
         }
     }
 
@@ -417,8 +421,9 @@ val updateThirdPartyLicenses by tasks.registering {
     dependsOn(tasks.downloadLicenses)
     doLast {
         javaexec {
-            classpath(projectDir.resolve("gradle/tools/license-third-party-tool-2.0.jar"))
+            main = "-jar"
             args(
+                "$projectDir/gradle/tools/license-third-party-tool-2.0.jar",
                 "$buildDir/reports/license/dependency-license.xml",
                 "$projectDir/src/distribution/third-party-licenses/licenses",
                 "$projectDir/src/distribution/third-party-licenses/licenses.html"
@@ -457,16 +462,4 @@ nexusPublishing {
     repositories {
         sonatype()
     }
-}
-
-githubRelease {
-    token(System.getenv("GITHUB_TOKEN"))
-    tagName(project.version.toString())
-    releaseAssets(hivemqZip)
-    allowUploadToExisting(true)
-}
-
-val javaComponent = components["java"] as AdhocComponentWithVariants
-javaComponent.withVariantsFromConfiguration(configurations.shadowRuntimeElements.get()) {
-    skip()
 }

@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.hivemq.persistence;
+package com.hivemq.persistence.connection;
 
 import com.google.common.util.concurrent.ListenableFuture;
 import com.hivemq.bootstrap.ClientConnection;
@@ -21,39 +21,35 @@ import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.annotations.Nullable;
 import io.netty.channel.Channel;
 
-import java.util.Map;
-import java.util.Set;
-
 /**
- * @author Dominik Obermaier
- * @author Florian Limpöck
+ * The ConnectionPersistence contains the connections of all the active clients. However, there is no guarantee that
+ * the connection is open at the time of access. Hence, the accessing code must check
+ * {@link com.hivemq.bootstrap.ClientState} of the connection to make sure that the connection is still open.
+ * <p>
+ * ConnectionPersistence guarantees that even under takeover intensive scenarios only one client per identifier is
+ * persisted.
+ * <p>
+ * The graceful shutdown of all the persisted connections can be done via {@link ConnectionPersistence#shutDown}.
+ * This call is necessary when HiveMQ is shutting down.
  */
-public interface ChannelPersistence {
-
-    /**
-     * Receive a {@link Channel} from the persistence, for a specific client id.
-     *
-     * @param clientId The client identifier.
-     * @return The Channel of the client or {@code null} if not found.
-     */
-    @Nullable Channel get(@NotNull String clientId);
+public interface ConnectionPersistence {
 
     /**
      * Receive a {@link ClientConnection} from the persistence, for a specific client id.
      *
-     * @param clientId         The client identifier.
+     * @param clientId The client identifier.
      * @return The ClientConnection of the client or {@code null} if not found.
      */
-    @Nullable ClientConnection getClientConnection(@NotNull String clientId);
+    @Nullable ClientConnection get(@NotNull String clientId);
 
     /**
-     * Try to put a ClientConnection for the client id. Return the old ClientConnection when there is already one.
+     * Try to persist a ClientConnection. This method stores one ClientConnection per unique client ID. Returns the
+     * existing ClientConnection if there was already one persisted with the same client ID.
      *
-     * @param clientId         The client id of which the channel should be persisted.
      * @param clientConnection The ClientConnection to persist.
-     * @return The currently persisted ClientConnection.
+     * @return ClientConnection persisted in ConnectionPersistence after the operation completes.
      */
-    @NotNull ClientConnection persistIfAbsent(@NotNull String clientId, @NotNull ClientConnection clientConnection);
+    @NotNull ClientConnection persistIfAbsent(@NotNull ClientConnection clientConnection);
 
     /**
      * Remove a {@link ClientConnection} from the persistence, for a specific client id.
@@ -62,21 +58,7 @@ public interface ChannelPersistence {
      */
     void remove(@NotNull ClientConnection clientConnection);
 
-    /**
-     * @return the amount of stored connections.
-     */
-    long size();
-
-    /**
-     * Receive all ClientConnections with their corresponding client identifier as a set of map entries.
-     *
-     * @return all ClientConnections currently stored.
-     */
-    @NotNull Set<Map.Entry<String, ClientConnection>> entries();
-
     void addServerChannel(@NotNull String listenerName, @NotNull Channel channel);
-
-    @NotNull Set<Map.Entry<String, Channel>> getServerChannels();
 
     @NotNull ListenableFuture<Void> shutDown();
 

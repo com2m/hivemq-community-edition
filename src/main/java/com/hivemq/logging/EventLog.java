@@ -34,8 +34,6 @@ import java.time.format.DateTimeFormatter;
 /**
  * The EventLog class is used to log certain events that could be important for customers to separate files.
  * In a future state of the implementation it may also be used to display those events in the web-interface.
- *
- * @author Lukas Brandl
  */
 @LazySingleton
 public class EventLog {
@@ -106,7 +104,7 @@ public class EventLog {
     public void clientConnected(@NotNull final Channel channel) {
         final ClientConnection clientConnection = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get();
         final String clientId = clientConnection.getClientId();
-        final String ip = ChannelUtils.getChannelIP(channel).orNull();
+        final String ip = ChannelUtils.getChannelIP(channel).orElse(null);
         final Boolean cleanStart = clientConnection.isCleanStart();
         final Long sessionExpiry = clientConnection.getClientSessionExpiryInterval();
 
@@ -124,7 +122,7 @@ public class EventLog {
             final @NotNull ClientConnection clientConnection, final @Nullable String reason) {
 
         final String clientId = clientConnection.getClientId();
-        final String ip = ChannelUtils.getChannelIP(clientConnection.getChannel()).orNull();
+        final String ip = ChannelUtils.getChannelIP(clientConnection.getChannel()).orElse(null);
 
         if (log.isTraceEnabled()) {
             log.trace("Client {} disconnected gracefully.", clientId);
@@ -144,7 +142,7 @@ public class EventLog {
      */
     public void clientDisconnectedUngracefully(final @NotNull ClientConnection clientConnection) {
         final String clientId = clientConnection.getClientId();
-        final String ip = ChannelUtils.getChannelIP(clientConnection.getChannel()).orNull();
+        final String ip = ChannelUtils.getChannelIP(clientConnection.getChannel()).orElse(null);
 
         if (log.isTraceEnabled()) {
             log.trace("Client {} disconnected ungracefully.", clientId);
@@ -161,7 +159,7 @@ public class EventLog {
     public void clientWasDisconnected(@NotNull final Channel channel, @NotNull final String reason) {
         final ClientConnection clientConnection = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get();
         final String clientId = clientConnection.getClientId();
-        final String ip = ChannelUtils.getChannelIP(channel).orNull();
+        final String ip = ChannelUtils.getChannelIP(channel).orElse(null);
         if (log.isTraceEnabled()) {
             log.trace("Client {} was disconnected.", clientId);
         }
@@ -176,7 +174,7 @@ public class EventLog {
      */
     public void clientAuthentication(@NotNull final Channel channel, @NotNull final Mqtt5AuthReasonCode reasonCode, final boolean received) {
         final String clientId = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().getClientId();
-        final String ip = ChannelUtils.getChannelIP(channel).orNull();
+        final String ip = ChannelUtils.getChannelIP(channel).orElse(null);
         if (received) {
             logAuthentication.debug("Received AUTH from Client ID: {}, IP: {}, reason code: {}.", valueOrUnknown(clientId), valueOrUnknown(ip), reasonCode.name());
         } else {

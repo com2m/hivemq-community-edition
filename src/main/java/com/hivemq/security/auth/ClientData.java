@@ -15,17 +15,15 @@
  */
 package com.hivemq.security.auth;
 
-import com.google.common.base.Optional;
 import com.hivemq.configuration.service.entity.Listener;
 
 import java.net.InetAddress;
+import java.util.Optional;
 
 /**
  * Represents information available of a connected client.
  *
- * @author Christian Goetz
- * @author Dominik Obermaier
- * @since 1.4
+ *  @since 1.4
  */
 public interface ClientData {
 
@@ -91,5 +89,4 @@ public interface ClientData {
      * @since 3.4
      */
     Optional<Long> getDisconnectTimestamp();
-
 }

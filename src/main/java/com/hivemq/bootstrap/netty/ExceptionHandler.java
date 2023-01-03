@@ -34,9 +34,6 @@ import javax.net.ssl.SSLException;
 import java.io.IOException;
 import java.nio.channels.ClosedChannelException;
 
-/**
- * @author Christoph Schäbel
- */
 @Singleton
 @ChannelHandler.Sharable
 public class ExceptionHandler extends ChannelHandlerAdapter {
@@ -93,7 +90,7 @@ public class ExceptionHandler extends ChannelHandlerAdapter {
 
         } else {
             log.error("An unexpected error occurred for client with IP {}: {}",
-                    ChannelUtils.getChannelIP(channel).or("UNKNOWN"), ExceptionUtils.getStackTrace(cause));
+                    ChannelUtils.getChannelIP(channel).orElse("UNKNOWN"), ExceptionUtils.getStackTrace(cause));
         }
 
         if (channel != null) {

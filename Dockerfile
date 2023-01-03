@@ -2,7 +2,7 @@ ARG BASE_IMAGE_TAG=zulu-openjdk-17.0.3-alpine-2
 
 FROM docker.com2m.de/iot/core/iot-base-image:$BASE_IMAGE_TAG
 
-ARG HIVEMQ_VERSION=2021.3
+ARG HIVEMQ_VERSION=2022.1
 ENV HIVEMQ_GID=10000
 ENV HIVEMQ_UID=10000
 
@@ -56,7 +56,7 @@ RUN mkdir -p /opt/hivemq/default-cert
 RUN mkdir -p /opt/hivemq/cert
 
 RUN chmod -R 777 /opt/hivemq
-RUN chmod -R 777 /opt/hivemq-ce-2021.3
+RUN chmod -R 777 /opt/hivemq-ce-2022.1
 
 ADD check_extension.sh /opt/check_extension.sh
 RUN chmod +x /opt/check_extension.sh

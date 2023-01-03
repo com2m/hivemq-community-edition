@@ -40,6 +40,7 @@ import org.junit.Test;
 import org.mockito.Mock;
 import util.TestMessageEncoder;
 import util.TestMessageUtil;
+import util.encoder.TestMessageEncoder;
 
 import java.nio.charset.StandardCharsets;
 

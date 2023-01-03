@@ -39,11 +39,6 @@ import java.util.concurrent.TimeUnit;
 
 import static com.hivemq.bootstrap.netty.ChannelHandlerNames.*;
 
-/**
- * @author Dominik Obermaier
- * @author Christoph Schäbel
- * @author Silvio Giebl
- */
 public abstract class AbstractChannelInitializer extends ChannelInitializer<Channel> {
 
     private static final Logger log = LoggerFactory.getLogger(AbstractChannelInitializer.class);
@@ -58,9 +53,9 @@ public abstract class AbstractChannelInitializer extends ChannelInitializer<Chan
         this.channelDependencies = channelDependencies;
         this.listener = listener;
         final boolean incomingEnabled = channelDependencies.getRestrictionsConfigurationService().incomingLimit() > 0;
-        final boolean outgoingEnabled = InternalConfigurations.OUTGOING_BANDWIDTH_THROTTLING_DEFAULT > 0;
-        this.legacyNettyShutdown = InternalConfigurations.NETTY_SHUTDOWN_LEGACY;
-        this.throttlingEnabled = incomingEnabled || outgoingEnabled;
+        final boolean outgoingEnabled = InternalConfigurations.OUTGOING_BANDWIDTH_THROTTLING_DEFAULT_BYTES_PER_SEC > 0;
+        legacyNettyShutdown = InternalConfigurations.NETTY_SHUTDOWN_LEGACY;
+        throttlingEnabled = incomingEnabled || outgoingEnabled;
     }
 
     @Override
@@ -144,7 +139,7 @@ public abstract class AbstractChannelInitializer extends ChannelInitializer<Chan
         if (cause instanceof SslException) {
             log.error(
                     "{}. Disconnecting client {} ", cause.getMessage(),
-                    ChannelUtils.getChannelIP(ctx.channel()).or("UNKNOWN"));
+                    ChannelUtils.getChannelIP(ctx.channel()).orElse("UNKNOWN"));
             log.debug("Original exception:", cause);
             //We need to close the channel because the initialization wasn't successful
             channelDependencies.getMqttServerDisconnector().logAndClose(ctx.channel(),

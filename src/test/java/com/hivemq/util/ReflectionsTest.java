@@ -15,18 +15,17 @@
  */
 package com.hivemq.util;
 
-import com.google.common.base.Optional;
 import org.junit.Test;
 
 import java.io.Serializable;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.util.Optional;
 
 import static com.hivemq.util.Reflections.getMethodAnnotationFromInterface;
 import static org.junit.Assert.assertEquals;
 
 public class ReflectionsTest {
-
 
     @Test
     public void test_interface_has_annotation() throws Exception {

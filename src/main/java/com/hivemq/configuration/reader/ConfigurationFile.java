@@ -15,23 +15,21 @@
  */
 package com.hivemq.configuration.reader;
 
-import com.google.common.base.Optional;
 import com.hivemq.extension.sdk.api.annotations.Nullable;
 
 import java.io.File;
+import java.util.Optional;
 
 /**
  * A wrapper class for the configuration file used
  * for initial configuration of HiveMQ on startup
- *
- * @author Dominik Obermaier
  */
 public class ConfigurationFile {
 
     private final Optional<File> configurationFile;
 
     public ConfigurationFile(@Nullable final File configurationFile) {
-        this.configurationFile = Optional.fromNullable(configurationFile);
+        this.configurationFile = Optional.ofNullable(configurationFile);
     }
 
     public Optional<File> file() {
