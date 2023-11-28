@@ -1,6 +1,6 @@
 ARG BASE_IMAGE_TAG=zulu-openjdk-17.0.3-alpine-2
 
-FROM docker.com2m.de/iot/core/iot-base-image:$BASE_IMAGE_TAG
+FROM com2mcore.azurecr.io/iot-base-image:$BASE_IMAGE_TAG
 
 ARG HIVEMQ_VERSION=2022.1
 ENV HIVEMQ_GID=10000
