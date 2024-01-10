@@ -40,7 +40,18 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import util.TlsTestUtil;
 
-import static com.hivemq.bootstrap.netty.ChannelHandlerNames.*;
+import static com.hivemq.bootstrap.netty.ChannelHandlerNames.HTTP_OBJECT_AGGREGATOR;
+import static com.hivemq.bootstrap.netty.ChannelHandlerNames.HTTP_SERVER_CODEC;
+import static com.hivemq.bootstrap.netty.ChannelHandlerNames.MQTT_WEBSOCKET_ENCODER;
+import static com.hivemq.bootstrap.netty.ChannelHandlerNames.NEW_CONNECTION_IDLE_HANDLER;
+import static com.hivemq.bootstrap.netty.ChannelHandlerNames.NO_TLS_HANDSHAKE_IDLE_EVENT_HANDLER;
+import static com.hivemq.bootstrap.netty.ChannelHandlerNames.SSL_EXCEPTION_HANDLER;
+import static com.hivemq.bootstrap.netty.ChannelHandlerNames.SSL_HANDLER;
+import static com.hivemq.bootstrap.netty.ChannelHandlerNames.SSL_PARAMETER_HANDLER;
+import static com.hivemq.bootstrap.netty.ChannelHandlerNames.WEBSOCKET_BINARY_FRAME_HANDLER;
+import static com.hivemq.bootstrap.netty.ChannelHandlerNames.WEBSOCKET_CONTINUATION_FRAME_HANDLER;
+import static com.hivemq.bootstrap.netty.ChannelHandlerNames.WEBSOCKET_SERVER_PROTOCOL_HANDLER;
+import static com.hivemq.bootstrap.netty.ChannelHandlerNames.WEBSOCKET_TEXT_FRAME_HANDLER;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -96,7 +107,8 @@ public class TlsWebsocketChannelInitializerTest {
         when(socketChannel.isActive()).thenReturn(true);
         when(sslHandler.handshakeFuture()).thenReturn(future);
         when(sslFactory.getSslContext(any(Tls.class))).thenReturn(sslContext);
-        when(sslFactory.getSslHandler(any(SocketChannel.class), any(Tls.class), any(SslContext.class))).thenReturn(sslHandler);
+        when(sslFactory.getSslHandler(any(SocketChannel.class), any(Tls.class), any(SslContext.class))).thenReturn(
+                sslHandler);
         when(channelDependencies.getConfigurationService()).thenReturn(fullConfigurationService);
         when(mockListener.getTls()).thenReturn(tls);
         when(channelDependencies.getConfigurationService()).thenReturn(fullConfigurationService);
@@ -111,13 +123,13 @@ public class TlsWebsocketChannelInitializerTest {
     @Test
     public void test_add_special_handlers() {
 
-        final TlsWebsocketListener tlsWebsocketListener = new TlsWebsocketListener.Builder()
-                .bindAddress("")
+        final TlsWebsocketListener tlsWebsocketListener = new TlsWebsocketListener.Builder().bindAddress("")
                 .port(0)
-                .tls(TlsTestUtil.createTLS(0))
+                .tls(TlsTestUtil.createDefaultTLSBuilder().withHandshakeTimeout(0).build())
                 .build();
 
-        final TlsWebsocketChannelInitializer tlsWebsocketChannelInitializer = new TlsWebsocketChannelInitializer(channelDependencies, tlsWebsocketListener, sslFactory);
+        final TlsWebsocketChannelInitializer tlsWebsocketChannelInitializer =
+                new TlsWebsocketChannelInitializer(channelDependencies, tlsWebsocketListener, sslFactory);
 
 
         tlsWebsocketChannelInitializer.addSpecialHandlers(socketChannel);
@@ -138,13 +150,13 @@ public class TlsWebsocketChannelInitializerTest {
     @Test
     public void test_add_special_handlers_with_timeout() {
 
-        final TlsWebsocketListener tlsWebsocketListener = new TlsWebsocketListener.Builder()
-                .bindAddress("")
+        final TlsWebsocketListener tlsWebsocketListener = new TlsWebsocketListener.Builder().bindAddress("")
                 .port(0)
-                .tls(TlsTestUtil.createTLS(10))
+                .tls(TlsTestUtil.createDefaultTLSBuilder().withHandshakeTimeout(10).build())
                 .build();
 
-        final TlsWebsocketChannelInitializer tlsWebsocketChannelInitializer = new TlsWebsocketChannelInitializer(channelDependencies, tlsWebsocketListener, sslFactory);
+        final TlsWebsocketChannelInitializer tlsWebsocketChannelInitializer =
+                new TlsWebsocketChannelInitializer(channelDependencies, tlsWebsocketListener, sslFactory);
 
 
         tlsWebsocketChannelInitializer.addSpecialHandlers(socketChannel);

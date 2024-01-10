@@ -1,28 +1,29 @@
-import nl.javadude.gradle.plugins.license.DownloadLicensesExtension.license
-import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.gradle.api.tasks.testing.logging.TestLogEvent
 
+// TODO: remove suppression after upgrading Gradle to 8.x
+@Suppress("DSL_SCOPE_VIOLATION")
 plugins {
-    id("java")
-    id("java-library")
-    id("maven-publish")
-    id("com.github.johnrengelman.shadow")
-    id("com.github.hierynomus.license")
-    id("org.owasp.dependencycheck")
-    id("com.github.sgtsilvio.gradle.utf8")
-    id("com.github.sgtsilvio.gradle.metadata")
-    id("com.github.sgtsilvio.gradle.javadoc-links")
-    id("com.github.ben-manes.versions")
-
-    /* Publishing Plugins */
-    id("io.github.gradle-nexus.publish-plugin")
-    id("signing")
+    java
+    `java-library`
+    `maven-publish`
+    signing
+    alias(libs.plugins.nexusPublish)
+    alias(libs.plugins.shadow)
+    alias(libs.plugins.defaults)
+    alias(libs.plugins.metadata)
+    alias(libs.plugins.javadocLinks)
+    alias(libs.plugins.githubRelease)
+    alias(libs.plugins.license)
+    alias(libs.plugins.dependencyCheck)
+    alias(libs.plugins.versions)
 
     /* Code Quality Plugins */
-    id("jacoco")
-    id("pmd")
-    id("com.github.spotbugs")
-    id("de.thetaphi.forbiddenapis")
+    jacoco
+    pmd
+    alias(libs.plugins.spotbugs)
+    alias(libs.plugins.forbiddenApis)
+
+    id("com.hivemq.third-party-license-generator")
 }
 
 
@@ -89,89 +90,89 @@ repositories {
 }
 
 dependencies {
-    api("com.hivemq:hivemq-extension-sdk:${property("hivemq-extension-sdk.version")}")
+    api(libs.hivemq.extensionSdk)
 
     // netty
-    implementation("io.netty:netty-buffer:${property("netty.version")}")
-    implementation("io.netty:netty-codec:${property("netty.version")}")
-    implementation("io.netty:netty-codec-http:${property("netty.version")}")
-    implementation("io.netty:netty-common:${property("netty.version")}")
-    implementation("io.netty:netty-handler:${property("netty.version")}")
-    implementation("io.netty:netty-transport:${property("netty.version")}")
+    implementation(libs.netty.buffer)
+    implementation(libs.netty.codec)
+    implementation(libs.netty.codec.http)
+    implementation(libs.netty.common)
+    implementation(libs.netty.handler)
+    implementation(libs.netty.transport)
 
     // logging
-    implementation("org.slf4j:slf4j-api:${property("slf4j.version")}")
-    implementation("org.slf4j:jul-to-slf4j:${property("slf4j.version")}")
-    implementation("ch.qos.logback:logback-classic:${property("logback.version")}")
+    implementation(libs.slf4j.api)
+    implementation(libs.julToSlf4j)
+    implementation(libs.logback.classic)
 
     // security
-    implementation("org.bouncycastle:bcprov-jdk15on:${property("bouncycastle.version")}")
-    implementation("org.bouncycastle:bcpkix-jdk15on:${property("bouncycastle.version")}")
+    implementation(libs.bouncycastle.prov)
+    implementation(libs.bouncycastle.pkix)
 
     // persistence
-    implementation("org.rocksdb:rocksdbjni:${property("rocksdb.version")}")
-    implementation("org.jetbrains.xodus:xodus-openAPI:${property("xodus.version")}") {
+    implementation(libs.rocksdb)
+    implementation(libs.xodus.openApi) {
         exclude("org.jetbrains", "annotations")
     }
-    implementation("org.jetbrains.xodus:xodus-environment:${property("xodus.version")}") {
+    implementation(libs.xodus.environment) {
         exclude("org.jetbrains", "annotations")
     }
     // override transitive dependencies of xodus that have security vulnerabilities
     constraints {
-        implementation("org.jetbrains.kotlin:kotlin-stdlib:${property("kotlin.version")}")
-        implementation("org.apache.commons:commons-compress:${property("commons-compress.version")}")
+        implementation(libs.kotlin.stdlib)
+        implementation(libs.apache.commonsCompress)
     }
 
     // config
-    implementation("jakarta.xml.bind:jakarta.xml.bind-api:${property("jakarta-xml-bind.version")}")
-    runtimeOnly("com.sun.xml.bind:jaxb-impl:${property("jaxb.version")}")
+    implementation(libs.jaxb.api)
+    runtimeOnly(libs.jaxb.impl)
 
     // metrics
-    api("io.dropwizard.metrics:metrics-core:${property("metrics.version")}")
-    implementation("io.dropwizard.metrics:metrics-jmx:${property("metrics.version")}")
-    runtimeOnly("io.dropwizard.metrics:metrics-logback:${property("metrics.version")}")
-    implementation("com.github.oshi:oshi-core:${property("oshi.version")}")
+    api(libs.dropwizard.metrics)
+    implementation(libs.dropwizard.metrics.jmx)
+    runtimeOnly(libs.dropwizard.metrics.logback)
+    implementation(libs.oshi)
     // net.java.dev.jna:jna (transitive dependency of com.github.oshi:oshi-core) is used in imports
 
     // dependency injection
-    implementation("com.google.inject:guice:${property("guice.version")}") {
+    implementation(libs.guice) {
         exclude("com.google.guava", "guava")
     }
-    implementation("javax.annotation:javax.annotation-api:${property("javax.annotation.version")}")
+    implementation(libs.javax.annotation.api)
     // javax.inject:javax.inject (transitive dependency of com.google.inject:guice) is used in imports
 
     // common
-    implementation("commons-io:commons-io:${property("commons-io.version")}")
-    implementation("org.apache.commons:commons-lang3:${property("commons-lang.version")}")
-    implementation("com.google.guava:guava:${property("guava.version")}") {
+    implementation(libs.apache.commonsIO)
+    implementation(libs.apache.commonsLang)
+    implementation(libs.guava) {
         exclude("org.checkerframework", "checker-qual")
         exclude("com.google.errorprone", "error_prone_annotations")
         exclude("org.codehaus.mojo", "animal-sniffer-annotations")
     }
     // com.google.code.findbugs:jsr305 (transitive dependency of com.google.guava:guava) is used in imports
-    implementation("net.openhft:zero-allocation-hashing:${property("zero-allocation-hashing.version")}")
-    implementation("com.fasterxml.jackson.core:jackson-databind:${property("jackson.version")}")
-    implementation("org.jctools:jctools-core:${property("jctools.version")}")
+    implementation(libs.zeroAllocationHashing)
+    implementation(libs.jackson.databind)
+    implementation(libs.jctools)
 
     /* primitive data structures */
-    implementation("org.eclipse.collections:eclipse-collections:${property("eclipse.collections.version")}")
+    implementation(libs.eclipse.collections)
 }
 
 
 /* ******************** test ******************** */
 
 dependencies {
-    testImplementation("junit:junit:${property("junit.version")}")
-    testImplementation("org.mockito:mockito-core:${property("mockito.version")}")
-    testImplementation("nl.jqno.equalsverifier:equalsverifier:${property("equalsverifier.version")}")
-    testImplementation("net.jodah:concurrentunit:${property("concurrentunit.version")}")
-    testImplementation("org.jboss.shrinkwrap:shrinkwrap-api:${property("shrinkwrap.version")}")
-    testRuntimeOnly("org.jboss.shrinkwrap:shrinkwrap-impl-base:${property("shrinkwrap.version")}")
-    testImplementation("net.bytebuddy:byte-buddy:${property("bytebuddy.version")}")
-    testImplementation("org.javassist:javassist:${property("javassist.version")}")
-    testImplementation("org.awaitility:awaitility:${property("awaitility.version")}")
-    testImplementation("com.github.tomakehurst:wiremock-standalone:${property("wiremock.version")}")
-    testImplementation("com.github.stefanbirkner:system-rules:${property("system-rules.version")}") {
+    testImplementation(libs.junit)
+    testImplementation(libs.mockito)
+    testImplementation(libs.equalsVerifier)
+    testImplementation(libs.concurrentUnit)
+    testImplementation(libs.shrinkwrap.api)
+    testRuntimeOnly(libs.shrinkwrap.impl)
+    testImplementation(libs.byteBuddy)
+    testImplementation(libs.wiremock.jre8.standalone)
+    testImplementation(libs.javassist)
+    testImplementation(libs.awaitility)
+    testImplementation(libs.stefanBirkner.systemRules) {
         exclude("junit", "junit-dep")
     }
 }
@@ -203,7 +204,6 @@ tasks.test {
 
     testLogging {
         events = setOf(TestLogEvent.STARTED, TestLogEvent.FAILED)
-        exceptionFormat = TestExceptionFormat.FULL
     }
 }
 
@@ -235,6 +235,7 @@ val hivemqZip by tasks.registering(Zip::class) {
 
     from(projectDir.resolve("src/distribution")) { exclude("**/.gitkeep") }
     from(projectDir.resolve("src/main/resources/config.xml")) { into("conf") }
+    from(projectDir.resolve("src/main/resources/config.xsd")) { into("conf") }
     from(tasks.shadowJar) { into("bin").rename { "hivemq.jar" } }
     into(name)
 }
@@ -287,7 +288,7 @@ spotbugs {
 }
 
 dependencies {
-    spotbugsPlugins("com.h3xstream.findsecbugs:findsecbugs-plugin:1.8.0")
+    spotbugsPlugins(libs.findsecbugs.plugin)
 }
 
 dependencyCheck {
@@ -321,114 +322,14 @@ license {
 }
 
 downloadLicenses {
-    aliases = mapOf(
-        license("Apache License, Version 2.0", "https://opensource.org/licenses/Apache-2.0") to listOf(
-            "Apache 2",
-            "Apache 2.0",
-            "Apache License 2.0",
-            "Apache License, 2.0",
-            "Apache License v2.0",
-            "Apache License, Version 2",
-            "Apache License Version 2.0",
-            "Apache License, Version 2.0",
-            "Apache License, version 2.0",
-            "The Apache License, Version 2.0",
-            "Apache Software License - Version 2.0",
-            "Apache Software License, version 2.0",
-            "The Apache Software License, Version 2.0"
-        ),
-        license("MIT License", "https://opensource.org/licenses/MIT") to listOf(
-            "MIT License",
-            "MIT license",
-            "The MIT License",
-            "The MIT License (MIT)"
-        ),
-        license("CDDL, Version 1.0", "https://opensource.org/licenses/CDDL-1.0") to listOf(
-            "CDDL, Version 1.0",
-            "Common Development and Distribution License 1.0",
-            "COMMON DEVELOPMENT AND DISTRIBUTION LICENSE (CDDL) Version 1.0",
-            license("CDDL", "https://glassfish.dev.java.net/public/CDDLv1.0.html")
-        ),
-        license("CDDL, Version 1.1", "https://oss.oracle.com/licenses/CDDL+GPL-1.1") to listOf(
-            "CDDL 1.1",
-            "CDDL, Version 1.1",
-            "Common Development And Distribution License 1.1",
-            "CDDL+GPL License",
-            "CDDL + GPLv2 with classpath exception",
-            "Dual license consisting of the CDDL v1.1 and GPL v2",
-            "CDDL or GPLv2 with exceptions",
-            "CDDL/GPLv2+CE"
-        ),
-        license("LGPL, Version 2.0", "https://opensource.org/licenses/LGPL-2.0") to listOf(
-            "LGPL, Version 2.0",
-            "GNU General Public License, version 2"
-        ),
-        license("LGPL, Version 2.1", "https://opensource.org/licenses/LGPL-2.1") to listOf(
-            "LGPL, Version 2.1",
-            "LGPL, version 2.1",
-            "GNU Lesser General Public License version 2.1 (LGPLv2.1)",
-            license("GNU Lesser General Public License", "http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html")
-        ),
-        license("LGPL, Version 3.0", "https://opensource.org/licenses/LGPL-3.0") to listOf(
-            "LGPL, Version 3.0",
-            "Lesser General Public License, version 3 or greater"
-        ),
-        license("EPL, Version 1.0", "https://opensource.org/licenses/EPL-1.0") to listOf(
-            "EPL, Version 1.0",
-            "Eclipse Public License - v 1.0",
-            "Eclipse Public License - Version 1.0",
-            license("Eclipse Public License", "http://www.eclipse.org/legal/epl-v10.html")
-        ),
-        license("EPL, Version 2.0", "https://opensource.org/licenses/EPL-2.0") to listOf(
-            "EPL 2.0",
-            "EPL, Version 2.0"
-        ),
-        license("EDL, Version 1.0", "https://www.eclipse.org/org/documents/edl-v10.php") to listOf(
-            "EDL 1.0",
-            "EDL, Version 1.0",
-            "Eclipse Distribution License - v 1.0"
-        ),
-        license("BSD 3-Clause License", "https://opensource.org/licenses/BSD-3-Clause") to listOf(
-            "BSD 3-clause",
-            "BSD-3-Clause",
-            "BSD 3-Clause License",
-            "3-Clause BSD License",
-            "New BSD License",
-            license("BSD", "http://asm.ow2.org/license.html"),
-            license("BSD", "http://asm.objectweb.org/license.html"),
-            license("BSD", "LICENSE.txt")
-        ),
-        license("Bouncy Castle License", "https://www.bouncycastle.org/licence.html") to listOf(
-            "Bouncy Castle Licence"
-        ),
-        license("W3C License", "https://opensource.org/licenses/W3C") to listOf(
-            "W3C License",
-            "W3C Software Copyright Notice and License",
-            "The W3C Software License"
-        ),
-        license("CC0", "https://creativecommons.org/publicdomain/zero/1.0/") to listOf(
-            "CC0",
-            "Public Domain"
-        )
-    )
-
     dependencyConfiguration = "runtimeClasspath"
-    excludeDependencies = listOf("com.hivemq:hivemq-extension-sdk:${property("hivemq-extension-sdk.version")}")
 }
 
-val updateThirdPartyLicenses by tasks.registering {
-    group = "license"
+tasks.updateThirdPartyLicenses {
     dependsOn(tasks.downloadLicenses)
-    doLast {
-        javaexec {
-            classpath(projectDir.resolve("gradle/tools/license-third-party-tool-2.0.jar"))
-            args(
-                "$buildDir/reports/license/dependency-license.xml",
-                "$projectDir/src/distribution/third-party-licenses/licenses",
-                "$projectDir/src/distribution/third-party-licenses/licenses.html"
-            )
-        }
-    }
+    projectName.set("HiveMQ")
+    dependencyLicense.set(tasks.downloadLicenses.get().xmlDestination.resolve("dependency-license.xml"))
+    outputDirectory.set(layout.projectDirectory.dir("src/distribution/third-party-licenses"))
 }
 
 

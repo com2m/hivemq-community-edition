@@ -18,6 +18,7 @@ package com.hivemq.extensions.handler;
 
 import com.google.inject.Inject;
 import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.client.parameter.ClientInformation;
@@ -40,7 +41,6 @@ import com.hivemq.extensions.packets.disconnect.DisconnectPacketImpl;
 import com.hivemq.extensions.packets.disconnect.ModifiableInboundDisconnectPacketImpl;
 import com.hivemq.extensions.packets.disconnect.ModifiableOutboundDisconnectPacketImpl;
 import com.hivemq.mqtt.message.disconnect.DISCONNECT;
-import com.hivemq.util.ChannelAttributes;
 import com.hivemq.util.Exceptions;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -84,7 +84,7 @@ public class DisconnectInterceptorHandler {
             final @NotNull ChannelHandlerContext ctx, final @NotNull DISCONNECT disconnect) {
 
         final Channel channel = ctx.channel();
-        final ClientConnection clientConnection = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get();
+        final ClientConnection clientConnection = ClientConnection.of(channel);
         final String clientId = clientConnection.getClientId();
         if (clientId == null) {
             return;
@@ -141,13 +141,13 @@ public class DisconnectInterceptorHandler {
             final @NotNull ChannelPromise promise) {
 
         final Channel channel = ctx.channel();
-        final ClientConnection clientConnection = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get();
-        final String clientId = clientConnection.getClientId();
+        final ClientConnectionContext clientConnectionContext = ClientConnectionContext.of(channel);
+        final String clientId = clientConnectionContext.getClientId();
         if (clientId == null) {
             return;
         }
 
-        final ClientContextImpl clientContext = clientConnection.getExtensionClientContext();
+        final ClientContextImpl clientContext = clientConnectionContext.getExtensionClientContext();
         if (clientContext == null) {
             ctx.write(disconnect, promise);
             return;

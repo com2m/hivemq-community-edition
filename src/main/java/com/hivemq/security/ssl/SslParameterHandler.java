@@ -15,9 +15,8 @@
  */
 package com.hivemq.security.ssl;
 
-import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.bootstrap.netty.ChannelHandlerNames;
-import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -48,9 +47,9 @@ public class SslParameterHandler extends ChannelInboundHandlerAdapter {
         final SslHandler sslHandler = (SslHandler) channel.pipeline().get(ChannelHandlerNames.SSL_HANDLER);
         final SSLSession session = sslHandler.engine().getSession();
 
-        final ClientConnection clientConnection = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get();
-        clientConnection.setAuthCipherSuite(session.getCipherSuite());
-        clientConnection.setAuthProtocol(session.getProtocol());
+        final ClientConnectionContext clientConnectionContext = ClientConnectionContext.of(channel);
+        clientConnectionContext.setAuthCipherSuite(session.getCipherSuite());
+        clientConnectionContext.setAuthProtocol(session.getProtocol());
 
         channel.pipeline().remove(this);
 

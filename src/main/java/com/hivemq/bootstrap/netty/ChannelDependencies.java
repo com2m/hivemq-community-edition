@@ -33,6 +33,7 @@ import com.hivemq.metrics.handler.GlobalMQTTMessageCounter;
 import com.hivemq.mqtt.handler.InterceptorHandler;
 import com.hivemq.mqtt.handler.auth.AuthHandler;
 import com.hivemq.mqtt.handler.auth.AuthInProgressMessageHandler;
+import com.hivemq.mqtt.handler.connack.MqttConnacker;
 import com.hivemq.mqtt.handler.connect.ConnectHandler;
 import com.hivemq.mqtt.handler.connect.ConnectionLimiterHandler;
 import com.hivemq.mqtt.handler.connect.NoConnectIdleHandler;
@@ -50,10 +51,6 @@ import io.netty.handler.traffic.GlobalTrafficShapingHandler;
 import javax.inject.Inject;
 import javax.inject.Provider;
 
-/**
- * @author Christoph Schäbel
- * @author Dominik Obermaier
- */
 public class ChannelDependencies {
 
     private final @NotNull NoConnectIdleHandler noConnectIdleHandler;
@@ -61,7 +58,7 @@ public class ChannelDependencies {
     private final @NotNull ConnectionLimiterHandler connectionLimiterHandler;
     private final @NotNull DisconnectHandler disconnectHandler;
     private final @NotNull Provider<SubscribeHandler> subscribeHandlerProvider;
-    private final @NotNull Provider<UnsubscribeHandler> unsubscribeHandlerProvider;
+    private final @NotNull UnsubscribeHandler unsubscribeHandler;
     private final @NotNull ChannelGroup channelGroup;
     private final @NotNull FullConfigurationService fullConfigurationService;
     private final @NotNull GlobalTrafficShapingHandler globalTrafficShapingHandler;
@@ -70,6 +67,7 @@ public class ChannelDependencies {
     private final @NotNull PingRequestHandler pingRequestHandler;
     private final @NotNull RestrictionsConfigurationService restrictionsConfigurationService;
     private final @NotNull MqttConnectDecoder mqttConnectDecoder;
+    private final @NotNull MqttConnacker mqttConnacker;
     private final @NotNull MQTTMessageEncoder mqttMessageEncoder;
     private final @NotNull EventLog eventLog;
     private final @NotNull SslParameterHandler sslParameterHandler;
@@ -94,7 +92,7 @@ public class ChannelDependencies {
             final @NotNull ConnectionLimiterHandler connectionLimiterHandler,
             final @NotNull DisconnectHandler disconnectHandler,
             final @NotNull Provider<SubscribeHandler> subscribeHandlerProvider,
-            final @NotNull Provider<UnsubscribeHandler> unsubscribeHandlerProvider,
+            final @NotNull UnsubscribeHandler unsubscribeHandler,
             final @NotNull ChannelGroup channelGroup,
             final @NotNull FullConfigurationService fullConfigurationService,
             final @NotNull GlobalTrafficShapingHandler globalTrafficShapingHandler,
@@ -103,6 +101,7 @@ public class ChannelDependencies {
             final @NotNull PingRequestHandler pingRequestHandler,
             final @NotNull RestrictionsConfigurationService restrictionsConfigurationService,
             final @NotNull MqttConnectDecoder mqttConnectDecoder,
+            final @NotNull MqttConnacker mqttConnacker,
             final @NotNull EventLog eventLog,
             final @NotNull SslParameterHandler sslParameterHandler,
             final @NotNull MqttDecoders mqttDecoders,
@@ -124,7 +123,7 @@ public class ChannelDependencies {
         this.connectionLimiterHandler = connectionLimiterHandler;
         this.disconnectHandler = disconnectHandler;
         this.subscribeHandlerProvider = subscribeHandlerProvider;
-        this.unsubscribeHandlerProvider = unsubscribeHandlerProvider;
+        this.unsubscribeHandler = unsubscribeHandler;
         this.channelGroup = channelGroup;
         this.fullConfigurationService = fullConfigurationService;
         this.globalTrafficShapingHandler = globalTrafficShapingHandler;
@@ -133,6 +132,7 @@ public class ChannelDependencies {
         this.pingRequestHandler = pingRequestHandler;
         this.restrictionsConfigurationService = restrictionsConfigurationService;
         this.mqttConnectDecoder = mqttConnectDecoder;
+        this.mqttConnacker = mqttConnacker;
         this.shutdownHooks = shutdownHooks;
         this.mqttMessageEncoder = new MQTTMessageEncoder(encoderFactory, globalMQTTMessageCounter);
         this.eventLog = eventLog;
@@ -177,7 +177,7 @@ public class ChannelDependencies {
 
     @NotNull
     public UnsubscribeHandler getUnsubscribeHandler() {
-        return unsubscribeHandlerProvider.get();
+        return unsubscribeHandler;
     }
 
     @NotNull
@@ -218,6 +218,10 @@ public class ChannelDependencies {
     @NotNull
     public MqttConnectDecoder getMqttConnectDecoder() {
         return mqttConnectDecoder;
+    }
+
+    public @NotNull MqttConnacker getMqttConnacker() {
+        return mqttConnacker;
     }
 
     @NotNull

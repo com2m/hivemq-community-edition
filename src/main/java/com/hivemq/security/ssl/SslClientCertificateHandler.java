@@ -15,12 +15,12 @@
  */
 package com.hivemq.security.ssl;
 
+import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.bootstrap.netty.ChannelHandlerNames;
 import com.hivemq.configuration.service.entity.Tls;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnector;
 import com.hivemq.security.auth.SslClientCertificate;
-import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -33,23 +33,27 @@ import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLSession;
 import java.security.cert.Certificate;
 
+import static com.hivemq.logging.LoggingUtils.appendListenerToMessage;
+
 /**
  * @author Christoph Schäbel
  */
 public class SslClientCertificateHandler extends ChannelInboundHandlerAdapter {
 
-    private static final Logger log = LoggerFactory.getLogger(SslClientCertificateHandler.class);
+    private static final @NotNull Logger log = LoggerFactory.getLogger(SslClientCertificateHandler.class);
 
     private final @NotNull Tls tls;
     private final @NotNull MqttServerDisconnector mqttServerDisconnector;
 
-    public SslClientCertificateHandler(final @NotNull Tls tls, final @NotNull MqttServerDisconnector mqttServerDisconnector) {
+    public SslClientCertificateHandler(
+            final @NotNull Tls tls, final @NotNull MqttServerDisconnector mqttServerDisconnector) {
         this.tls = tls;
         this.mqttServerDisconnector = mqttServerDisconnector;
     }
 
     @Override
-    public void userEventTriggered(final @NotNull ChannelHandlerContext ctx, final @NotNull Object evt) throws Exception {
+    public void userEventTriggered(final @NotNull ChannelHandlerContext ctx, final @NotNull Object evt)
+            throws Exception {
 
         if (!(evt instanceof SslHandshakeCompletionEvent)) {
             super.userEventTriggered(ctx, evt);
@@ -71,15 +75,15 @@ public class SslClientCertificateHandler extends ChannelInboundHandlerAdapter {
             final SSLSession session = sslHandler.engine().getSession();
             final Certificate[] peerCertificates = session.getPeerCertificates();
             final SslClientCertificate sslClientCertificate = new SslClientCertificateImpl(peerCertificates);
-            channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setAuthCertificate(sslClientCertificate);
+            ClientConnectionContext.of(channel).setAuthCertificate(sslClientCertificate);
 
         } catch (final SSLPeerUnverifiedException e) {
             handleSslPeerUnverifiedException(channel, e);
 
         } catch (final ClassCastException e2) {
-            mqttServerDisconnector.logAndClose(channel,
-                    null, //no logging needed as we rethrow it as a RuntimeException
-                    "SSL handshake failed");
+            final String eventLogMessage = appendListenerToMessage(channel, "SSL handshake failed");
+            mqttServerDisconnector.logAndClose(channel, null, //no logging needed as we rethrow it as a RuntimeException
+                    eventLogMessage);
             throw new RuntimeException("Not able to get SslHandler from pipeline", e2);
         }
 
@@ -99,9 +103,9 @@ public class SslClientCertificateHandler extends ChannelInboundHandlerAdapter {
                 //because the SslHandler of netty checks this for us
                 log.error("Client certificate authentication forced but no client certificate was provided. " +
                         "Disconnecting.", e);
-                mqttServerDisconnector.logAndClose(channel,
-                        null, //already logged
-                        "No client certificate provided");
+                final String eventLogMessage = appendListenerToMessage(channel, "No client certificate provided");
+                mqttServerDisconnector.logAndClose(channel, null, //already logged
+                        eventLogMessage);
 
             } else if (Tls.ClientAuthMode.OPTIONAL.equals(tls.getClientAuthMode())) {
 
@@ -111,10 +115,9 @@ public class SslClientCertificateHandler extends ChannelInboundHandlerAdapter {
 
         } else {
             log.error("An error occurred. Disconnecting client.", e);
-            mqttServerDisconnector.logAndClose(channel,
-                    null, //already logged
-                    "SSL handshake failed");
+            final String eventLogMessage = appendListenerToMessage(channel, "SSL handshake failed");
+            mqttServerDisconnector.logAndClose(channel, null, //already logged
+                    eventLogMessage);
         }
     }
-
 }

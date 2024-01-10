@@ -20,6 +20,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.SettableFuture;
 import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.bootstrap.ioc.lazysingleton.LazySingleton;
@@ -40,9 +41,8 @@ import com.hivemq.persistence.clientqueue.ClientQueuePersistence;
 import com.hivemq.persistence.clientsession.task.ClientSessionCleanUpTask;
 import com.hivemq.persistence.connection.ConnectionPersistence;
 import com.hivemq.persistence.local.ClientSessionLocalPersistence;
-import com.hivemq.persistence.payload.PublishPayloadPersistenceImpl;
+import com.hivemq.persistence.payload.PublishPayloadPersistence;
 import com.hivemq.persistence.util.FutureUtils;
-import com.hivemq.util.ClientSessions;
 import io.netty.channel.ChannelFutureListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,6 +52,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.hivemq.mqtt.message.connect.Mqtt5CONNECT.SESSION_EXPIRE_ON_DISCONNECT;
@@ -122,15 +123,18 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
         final long timestamp = System.currentTimeMillis();
         final SettableFuture<Void> resultFuture = SettableFuture.create();
         singleWriter.submit(client, (SingleWriterService.Task<Void>) (bucketIndex) -> {
-            final ClientSession disconnectSession = localPersistence.disconnect(client, timestamp, sendWill, bucketIndex, sessionExpiry);
+            final ClientSession disconnectSession =
+                    localPersistence.disconnect(client, timestamp, sendWill, bucketIndex, sessionExpiry);
             if (sendWill) {
-                pendingWillMessages.addWill(client, disconnectSession);
+                pendingWillMessages.sendOrEnqueueWillIfAvailable(client, disconnectSession);
             }
 
             final ListenableFuture<Void> removeQos0Future = clientQueuePersistence.removeAllQos0Messages(client, false);
-            if (disconnectSession.getSessionExpiryInterval() == SESSION_EXPIRE_ON_DISCONNECT) {
+            if (disconnectSession.getSessionExpiryIntervalSec() == SESSION_EXPIRE_ON_DISCONNECT) {
                 final ListenableFuture<Void> removeSubFuture = subscriptionPersistence.removeAll(client);
-                resultFuture.setFuture(FutureUtils.mergeVoidFutures(removeQos0Future, removeSubFuture));
+                resultFuture.setFuture(Futures.transform(Futures.allAsList(removeQos0Future, removeSubFuture),
+                        voids -> null,
+                        MoreExecutors.directExecutor()));
                 return null;
             }
             resultFuture.setFuture(removeQos0Future);
@@ -149,42 +153,53 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
 
         checkNotNull(client, "Client id must not be null");
 
-        pendingWillMessages.cancelWill(client);
         final long timestamp = System.currentTimeMillis();
 
         ClientSessionWill sessionWill = null;
         if (willPublish != null) {
-            final long publishId = PublishPayloadPersistenceImpl.createId();
+            final long publishId = PublishPayloadPersistence.createId();
             sessionWill = new ClientSessionWill(willPublish, publishId);
         }
-        final ClientSession clientSession = new ClientSession(true, clientSessionExpiryInterval, sessionWill, queueLimit);
+        final ClientSession clientSession =
+                new ClientSession(true, clientSessionExpiryInterval, sessionWill, queueLimit);
 
-        final ListenableFuture<ConnectResult> submitFuture =
-                singleWriter.submit(client, (bucketIndex) -> {
-                    final Long previousTimestamp = localPersistence.getTimestamp(client, bucketIndex);
-                    final ClientSession previousClientSession = localPersistence.getSession(client, bucketIndex, false);
-                    localPersistence.put(client, clientSession, timestamp, bucketIndex);
-                    return new ConnectResult(previousTimestamp, previousClientSession);
-                });
+        final ListenableFuture<ConnectResult> submitFuture = singleWriter.submit(client, (bucketIndex) -> {
+            final Long previousTimestamp = localPersistence.getTimestamp(client, bucketIndex);
+            final ClientSession previousClientSession = localPersistence.getSession(client, bucketIndex, false);
+            localPersistence.put(client, clientSession, timestamp, bucketIndex);
+            return new ConnectResult(previousTimestamp, previousClientSession);
+        });
 
         final SettableFuture<Void> resultFuture = SettableFuture.create();
-        FutureUtils.addPersistenceCallback(submitFuture, new FutureCallback<>() {
+        Futures.addCallback(submitFuture, new FutureCallback<>() {
             @Override
             public void onSuccess(final ConnectResult connectResult) {
                 final Long previousTimestamp = connectResult.getPreviousTimestamp();
                 final ClientSession previousClientSession = connectResult.getPreviousClientSession();
 
-                final ListenableFuture<Void> cleanupFuture;
+                // Send any pending will if requesting a clean start.
+                // As per the specification, a clean start "ends" any existing session and requires its will to be sent,
+                // if available.
+                // Therefore, immediately send any pending will that was created during the preceding disconnect.
+                // If no clean start is required, a client might be re-connecting to the existing session.
+                // In this case, cancel any pending send of a will.
+                if (cleanStart) {
+                    pendingWillMessages.sendWillIfPending(client, previousClientSession);
+                } else {
+                    pendingWillMessages.cancelWillIfPending(client);
+                }
 
                 // CleanUp the client session if the session is expired OR the client is clean start client.
+                final ListenableFuture<Void> cleanupFuture;
                 if (cleanStart) {
                     cleanupFuture = cleanClientData(client);
                 } else {
                     final boolean expired = previousTimestamp != null &&
-                            ClientSessions.isExpired(previousClientSession, System.currentTimeMillis() - previousTimestamp);
+                            previousClientSession.isExpired(System.currentTimeMillis() - previousTimestamp);
                     if (expired) {
                         // timestamp in milliseconds + session expiry in seconds * 1000 = milliseconds
-                        eventLog.clientSessionExpired(previousTimestamp + previousClientSession.getSessionExpiryInterval() * 1000, client);
+                        eventLog.clientSessionExpired(previousTimestamp +
+                                previousClientSession.getSessionExpiryIntervalSec() * 1000, client);
                         cleanupFuture = cleanClientData(client);
                     } else {
                         cleanupFuture = Futures.immediateFuture(null);
@@ -197,7 +212,7 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
             public void onFailure(final @NotNull Throwable t) {
                 resultFuture.setException(t);
             }
-        });
+        }, MoreExecutors.directExecutor());
         return resultFuture;
     }
 
@@ -214,32 +229,40 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
 
         final ClientSession session = getSession(clientId, false);
         if (session == null) {
-            log.trace("Ignoring forced client disconnect request for client '{}', because client is not connected.", clientId);
+            log.trace("Ignoring forced client disconnect request for client '{}', because client is not connected.",
+                    clientId);
             return Futures.immediateFuture(false);
         }
         if (preventLwtMessage) {
-            pendingWillMessages.cancelWill(clientId);
+            pendingWillMessages.cancelWillIfPending(clientId);
         }
 
         log.debug("Request forced client disconnect for client {}.", clientId);
         final ClientConnection clientConnection = connectionPersistence.get(clientId);
 
         if (clientConnection == null) {
-            log.trace("Ignoring forced client disconnect request for client '{}', because client is not connected.", clientId);
+            log.trace("Ignoring forced client disconnect request for client '{}', because client is not connected.",
+                    clientId);
             return Futures.immediateFuture(false);
         }
         clientConnection.setPreventLwt(preventLwtMessage);
-        if (session.getSessionExpiryInterval() != SESSION_EXPIRY_NOT_SET) {
-            clientConnection.setClientSessionExpiryInterval(session.getSessionExpiryInterval());
+        if (session.getSessionExpiryIntervalSec() != SESSION_EXPIRY_NOT_SET) {
+            clientConnection.setClientSessionExpiryInterval(session.getSessionExpiryIntervalSec());
         }
 
-        final String logMessage = String.format("Disconnecting client with clientId '%s' forcibly via extension system.", clientId);
+        final String logMessage =
+                String.format("Disconnecting client with clientId '%s' forcibly via extension system.", clientId);
         final String eventLogMessage = "Disconnected via extension system";
 
-        final Mqtt5DisconnectReasonCode usedReasonCode =
-                reasonCode == null ? Mqtt5DisconnectReasonCode.ADMINISTRATIVE_ACTION : Mqtt5DisconnectReasonCode.valueOf(reasonCode.name());
+        final Mqtt5DisconnectReasonCode usedReasonCode = reasonCode == null ?
+                Mqtt5DisconnectReasonCode.ADMINISTRATIVE_ACTION :
+                Mqtt5DisconnectReasonCode.valueOf(reasonCode.name());
 
-        mqttServerDisconnector.disconnect(clientConnection.getChannel(), logMessage, eventLogMessage, usedReasonCode, reasonString);
+        mqttServerDisconnector.disconnect(clientConnection.getChannel(),
+                logMessage,
+                eventLogMessage,
+                usedReasonCode,
+                reasonString);
 
         final SettableFuture<Boolean> resultFuture = SettableFuture.create();
         clientConnection.getChannel().closeFuture().addListener((ChannelFutureListener) future -> {
@@ -271,7 +294,9 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
             clientSessions.addAll(localPersistence.getAllClients(bucketIndex));
             return clientSessions;
         });
-        return FutureUtils.combineSetResults(Futures.allAsList(futures));
+        return Futures.transform(Futures.allAsList(futures),
+                sets -> sets.stream().flatMap(Set::stream).collect(Collectors.toSet()),
+                MoreExecutors.directExecutor());
     }
 
     @Override
@@ -287,29 +312,28 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
 
         checkNotNull(clientId, "Client id must not be null");
 
-        final ListenableFuture<Boolean> setTTlFuture =
-                singleWriter.submit(clientId, (bucketIndex) -> {
+        final ListenableFuture<Boolean> setTTlFuture = singleWriter.submit(clientId, (bucketIndex) -> {
 
-                    final boolean clientSessionExists = localPersistence.getSession(clientId) != null;
+            final boolean clientSessionExists = localPersistence.getSession(clientId) != null;
 
-                    if (!clientSessionExists) {
-                        return false;
-                    }
+            if (!clientSessionExists) {
+                return false;
+            }
 
-                    localPersistence.setSessionExpiryInterval(clientId, sessionExpiryInterval, bucketIndex);
-                    return true;
-                });
+            localPersistence.setSessionExpiryInterval(clientId, sessionExpiryInterval, bucketIndex);
+            return true;
+        });
 
         final SettableFuture<Boolean> settableFuture = SettableFuture.create();
 
-        FutureUtils.addPersistenceCallback(setTTlFuture, new FutureCallback<>() {
+        Futures.addCallback(setTTlFuture, new FutureCallback<>() {
             @Override
             public void onSuccess(final @Nullable Boolean sessionExists) {
                 if (sessionExpiryInterval == SESSION_EXPIRE_ON_DISCONNECT) {
 
                     final ListenableFuture<Void> removeAllFuture = subscriptionPersistence.removeAll(clientId);
 
-                    FutureUtils.addPersistenceCallback(removeAllFuture, new FutureCallback<>() {
+                    Futures.addCallback(removeAllFuture, new FutureCallback<>() {
                         @Override
                         public void onSuccess(final @Nullable Void result) {
                             settableFuture.set(sessionExists);
@@ -319,7 +343,7 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
                         public void onFailure(final @NotNull Throwable t) {
                             settableFuture.setException(t);
                         }
-                    });
+                    }, MoreExecutors.directExecutor());
                 } else {
                     settableFuture.set(sessionExists);
                 }
@@ -329,7 +353,7 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
             public void onFailure(final @NotNull Throwable t) {
                 settableFuture.setException(t);
             }
-        });
+        }, MoreExecutors.directExecutor());
 
         return settableFuture;
     }
@@ -341,12 +365,13 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
         if (session == null) {
             return null;
         }
-        return session.getSessionExpiryInterval();
+        return session.getSessionExpiryIntervalSec();
     }
 
     @Override
     public @NotNull ListenableFuture<Void> cleanUp(final int bucketIndex) {
-        return singleWriter.submit(bucketIndex, new ClientSessionCleanUpTask(localPersistence, this));
+        return singleWriter.submit(bucketIndex,
+                new ClientSessionCleanUpTask(localPersistence, this, pendingWillMessages));
     }
 
     @Override
@@ -364,12 +389,13 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
         final ListenableFuture<Boolean> setTTLFuture = setSessionExpiryInterval(clientId, 0);
         final SettableFuture<Boolean> resultFuture = SettableFuture.create();
 
-        FutureUtils.addPersistenceCallback(setTTLFuture, new FutureCallback<>() {
+        Futures.addCallback(setTTLFuture, new FutureCallback<>() {
             @Override
             public void onSuccess(final Boolean sessionExists) {
 
                 if (sessionExists) {
-                    final ListenableFuture<Boolean> disconnectClientFuture = forceDisconnectClient(clientId, false, disconnectSource);
+                    final ListenableFuture<Boolean> disconnectClientFuture =
+                            forceDisconnectClient(clientId, false, disconnectSource);
                     resultFuture.setFuture(disconnectClientFuture);
                 } else {
                     resultFuture.set(null);
@@ -380,7 +406,7 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
             public void onFailure(final @NotNull Throwable throwable) {
                 resultFuture.setException(throwable);
             }
-        });
+        }, MoreExecutors.directExecutor());
 
         return resultFuture;
     }
@@ -392,7 +418,7 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
                 singleWriter.submitToAllBucketsParallel(localPersistence::getPendingWills);
 
         final SettableFuture<Map<String, PendingWillMessages.PendingWill>> settableFuture = SettableFuture.create();
-        FutureUtils.addPersistenceCallback(Futures.allAsList(futureList), new FutureCallback<>() {
+        Futures.addCallback(Futures.allAsList(futureList), new FutureCallback<>() {
             @Override
             public void onSuccess(final @Nullable List<Map<String, PendingWillMessages.PendingWill>> result) {
 
@@ -412,7 +438,7 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
             public void onFailure(final Throwable t) {
                 settableFuture.setException(t);
             }
-        });
+        }, MoreExecutors.directExecutor());
         return settableFuture;
     }
 
@@ -433,15 +459,12 @@ public class ClientSessionPersistenceImpl extends AbstractPersistence implements
                 // Chunker.SingleWriterCall interface
                 (bucket, lastKey, maxResults) -> singleWriter.submit(bucket,
                         // actual single writer call
-                        (bucketIndex) ->
-                                localPersistence.getAllClientsChunk(
-                                        bucketIndex,
-                                        lastKey,
-                                        maxResults)));
+                        (bucketIndex) -> localPersistence.getAllClientsChunk(bucketIndex, lastKey, maxResults)));
     }
 
     private static boolean isExistent(final @Nullable ClientSession clientSession) {
-        return (clientSession != null) && (clientSession.getSessionExpiryInterval() > 0 || clientSession.isConnected());
+        return (clientSession != null) &&
+                (clientSession.getSessionExpiryIntervalSec() > 0 || clientSession.isConnected());
     }
 
     public enum DisconnectSource {

@@ -16,6 +16,7 @@
 package com.hivemq.mqtt.handler.auth;
 
 import com.google.inject.Inject;
+import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.logging.EventLog;
@@ -23,7 +24,6 @@ import com.hivemq.mqtt.message.auth.AUTH;
 import com.hivemq.mqtt.message.mqtt5.Mqtt5UserProperties;
 import com.hivemq.mqtt.message.reason.Mqtt5AuthReasonCode;
 import com.hivemq.util.Bytes;
-import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 
@@ -51,8 +51,7 @@ public class MqttAuthSender {
             final @NotNull Mqtt5UserProperties userProperties,
             final @Nullable String reasonString) {
 
-        final AUTH auth = new AUTH(
-                channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().getAuthMethod(),
+        final AUTH auth = new AUTH(ClientConnectionContext.of(channel).getAuthMethod(),
                 Bytes.fromReadOnlyBuffer(authData),
                 reasonCode,
                 userProperties,
@@ -63,9 +62,7 @@ public class MqttAuthSender {
     }
 
     public void logAuth(
-            final @NotNull Channel channel,
-            final @NotNull Mqtt5AuthReasonCode reasonCode,
-            final boolean received) {
+            final @NotNull Channel channel, final @NotNull Mqtt5AuthReasonCode reasonCode, final boolean received) {
 
         eventLog.clientAuthentication(channel, reasonCode, received);
     }

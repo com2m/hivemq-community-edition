@@ -17,19 +17,17 @@ package com.hivemq.persistence.payload;
 
 import com.google.common.primitives.Longs;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
-import com.hivemq.util.Bytes;
 
-/**
- * @author Florian Limpöck
- */
-public class PublishPayloadRocksDBSerializer {
+final class PublishPayloadRocksDBSerializer {
 
-    @NotNull
-    public static byte[] serializeKey(final long id) {
+    private PublishPayloadRocksDBSerializer() {
+    }
+
+    public static byte @NotNull [] serializeKey(final long id) {
         return Longs.toByteArray(id);
     }
 
-    public static long deserializeKey(final @NotNull byte[] bytes) {
+    public static long deserializeKey(final byte @NotNull [] bytes) {
         return Longs.fromByteArray(bytes);
     }
 }

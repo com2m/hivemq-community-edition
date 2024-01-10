@@ -17,10 +17,10 @@ package com.hivemq.persistence.ioc.provider.local;
 
 import com.google.common.util.concurrent.ListeningScheduledExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
-import com.hivemq.extension.sdk.api.annotations.NotNull;
-import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.bootstrap.ioc.lazysingleton.LazySingleton;
 import com.hivemq.configuration.service.InternalConfigurations;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.persistence.ioc.annotation.PayloadPersistence;
 import com.hivemq.util.ThreadFactoryUtil;
 
@@ -29,23 +29,20 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 
-/**
- * @author Lukas Brandl
- */
 @LazySingleton
 public class PayloadPersistenceScheduledExecutorProvider implements Provider<ListeningScheduledExecutorService> {
 
     private @Nullable ListeningScheduledExecutorService executorService;
 
-    @NotNull
     @Override
     @LazySingleton
     @PayloadPersistence
-    public ListeningScheduledExecutorService get() {
+    public @NotNull ListeningScheduledExecutorService get() {
         if (executorService == null) {
             final ThreadFactory threadFactory = ThreadFactoryUtil.create("payload-persistence-cleanup-%d");
             final int coreSize = InternalConfigurations.PAYLOAD_PERSISTENCE_CLEANUP_THREADS.get();
-            final ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(coreSize, threadFactory);
+            final ScheduledExecutorService scheduledExecutorService =
+                    Executors.newScheduledThreadPool(coreSize, threadFactory);
             executorService = MoreExecutors.listeningDecorator(scheduledExecutorService);
         }
         return executorService;

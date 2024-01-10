@@ -17,10 +17,14 @@ package com.hivemq.extensions.executor.task;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
-import com.google.common.util.concurrent.*;
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.MoreExecutors;
+import com.google.common.util.concurrent.Striped;
+import com.hivemq.common.annotations.GuardedBy;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.annotations.Nullable;
-import com.hivemq.common.annotations.GuardedBy;
 import com.hivemq.extension.sdk.api.annotations.ThreadSafe;
 import com.hivemq.extensions.ioc.annotation.PluginTaskQueue;
 import com.hivemq.util.Exceptions;
@@ -30,8 +34,15 @@ import javax.annotation.PostConstruct;
 import javax.inject.Inject;
 import java.util.Map;
 import java.util.Queue;
-import java.util.concurrent.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.function.Function;
@@ -48,29 +59,33 @@ import java.util.function.Function;
 @ThreadSafe
 public class PluginTaskExecutor {
 
-    private final ExecutorService executorService = Executors.newSingleThreadExecutor(ThreadFactoryUtil.create("extension-task-executor-%d"));
-    private final AtomicBoolean running = new AtomicBoolean(true);
+    private static final @NotNull AtomicInteger COUNTER = new AtomicInteger();
+
+    private final @NotNull ExecutorService executorService;
+    private final @NotNull AtomicBoolean running = new AtomicBoolean(true);
+
 
     @GuardedBy("stripedLock")
-    private final ConcurrentMap<String, Queue<PluginTaskExecution>> taskQueues = new ConcurrentHashMap<>();
+    private final @NotNull ConcurrentMap<String, Queue<PluginTaskExecution>> taskQueues = new ConcurrentHashMap<>();
 
-    @NotNull
-    private final AtomicLong counterAllQueues;
+    private final @NotNull AtomicLong counterAllQueues;
 
     /**
      * The semaphore is used to make the thread wait if no more tasks are available.
      * The thread is therefore *not* busy-waiting if the queues are empty.
      */
-    private final Semaphore semaphore = new Semaphore(0);
+    private final @NotNull Semaphore semaphore = new Semaphore(0);
 
     /**
      * This striped lock is used to prevent concurrency issues when the queues are removed and added
      */
-    private final Striped<Lock> stripedLock = Striped.lock(100);
+    private final @NotNull Striped<Lock> stripedLock = Striped.lock(100);
 
     @Inject
-    public PluginTaskExecutor(@NotNull @PluginTaskQueue final AtomicLong counterAllQueues) {
+    public PluginTaskExecutor(final @NotNull @PluginTaskQueue AtomicLong counterAllQueues) {
         this.counterAllQueues = counterAllQueues;
+        this.executorService = Executors.newSingleThreadExecutor(ThreadFactoryUtil.create("extension-task-executor-" +
+                COUNTER.getAndIncrement()));
     }
 
     @VisibleForTesting
@@ -98,7 +113,8 @@ public class PluginTaskExecutor {
 
         try {
             lock.lock();
-            final Queue<PluginTaskExecution> queueForId = taskQueues.computeIfAbsent(identifier, new CreateQueueIfNotPresent());
+            final Queue<PluginTaskExecution> queueForId =
+                    taskQueues.computeIfAbsent(identifier, new CreateQueueIfNotPresent());
             queueForId.add(pluginTaskExecution);
         } finally {
             lock.unlock();
@@ -320,14 +336,16 @@ public class PluginTaskExecutor {
         }
 
         @NotNull
-        private PluginTaskOutput runInTask(@NotNull final PluginTaskExecution task, @NotNull final PluginInTask pluginTask) {
+        private PluginTaskOutput runInTask(
+                @NotNull final PluginTaskExecution task, @NotNull final PluginInTask pluginTask) {
             //noinspection unchecked: cast is safe because accept has generics that extend PluginTaskOutput
             pluginTask.accept(task.getInputObject());
             return DefaultPluginTaskOutput.getInstance();
         }
 
         @NotNull
-        private PluginTaskOutput runInOutTask(@NotNull final PluginTaskExecution task, final PluginInOutTask pluginTask) {
+        private PluginTaskOutput runInOutTask(
+                @NotNull final PluginTaskExecution task, final PluginInOutTask pluginTask) {
             //noinspection unchecked: cast is safe because apply has generics that extend PluginTaskOutput
             return (PluginTaskOutput) pluginTask.apply(task.getInputObject(), task.getOutputObject());
         }

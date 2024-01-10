@@ -15,6 +15,7 @@
  */
 package com.hivemq.extensions.handler.tasks;
 
+import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.extension.sdk.api.auth.Authorizer;
@@ -25,7 +26,6 @@ import com.hivemq.extensions.auth.parameter.PublishAuthorizerInputImpl;
 import com.hivemq.extensions.auth.parameter.PublishAuthorizerOutputImpl;
 import com.hivemq.extensions.client.ClientAuthorizers;
 import com.hivemq.extensions.executor.task.PluginInOutTask;
-import com.hivemq.util.ChannelAttributes;
 import com.hivemq.util.Exceptions;
 import io.netty.channel.ChannelHandlerContext;
 import org.slf4j.Logger;
@@ -46,11 +46,12 @@ public class PublishAuthorizerTask implements PluginInOutTask<PublishAuthorizerI
     private final @NotNull ClientAuthorizers clientAuthorizers;
     private final @NotNull ChannelHandlerContext channelHandlerContext;
 
-    public PublishAuthorizerTask(final @NotNull AuthorizerProvider authorizerProvider,
-                                 final @NotNull String pluginId,
-                                 final @NotNull AuthorizerProviderInput input,
-                                 final @NotNull ClientAuthorizers clientAuthorizers,
-                                 final @NotNull ChannelHandlerContext channelHandlerContext) {
+    public PublishAuthorizerTask(
+            final @NotNull AuthorizerProvider authorizerProvider,
+            final @NotNull String pluginId,
+            final @NotNull AuthorizerProviderInput input,
+            final @NotNull ClientAuthorizers clientAuthorizers,
+            final @NotNull ChannelHandlerContext channelHandlerContext) {
         this.authorizerProvider = authorizerProvider;
         this.pluginId = pluginId;
         this.authorizerProviderInput = input;
@@ -59,7 +60,8 @@ public class PublishAuthorizerTask implements PluginInOutTask<PublishAuthorizerI
     }
 
     @Override
-    public @NotNull PublishAuthorizerOutputImpl apply(final @NotNull PublishAuthorizerInputImpl input, final @NotNull PublishAuthorizerOutputImpl output) {
+    public @NotNull PublishAuthorizerOutputImpl apply(
+            final @NotNull PublishAuthorizerInputImpl input, final @NotNull PublishAuthorizerOutputImpl output) {
 
         if (output.isCompleted()) {
             return output;
@@ -71,15 +73,17 @@ public class PublishAuthorizerTask implements PluginInOutTask<PublishAuthorizerI
         }
 
         output.authorizerPresent();
-        if (channelHandlerContext.channel().attr(ChannelAttributes.CLIENT_CONNECTION).get().isIncomingPublishesSkipRest()) {
+        if (ClientConnectionContext.of(channelHandlerContext.channel()).isIncomingPublishesSkipRest()) {
             //client already disconnected by authorizer, no more processing of any messages allowed.
             output.forceFailedAuthorization();
         } else {
             try {
                 authorizer.authorizePublish(input, output);
             } catch (final Throwable e) {
-                log.warn("Uncaught exception was thrown from extension with id \"{}\" at subscription authorization. Extensions are responsible on their own to handle exceptions.",
-                        pluginId, e);
+                log.warn(
+                        "Uncaught exception was thrown from extension with id \"{}\" at subscription authorization. Extensions are responsible on their own to handle exceptions.",
+                        pluginId,
+                        e);
                 Exceptions.rethrowError(e);
             }
         }
@@ -90,10 +94,12 @@ public class PublishAuthorizerTask implements PluginInOutTask<PublishAuthorizerI
     private @Nullable PublishAuthorizer updateAndGetAuthorizer() {
 
         PublishAuthorizer authorizer = null;
-        for (final Map.Entry<String, PublishAuthorizer> authorizerEntry : clientAuthorizers.getPublishAuthorizersMap().entrySet()) {
+        for (final Map.Entry<String, PublishAuthorizer> authorizerEntry : clientAuthorizers.getPublishAuthorizersMap()
+                .entrySet()) {
             final String pluginId = authorizerEntry.getKey();
             final PublishAuthorizer publishAuthorizer = authorizerEntry.getValue();
-            if (publishAuthorizer.getClass().getClassLoader().equals(authorizerProvider.getClass().getClassLoader()) && pluginId.equals(this.pluginId)) {
+            if (publishAuthorizer.getClass().getClassLoader().equals(authorizerProvider.getClass().getClassLoader()) &&
+                    pluginId.equals(this.pluginId)) {
                 authorizer = publishAuthorizer;
             }
         }

@@ -35,18 +35,22 @@ import com.hivemq.mqtt.message.publish.PUBLISH;
 import com.hivemq.mqtt.message.publish.PUBLISHFactory;
 import com.hivemq.mqtt.message.pubrec.PUBREC;
 import com.hivemq.mqtt.message.pubrel.PUBREL;
-import com.hivemq.mqtt.message.reason.*;
+import com.hivemq.mqtt.message.reason.Mqtt5AuthReasonCode;
+import com.hivemq.mqtt.message.reason.Mqtt5ConnAckReasonCode;
+import com.hivemq.mqtt.message.reason.Mqtt5DisconnectReasonCode;
+import com.hivemq.mqtt.message.reason.Mqtt5PubAckReasonCode;
+import com.hivemq.mqtt.message.reason.Mqtt5PubCompReasonCode;
+import com.hivemq.mqtt.message.reason.Mqtt5SubAckReasonCode;
+import com.hivemq.mqtt.message.reason.Mqtt5UnsubAckReasonCode;
 import com.hivemq.mqtt.message.suback.SUBACK;
 import com.hivemq.mqtt.message.subscribe.SUBSCRIBE;
 import com.hivemq.mqtt.message.subscribe.Topic;
 import com.hivemq.mqtt.message.unsuback.UNSUBACK;
 import com.hivemq.mqtt.message.unsubscribe.UNSUBSCRIBE;
-import com.hivemq.persistence.payload.PublishPayloadPersistence;
 
 import java.util.List;
 
 /**
- * @author Florian Limpöck
  * @since 4.0.0
  */
 public class TestMessageUtil {
@@ -87,43 +91,16 @@ public class TestMessageUtil {
                 .build();
     }
 
-    public static PUBLISH createMqtt3Publish(
-            final String hivemqId, final long publishId, final PublishPayloadPersistence publishPayloadPersistence) {
-        return new PUBLISHFactory.Mqtt3Builder().withQoS(QoS.AT_MOST_ONCE)
-                .withOnwardQos(QoS.AT_MOST_ONCE)
-                .withTopic("topic")
-                .withHivemqId(hivemqId)
-                .withPublishId(publishId)
-                .withPersistence(publishPayloadPersistence)
-                .build();
-    }
-
-    public static PUBLISH createMqtt3Publish(
-            final long publishId, final PublishPayloadPersistence publishPayloadPersistence) {
-        return new PUBLISHFactory.Mqtt3Builder().withQoS(QoS.AT_LEAST_ONCE)
-                .withOnwardQos(QoS.AT_LEAST_ONCE)
-                .withTopic("topic")
-                .withPublishId(publishId)
-                .withPersistence(publishPayloadPersistence)
-                .withHivemqId("hivemqId")
-                .build();
-    }
-
     public static PUBLISH createMqtt3Publish(final String hivemqId, final PUBLISH publish) {
         return new PUBLISHFactory.Mqtt3Builder().fromPublish(publish).withHivemqId(hivemqId).build();
     }
 
     public static PUBLISH createMqtt3Publish(
-            final String hivemqId,
-            final PUBLISH publish,
-            final long timestamp,
-            final long publishId,
-            final PublishPayloadPersistence persistence) {
+            final String hivemqId, final PUBLISH publish, final long timestamp, final long publishId) {
         return new PUBLISHFactory.Mqtt3Builder().fromPublish(publish)
                 .withHivemqId(hivemqId)
                 .withTimestamp(timestamp)
                 .withPublishId(publishId)
-                .withPersistence(persistence)
                 .build();
     }
 
@@ -174,15 +151,13 @@ public class TestMessageUtil {
                 .build();
     }
 
-    public static PUBLISHFactory.Mqtt5Builder getDefaultPublishBuilder(
-            final @NotNull PublishPayloadPersistence publishPayloadPersistence) {
+    public static PUBLISHFactory.Mqtt5Builder getDefaultPublishBuilder() {
         return new PUBLISHFactory.Mqtt5Builder().withQoS(QoS.AT_LEAST_ONCE)
                 .withOnwardQos(QoS.AT_LEAST_ONCE)
                 .withTopic("topic")
                 .withPayload("payload".getBytes())
                 .withPacketIdentifier(1)
                 .withPublishId(1L)
-                .withPersistence(publishPayloadPersistence)
                 .withHivemqId("hivemqId");
     }
 
@@ -298,7 +273,8 @@ public class TestMessageUtil {
     }
 
     public static CONNACK createFullMqtt5Connack() {
-        return new CONNACK.Mqtt5Builder().withReasonCode(Mqtt5ConnAckReasonCode.SUCCESS)
+        return CONNACK.builder()
+                .withReasonCode(Mqtt5ConnAckReasonCode.SUCCESS)
                 .withReasonString("success")
                 .withUserProperties(TEST_USER_PROPERTIES)
                 .withSessionPresent(true)

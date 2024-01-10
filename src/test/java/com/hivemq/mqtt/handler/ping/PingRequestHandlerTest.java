@@ -15,16 +15,16 @@
  */
 package com.hivemq.mqtt.handler.ping;
 
-import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.mqtt.message.PINGREQ;
 import com.hivemq.mqtt.message.PINGRESP;
-import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import util.DummyClientConnection;
 
 import static org.junit.Assert.assertTrue;
 
@@ -46,7 +46,7 @@ public class PingRequestHandlerTest {
     public void test_pingreq() throws Exception {
 
         final EmbeddedChannel channel = new EmbeddedChannel(new PingRequestHandler());
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(new DummyClientConnection(channel, null));
 
         channel.writeInbound(new PINGREQ());
 

@@ -15,16 +15,13 @@
  */
 package com.hivemq.mqtt.message.publish;
 
-import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.ImmutableIntArray;
 import com.hivemq.codec.encoder.mqtt5.Mqtt5PayloadFormatIndicator;
 import com.hivemq.mqtt.message.Message;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.mqtt5.Mqtt5UserProperties;
-import com.hivemq.persistence.payload.PublishPayloadPersistence;
 
 /**
- * @author Florian Limpöck
  * @since 4.0.0
  */
 public interface Mqtt5PUBLISH extends Message {
@@ -87,7 +84,7 @@ public interface Mqtt5PUBLISH extends Message {
     /**
      * dereferences the payload of the publish message
      */
-    void dereferencePayload();
+    void setPayload(byte[] payload);
 
     /**
      * @return the payload format indicator of the publish message
@@ -123,10 +120,4 @@ public interface Mqtt5PUBLISH extends Message {
      * @return the content type of the publish message
      */
     Mqtt5UserProperties getUserProperties();
-
-    /**
-     * @return the publish payload persistence
-     */
-    PublishPayloadPersistence getPersistence();
-
 }

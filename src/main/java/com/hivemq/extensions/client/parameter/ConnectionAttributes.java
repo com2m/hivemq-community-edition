@@ -18,13 +18,12 @@ package com.hivemq.extensions.client.parameter;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
-import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.extension.sdk.api.annotations.ThreadSafe;
 import com.hivemq.extension.sdk.api.services.exception.LimitExceededException;
-import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.Channel;
 
 import java.nio.ByteBuffer;
@@ -54,7 +53,7 @@ public class ConnectionAttributes {
     static ConnectionAttributes getInstanceIfPresent(@NotNull final Channel channel) {
         Preconditions.checkNotNull(channel, "Channel for connection attributes must not be null.");
 
-        return channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().getConnectionAttributes();
+        return ClientConnectionContext.of(channel).getConnectionAttributes();
     }
 
     /**
@@ -75,8 +74,8 @@ public class ConnectionAttributes {
 
         final int maxValueSizeBytes = InternalConfigurations.CONNECTION_ATTRIBUTE_STORE_MAX_VALUE_SIZE_BYTES;
 
-        final ClientConnection clientConnection = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get();
-        return clientConnection.setConnectionAttributesIfAbsent(new ConnectionAttributes(maxValueSizeBytes));
+        final ClientConnectionContext clientConnectionContext = ClientConnectionContext.of(channel);
+        return clientConnectionContext.setConnectionAttributesIfAbsent(new ConnectionAttributes(maxValueSizeBytes));
     }
 
     @VisibleForTesting
@@ -96,7 +95,13 @@ public class ConnectionAttributes {
         Preconditions.checkNotNull(value, "Value of connection attribute must not be null.");
 
         if (value.remaining() > maxValueSizeBytes) {
-            throw new LimitExceededException("value with a size of " + value.remaining() + " bytes for key '" + key + "' in connection attribute store is larger than the allowed limit of " + maxValueSizeBytes + " bytes");
+            throw new LimitExceededException("value with a size of " +
+                    value.remaining() +
+                    " bytes for key '" +
+                    key +
+                    "' in connection attribute store is larger than the allowed limit of " +
+                    maxValueSizeBytes +
+                    " bytes");
         }
 
         if (data == null) {

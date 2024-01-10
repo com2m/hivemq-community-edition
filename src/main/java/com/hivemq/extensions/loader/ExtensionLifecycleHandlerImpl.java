@@ -17,6 +17,7 @@
 package com.hivemq.extensions.loader;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extensions.HiveMQExtensionEvent;
@@ -49,19 +50,18 @@ public class ExtensionLifecycleHandlerImpl implements ExtensionLifecycleHandler 
     }
 
     @Override
-    public @NotNull CompletableFuture<Void> handleExtensionEvents(final @NotNull ImmutableList<HiveMQExtensionEvent> hiveMQExtensionEvents) {
+    public @NotNull CompletableFuture<Void> handleExtensionEvents(final ImmutableCollection<HiveMQExtensionEvent> hiveMQExtensionEvents) {
         final ImmutableList<HiveMQExtensionEvent> sorted = analyzePluginEvents(hiveMQExtensionEvents);
 
         CompletableFuture<Void> returnFuture = CompletableFuture.completedFuture(null);
         for (final HiveMQExtensionEvent hiveMQExtensionEvent : sorted) {
-            returnFuture = returnFuture
-                    .thenComposeAsync((v) -> handlePluginEvent(hiveMQExtensionEvent), pluginStartStopExecutor)
-                    .handle((v, t) -> {
-                        if (t != null) {
-                            log.debug("Exception during Extension Lifecycle event handling", t);
-                        }
-                        return null;
-                    });
+            returnFuture = returnFuture.thenComposeAsync((v) -> handlePluginEvent(hiveMQExtensionEvent),
+                    pluginStartStopExecutor).handle((v, t) -> {
+                if (t != null) {
+                    log.debug("Exception during Extension Lifecycle event handling", t);
+                }
+                return null;
+            });
         }
         return returnFuture;
     }
@@ -71,28 +71,32 @@ public class ExtensionLifecycleHandlerImpl implements ExtensionLifecycleHandler 
             case ENABLE:
                 return startPlugin(hiveMQExtensionEvent);
             case DISABLE:
-                return stopPlugin(hiveMQExtensionEvent.getPluginId(), hiveMQExtensionEvent.isEmbedded());
+                return stopPlugin(hiveMQExtensionEvent.getExtensionId(), hiveMQExtensionEvent.isEmbedded());
             default:
                 return CompletableFuture.completedFuture(false);
         }
     }
 
     private @NotNull CompletableFuture<Boolean> startPlugin(final @NotNull HiveMQExtensionEvent pluginEvent) {
-        final String pluginId = pluginEvent.getPluginId();
+        final String pluginId = pluginEvent.getExtensionId();
 
-        log.debug("Starting {}extension with id \"{}\" at {}", pluginEvent.isEmbedded() ? "embedded " : "", pluginId, pluginEvent.getPluginFolder());
+        log.debug("Starting {}extension with id \"{}\" at {}",
+                pluginEvent.isEmbedded() ? "embedded " : "",
+                pluginId,
+                pluginEvent.getExtensionFolder());
         return CompletableFuture.supplyAsync(() -> hiveMQExtensions.extensionStart(pluginId), pluginStartStopExecutor);
     }
 
     private @NotNull CompletableFuture<Boolean> stopPlugin(final @NotNull String pluginId, final boolean embedded) {
 
         log.debug("Stopping {}extension with id {}", embedded ? "embedded " : "", pluginId);
-        return CompletableFuture.supplyAsync(() -> hiveMQExtensions.extensionStop(pluginId, false), pluginStartStopExecutor);
+        return CompletableFuture.supplyAsync(() -> hiveMQExtensions.extensionStop(pluginId, false),
+                pluginStartStopExecutor);
     }
 
-    private @NotNull ImmutableList<HiveMQExtensionEvent> analyzePluginEvents(final @NotNull ImmutableList<HiveMQExtensionEvent> hiveMQExtensionEvents) {
+    private @NotNull ImmutableList<HiveMQExtensionEvent> analyzePluginEvents(final ImmutableCollection<HiveMQExtensionEvent> hiveMQExtensionEvents) {
         // here duplicate start priority logging can be added, once it is specified
-        return ImmutableList.sortedCopyOf(
-                Comparator.comparingInt(HiveMQExtensionEvent::getPriority).reversed(), hiveMQExtensionEvents);
+        return ImmutableList.sortedCopyOf(Comparator.comparingInt(HiveMQExtensionEvent::getPriority).reversed(),
+                hiveMQExtensionEvents);
     }
 }

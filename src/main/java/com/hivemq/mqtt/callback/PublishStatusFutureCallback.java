@@ -17,57 +17,45 @@ package com.hivemq.mqtt.callback;
 
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.ListenableFuture;
+import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.handler.publish.PublishStatus;
-import com.hivemq.mqtt.message.pool.MessageIDPool;
+import com.hivemq.mqtt.message.pool.FreePacketIdRanges;
 import com.hivemq.mqtt.message.publish.PUBLISH;
 import com.hivemq.mqtt.services.PublishPollService;
-import com.hivemq.persistence.payload.PublishPayloadPersistence;
 import com.hivemq.persistence.util.FutureUtils;
-import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.Channel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class PublishStatusFutureCallback implements FutureCallback<PublishStatus> {
 
-    @NotNull
-    private static final Logger log = LoggerFactory.getLogger(PublishStatusFutureCallback.class);
+    private static final @NotNull Logger log = LoggerFactory.getLogger(PublishStatusFutureCallback.class);
 
-    @NotNull
-    private final PublishPayloadPersistence payloadPersistence;
-    @NotNull
-    private final PublishPollService publishPollService;
+    private final @NotNull PublishPollService publishPollService;
     private final boolean sharedSubscription;
-    @NotNull
-    private final String queueId;
-    @NotNull
-    private final PUBLISH publish;
-    @NotNull
-    private final MessageIDPool messageIDPool;
+    private final @NotNull String queueId;
+    private final @NotNull PUBLISH publish;
+    private final @NotNull FreePacketIdRanges messageIDPool;
     private final int packetIdentifier;
-    @NotNull
-    private final Channel channel;
-    @NotNull
-    private final String client;
+    private final @NotNull Channel channel;
+    private final @NotNull String client;
 
-    public PublishStatusFutureCallback(@NotNull final PublishPayloadPersistence payloadPersistence,
-                                       @NotNull final PublishPollService publishPollService,
-                                       final boolean sharedSubscription,
-                                       @NotNull final String queueId,
-                                       @NotNull final PUBLISH publish,
-                                       @NotNull final MessageIDPool messageIDPool,
-                                       @NotNull final Channel channel,
-                                       @NotNull final String client) {
-        this.payloadPersistence = payloadPersistence;
+    public PublishStatusFutureCallback(
+            final @NotNull PublishPollService publishPollService,
+            final boolean sharedSubscription,
+            final @NotNull String queueId,
+            final @NotNull PUBLISH publish,
+            final @NotNull FreePacketIdRanges messageIDPool,
+            final @NotNull Channel channel,
+            final @NotNull String client) {
         this.publishPollService = publishPollService;
         this.sharedSubscription = sharedSubscription;
         this.queueId = queueId;
         this.publish = publish;
-        this.packetIdentifier = publish.getPacketIdentifier();
+        packetIdentifier = publish.getPacketIdentifier();
         this.messageIDPool = messageIDPool;
         this.channel = channel;
         this.client = client;
@@ -84,50 +72,39 @@ public class PublishStatusFutureCallback implements FutureCallback<PublishStatus
             if (publish.getQoS().getQosNumber() > 0) {
                 if (sharedSubscription) {
                     if (status == PublishStatus.DELIVERED) {
-                        final ListenableFuture<Void> future = publishPollService.removeMessageFromSharedQueue(queueId, publish.getUniqueId());
+                        final ListenableFuture<Void> future =
+                                publishPollService.removeMessageFromSharedQueue(queueId, publish.getUniqueId());
                         FutureUtils.addExceptionLogger(future);
 
                     } else if (status == PublishStatus.NOT_CONNECTED || status == PublishStatus.FAILED) {
-                        final ListenableFuture<Void> future = publishPollService.removeInflightMarker(queueId, publish.getUniqueId());
+                        final ListenableFuture<Void> future =
+                                publishPollService.removeInflightMarker(queueId, publish.getUniqueId());
                         FutureUtils.addExceptionLogger(future);
                     }
                 } else {
                     if (status == PublishStatus.DELIVERED) {
-                        final ListenableFuture<Void> future = publishPollService.removeMessageFromQueue(queueId, packetIdentifier);
+                        final ListenableFuture<Void> future =
+                                publishPollService.removeMessageFromQueue(queueId, packetIdentifier);
                         FutureUtils.addExceptionLogger(future);
                     }
                 }
             }
         } catch (final Exception e) {
-            log.error("Exceptions in publish status callback handling, queue ID = " + queueId, e);
+            log.error("Exceptions in publish status callback handling, queue ID = {}", queueId, e);
         }
 
         if (status != PublishStatus.NOT_CONNECTED) {
-            checkForNewMessages();
+            final AtomicInteger inFlightMessages = ClientConnection.of(channel).getInFlightMessageCount();
+            if (inFlightMessages == null || inFlightMessages.decrementAndGet() <= 0) {
+                publishPollService.pollMessages(client, channel);
+            }
         }
         if (packetIdentifier != 0) {
             messageIDPool.returnId(packetIdentifier);
         }
-
-    }
-
-    private void checkForNewMessages() {
-        final AtomicInteger inFlightMessages = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().getInFlightMessages();
-        if (inFlightMessages != null && inFlightMessages.decrementAndGet() > 0) {
-            return;
-        }
-        publishPollService.pollMessages(client, channel);
     }
 
     @Override
-    public void onFailure(@NotNull final Throwable throwable) {
-
-        if (throwable instanceof CancellationException) {
-            //ignore because task was cancelled because channel became inactive and
-            //response has already been sent by callback from ChannelInactiveHandler
-            return;
-        }
-
-        payloadPersistence.decrementReferenceCounter(publish.getPublishId());
+    public void onFailure(final @NotNull Throwable throwable) {
     }
 }

@@ -21,9 +21,9 @@ import org.rocksdb.MutableColumnFamilyOptionsInterface;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static com.hivemq.configuration.entity.mqtt.MqttConfigurationDefaults.MAX_EXPIRY_INTERVAL_DEFAULT;
 import com.hivemq.persistence.local.xodus.EnvironmentUtil.GCType;
 
 /**
@@ -70,12 +70,15 @@ public class InternalConfigurations {
     /**
      * the factor to multiply core size with to calculate thread count for initializing persistences
      */
-    public static final AtomicInteger PERSISTENCE_STARTUP_THREAD_POOL_SIZE = new AtomicInteger(AVAILABLE_PROCESSORS_TIMES_FOUR);
+    public static final AtomicInteger PERSISTENCE_STARTUP_THREAD_POOL_SIZE =
+            new AtomicInteger(AVAILABLE_PROCESSORS_TIMES_FOUR);
 
     public static final AtomicInteger PERSISTENCE_BUCKET_COUNT = new AtomicInteger(64);
-    public static final AtomicInteger SINGLE_WRITER_THREAD_POOL_SIZE = new AtomicInteger(AVAILABLE_PROCESSORS_TIMES_TWO);
+    public static final AtomicInteger SINGLE_WRITER_THREAD_POOL_SIZE =
+            new AtomicInteger(AVAILABLE_PROCESSORS_TIMES_TWO);
     public static final AtomicInteger SINGLE_WRITER_CREDITS_PER_EXECUTION = new AtomicInteger(65);
-    public static final AtomicInteger SINGLE_WRITER_INTERVAL_TO_CHECK_PENDING_TASKS_AND_SCHEDULE_MSEC = new AtomicInteger(500);
+    public static final AtomicInteger SINGLE_WRITER_INTERVAL_TO_CHECK_PENDING_TASKS_AND_SCHEDULE_MSEC =
+            new AtomicInteger(500);
 
     public static final AtomicInteger PERSISTENCE_CLOSE_RETRIES = new AtomicInteger(500);
     public static final AtomicInteger PERSISTENCE_CLOSE_RETRY_INTERVAL_MSEC = new AtomicInteger(100);
@@ -113,7 +116,8 @@ public class InternalConfigurations {
     /**
      * The configuration for shared sub caching of publish without packet-id
      */
-    public static final AtomicInteger SHARED_SUBSCRIPTION_WITHOUT_PACKET_ID_CACHE_MAX_SIZE_ENTRIES = new AtomicInteger(10000);
+    public static final AtomicInteger SHARED_SUBSCRIPTION_WITHOUT_PACKET_ID_CACHE_MAX_SIZE_ENTRIES =
+            new AtomicInteger(10000);
 
     /**
      * The amount of qos 0 messages that are queued if the channel is not writable
@@ -194,15 +198,18 @@ public class InternalConfigurations {
     /**
      * The configuration if rocks db is used instead of xodus for retained messages.
      */
-    public static final AtomicReference<PersistenceType> RETAINED_MESSAGE_PERSISTENCE_TYPE = new AtomicReference<>(PersistenceType.FILE_NATIVE);
+    public static final AtomicReference<PersistenceType> RETAINED_MESSAGE_PERSISTENCE_TYPE =
+            new AtomicReference<>(PersistenceType.FILE_NATIVE);
 
     /**
-     * The memory that is used for rocksdb memtable as a portion of the RAM for the retained message persistence. (size = RAM/configValue)
+     * The memory that is used for rocksdb memTable as a portion of the RAM for the retained message persistence. (size
+     * = RAM/configValue)
      */
     public static final int RETAINED_MESSAGE_MEMTABLE_SIZE_PORTION = 32;
 
     /**
-     * The memory that is used for rocksdb block-cache as a portion of the RAM for the retained message persistence. (size = RAM/configValue)
+     * The memory that is used for rocksdb block-cache as a portion of the RAM for the retained message persistence.
+     * (size = RAM/configValue)
      */
     public static final int RETAINED_MESSAGE_BLOCK_CACHE_SIZE_PORTION = 64;
 
@@ -216,34 +223,16 @@ public class InternalConfigurations {
      **************************/
 
     /**
-     * The time that entries are cached in memory by the payload persistence.
-     */
-    public static final AtomicLong PAYLOAD_CACHE_DURATION_MSEC = new AtomicLong(10000);
-
-    /**
-     * The maximum amount of entries that are cached in memory by the payload persistence.
-     */
-    public static final AtomicInteger PAYLOAD_CACHE_SIZE = new AtomicInteger(10000);
-
-    /**
-     * The maximum amount of threads that can access the cache at the same time.
-     */
-    public static final AtomicInteger PAYLOAD_CACHE_CONCURRENCY_LEVEL_THREADS = new AtomicInteger(16);
-
-    /**
-     * An interval of time between two consecutively executed payload cleanups for payloads that are not referenced anymore.
+     * An interval of time between two consecutively executed payload cleanups for payloads that are not referenced
+     * anymore.
      */
     public static final AtomicInteger PAYLOAD_PERSISTENCE_CLEANUP_SCHEDULE_MSEC = new AtomicInteger(250);
 
     /**
-     * The amount of time that a payload is preserved after the last reference was removed in case the same payload is published again.
-     */
-    public static final AtomicLong PAYLOAD_PERSISTENCE_CLEANUP_DELAY_MSEC = new AtomicLong(2000);
-
-    /**
      * The amount of threads in the cleanup job thread pool.
      */
-    public static final AtomicInteger PAYLOAD_PERSISTENCE_CLEANUP_THREADS = new AtomicInteger(AVAILABLE_PROCESSORS_TIMES_TWO);
+    public static final AtomicInteger PAYLOAD_PERSISTENCE_CLEANUP_THREADS =
+            new AtomicInteger(AVAILABLE_PROCESSORS_TIMES_TWO);
 
     /**
      * The bucket count for the payload persistence.
@@ -255,15 +244,18 @@ public class InternalConfigurations {
     /**
      * The type of storage underlying the payload persistence (for example, rocks db or xodus).
      */
-    public static final AtomicReference<PersistenceType> PAYLOAD_PERSISTENCE_TYPE = new AtomicReference<>(PersistenceType.FILE_NATIVE);
+    public static final AtomicReference<PersistenceType> PAYLOAD_PERSISTENCE_TYPE =
+            new AtomicReference<>(PersistenceType.FILE_NATIVE);
 
     /**
-     * The memory that is used for rocksdb memtable as a portion of the RAM for the retained message persistence. (size = RAM/configValue)
+     * The memory that is used for rocksdb memTable as a portion of the RAM for the retained message persistence. (size
+     * = RAM/configValue)
      */
     public static final AtomicInteger PAYLOAD_PERSISTENCE_MEMTABLE_SIZE_PORTION = new AtomicInteger(32);
 
     /**
-     * The memory that is used for rocksdb block-cache as a portion of the RAM for the retained message persistence. (size = RAM/configValue)
+     * The memory that is used for rocksdb block-cache as a portion of the RAM for the retained message persistence.
+     * (size = RAM/configValue)
      */
     public static final AtomicInteger PAYLOAD_PERSISTENCE_BLOCK_CACHE_SIZE_PORTION = new AtomicInteger(64);
 
@@ -273,7 +265,8 @@ public class InternalConfigurations {
     public static final int PAYLOAD_PERSISTENCE_BLOCK_SIZE_BYTES = 32 * 1024; // 32 KB
 
     /**
-     * If this flag is true, then on an attempt to decrement a reference counter that was already zero, a stacktrace will be logged to warn (by default logged to debug)
+     * If this flag is true, then on an attempt to decrement a reference counter that was already zero, a stacktrace
+     * will be logged to warn (by default logged to debug)
      */
     public static final boolean LOG_REFERENCE_COUNTING_STACKTRACE_AS_WARNING = false;
 
@@ -293,13 +286,15 @@ public class InternalConfigurations {
      * See {@link MutableColumnFamilyOptionsInterface#setMaxBytesForLevelBase(long)}
      * default: 10KB (10 * 1KB (PAYLOAD_PERSISTENCE_BLOB_DB_FILE_SIZE_BASE))
      */
-    public static final long PAYLOAD_PERSISTENCE_BLOB_MAX_SIZE_LEVEL_BASE_BYTES = 10 * PAYLOAD_PERSISTENCE_BLOB_FILE_SIZE_BASE_BYTES;
+    public static final long PAYLOAD_PERSISTENCE_BLOB_MAX_SIZE_LEVEL_BASE_BYTES =
+            10 * PAYLOAD_PERSISTENCE_BLOB_FILE_SIZE_BASE_BYTES;
 
     /**
      * The {@link CompressionType} for references within the LSM tree (the values are within the blob files)
      * default: NONE
      */
-    public static final CompressionType PAYLOAD_PERSISTENCE_BLOB_REFERENCE_COMPRESSION_TYPE = CompressionType.NO_COMPRESSION;
+    public static final CompressionType PAYLOAD_PERSISTENCE_BLOB_REFERENCE_COMPRESSION_TYPE =
+            CompressionType.NO_COMPRESSION;
 
     /**
      * The compression type for the BLOB files, see {@link CompressionType} for possible values.
@@ -333,8 +328,10 @@ public class InternalConfigurations {
      *      MQTT 5     *
      *******************/
 
-    public static final AtomicInteger TOPIC_ALIAS_GLOBAL_MEMORY_HARD_LIMIT_BYTES = new AtomicInteger(1024 * 1024 * 200); //200Mb
-    public static final AtomicInteger TOPIC_ALIAS_GLOBAL_MEMORY_SOFT_LIMIT_BYTES = new AtomicInteger(1024 * 1024 * 50); //50Mb
+    public static final AtomicInteger TOPIC_ALIAS_GLOBAL_MEMORY_HARD_LIMIT_BYTES = new AtomicInteger(1024 * 1024 * 200);
+    //200Mb
+    public static final AtomicInteger TOPIC_ALIAS_GLOBAL_MEMORY_SOFT_LIMIT_BYTES = new AtomicInteger(1024 * 1024 * 50);
+    //50Mb
 
     public static final AtomicBoolean DISCONNECT_WITH_REASON_CODE_ENABLED = new AtomicBoolean(true);
     public static final AtomicBoolean DISCONNECT_WITH_REASON_STRING_ENABLED = new AtomicBoolean(true);
@@ -356,9 +353,11 @@ public class InternalConfigurations {
      *    Extension System   *
      *************************/
 
-    public static final AtomicInteger EXTENSION_TASK_QUEUE_EXECUTOR_THREADS_COUNT = new AtomicInteger(AVAILABLE_PROCESSORS);
+    public static final AtomicInteger EXTENSION_TASK_QUEUE_EXECUTOR_THREADS_COUNT =
+            new AtomicInteger(AVAILABLE_PROCESSORS);
     public static final AtomicInteger MANAGED_EXTENSION_THREAD_POOL_KEEP_ALIVE_SEC = new AtomicInteger(30);
-    public static final AtomicInteger MANAGED_EXTENSION_THREAD_POOL_THREADS_COUNT = new AtomicInteger(AVAILABLE_PROCESSORS);
+    public static final AtomicInteger MANAGED_EXTENSION_THREAD_POOL_THREADS_COUNT =
+            new AtomicInteger(AVAILABLE_PROCESSORS);
 
     /**
      * The amount of time the extension executor shutdown awaits task termination until shutdownNow() is called.
@@ -384,21 +383,24 @@ public class InternalConfigurations {
     /**
      * The concurrency level of the shared subscription cache
      */
-    public static final AtomicInteger SHARED_SUBSCRIPTION_CACHE_CONCURRENCY_LEVEL = new AtomicInteger(AVAILABLE_PROCESSORS);
+    public static final AtomicInteger SHARED_SUBSCRIPTION_CACHE_CONCURRENCY_LEVEL =
+            new AtomicInteger(AVAILABLE_PROCESSORS);
 
     /**
      * The concurrency level of the shared subscriber service cache
      */
-    public static final AtomicInteger SHARED_SUBSCRIBER_CACHE_CONCURRENCY_LEVEL = new AtomicInteger(AVAILABLE_PROCESSORS);
+    public static final AtomicInteger SHARED_SUBSCRIBER_CACHE_CONCURRENCY_LEVEL =
+            new AtomicInteger(AVAILABLE_PROCESSORS);
 
     public static final AtomicInteger INTERVAL_BETWEEN_CLEANUP_JOBS_SEC = new AtomicInteger(4);
 
     public static final AtomicBoolean MQTT_ALLOW_DOLLAR_TOPICS = new AtomicBoolean(false);
 
-    public static final AtomicInteger MQTT_EVENT_EXECUTOR_THREAD_COUNT = new AtomicInteger(AVAILABLE_PROCESSORS_TIMES_TWO);
+    public static final AtomicInteger MQTT_EVENT_EXECUTOR_THREAD_COUNT =
+            new AtomicInteger(AVAILABLE_PROCESSORS_TIMES_TWO);
 
     /**
-     * The amount of clean up job tasks that are processed at the same time, in each schedule interval
+     * The amount of cleanup job tasks that are processed at the same time, in each schedule interval
      */
     public static final AtomicBoolean ACKNOWLEDGE_INCOMING_PUBLISH_AFTER_PERSISTING_ENABLED = new AtomicBoolean(true);
 
@@ -437,6 +439,11 @@ public class InternalConfigurations {
     public static final int CLEANUP_JOB_PARALLELISM = 1;
 
     /**
+     * The timeout for a cleanup job task.
+     */
+    public static final int CLEANUP_JOB_TASK_TIMEOUT_SEC = 300;
+
+    /**
      * set to true to close all client connections at netty-event-loop shutdown
      */
     public static final boolean NETTY_SHUTDOWN_LEGACY = false;
@@ -463,4 +470,5 @@ public class InternalConfigurations {
     public static boolean EXPIRE_INFLIGHT_MESSAGES_ENABLED = false;
     public static boolean EXPIRE_INFLIGHT_PUBRELS_ENABLED = false;
 
+    public static long MAXIMUM_INFLIGHT_PUBREL_EXPIRY = MAX_EXPIRY_INTERVAL_DEFAULT;
 }

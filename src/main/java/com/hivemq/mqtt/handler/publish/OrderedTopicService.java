@@ -17,13 +17,13 @@ package com.hivemq.mqtt.handler.publish;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.SettableFuture;
+import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.extension.sdk.api.annotations.Immutable;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.message.publish.PUBLISH;
 import com.hivemq.mqtt.message.publish.PublishWithFuture;
 import com.hivemq.mqtt.message.publish.PubrelWithFuture;
-import com.hivemq.util.ChannelAttributes;
-import com.hivemq.util.ChannelUtils;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
@@ -61,7 +61,6 @@ public class OrderedTopicService {
     private final @NotNull AtomicBoolean closedAlready = new AtomicBoolean(false);
     private final @NotNull Set<Integer> unacknowledgedMessages = ConcurrentHashMap.newKeySet();
 
-
     public void messageFlowComplete(final @NotNull ChannelHandlerContext ctx, final int packetId) {
         final SettableFuture<PublishStatus> publishStatusFuture = messageIdToFutureMap.get(packetId);
 
@@ -79,7 +78,10 @@ public class OrderedTopicService {
             return;
         }
 
-        final int maxInflightWindow = ChannelUtils.maxInflightWindow(ctx.channel());
+        final ClientConnection clientConnection = ClientConnection.of(ctx.channel());
+        final int maxInflightWindow = (clientConnection == null) ?
+                InternalConfigurations.MAX_INFLIGHT_WINDOW_SIZE_MESSAGES :
+                clientConnection.getMaxInflightWindow(InternalConfigurations.MAX_INFLIGHT_WINDOW_SIZE_MESSAGES);
 
         do {
             final QueuedMessage poll = queue.poll();
@@ -91,7 +93,8 @@ public class OrderedTopicService {
         } while (unacknowledgedMessages.size() < maxInflightWindow);
     }
 
-    public boolean handlePublish(final @NotNull Channel channel, final @NotNull Object msg, final @NotNull ChannelPromise promise) {
+    public boolean handlePublish(
+            final @NotNull Channel channel, final @NotNull Object msg, final @NotNull ChannelPromise promise) {
 
         if (msg instanceof PubrelWithFuture) {
             final PubrelWithFuture pubrelWithFuture = (PubrelWithFuture) msg;
@@ -109,11 +112,23 @@ public class OrderedTopicService {
             future = publishWithFuture.getFuture();
         }
 
+        final ClientConnection clientConnection = ClientConnection.of(channel);
+        if (clientConnection == null) {
+            return false;
+        }
+
+        final String clientId = clientConnection.getClientId();
+        if (clientId == null) {
+            return false;
+        }
+
         final PUBLISH publish = (PUBLISH) msg;
-        final String clientId = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().getClientId();
         final int qosNumber = publish.getQoS().getQosNumber();
         if (log.isTraceEnabled()) {
-            log.trace("Client {}: Sending PUBLISH QoS {} Message with packet id {}", clientId, publish.getQoS().getQosNumber(), publish.getPacketIdentifier());
+            log.trace("Client {}: Sending PUBLISH QoS {} Message with packet id {}",
+                    clientId,
+                    publish.getQoS().getQosNumber(),
+                    publish.getPacketIdentifier());
         }
 
         if (qosNumber < 1) {
@@ -134,8 +149,8 @@ public class OrderedTopicService {
         }
 
 
-        final int maxInflightWindow = ChannelUtils.maxInflightWindow(channel);
-        if (unacknowledgedMessages.size() >= maxInflightWindow) {
+        if (unacknowledgedMessages.size() >=
+                clientConnection.getMaxInflightWindow(InternalConfigurations.MAX_INFLIGHT_WINDOW_SIZE_MESSAGES)) {
             queueMessage(promise, publish, clientId);
             return true;
         } else {
@@ -164,13 +179,18 @@ public class OrderedTopicService {
         }
     }
 
-    private void queueMessage(final @NotNull ChannelPromise promise, final @NotNull PUBLISH publish, final @NotNull String clientId) {
+    private void queueMessage(
+            final @NotNull ChannelPromise promise, final @NotNull PUBLISH publish, final @NotNull String clientId) {
 
         if (log.isTraceEnabled()) {
             final String topic = publish.getTopic();
             final int messageId = publish.getPacketIdentifier();
-            log.trace("Buffered publish message with qos {} packetIdentifier {} and topic {} for client {}, because the receive maximum is exceeded",
-                    publish.getQoS().name(), messageId, topic, clientId);
+            log.trace(
+                    "Buffered publish message with qos {} packetIdentifier {} and topic {} for client {}, because the receive maximum is exceeded",
+                    publish.getQoS().name(),
+                    messageId,
+                    topic,
+                    clientId);
         }
 
         queue.add(new QueuedMessage(publish, promise));

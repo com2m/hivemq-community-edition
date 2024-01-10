@@ -17,6 +17,7 @@ package com.hivemq.codec.decoder.mqtt5;
 
 import com.google.common.collect.ImmutableList;
 import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.bootstrap.ClientState;
 import com.hivemq.codec.encoder.mqtt5.Mqtt5PayloadFormatIndicator;
 import com.hivemq.codec.encoder.mqtt5.UnsignedDataTypes;
@@ -27,16 +28,20 @@ import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.mqtt5.MqttUserProperty;
 import com.hivemq.mqtt.message.publish.PUBLISH;
-import com.hivemq.util.ChannelAttributes;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.Test;
+import util.DummyClientConnection;
 import util.TestConfigurationBootstrap;
 import util.TestMqttDecoder;
 
 import java.nio.charset.StandardCharsets;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 /**
  * @author Florian Limpöck
@@ -76,8 +81,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     content type
                 0x03, 0, 4, 't', 'e', 'x', 't',
                 // payload
-                1, 2, 3, 4, 5, 6, 7, 8, 9, 10
-        };
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
         final PUBLISH publishInternal = decodeInternal(encoded);
 
@@ -125,8 +129,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     payload format indicator
                 0x01, 0,
                 // payload
-                1, 2, 3, 4, 5, 6, 7, 8, 9, 10
-        };
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
         final PUBLISH publish = decodeInternal(encoded);
 
@@ -155,8 +158,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   topic name
                 0, 1, 't',
                 // properties
-                0
-        };
+                0};
         final PUBLISH publish = decode(encoded);
         assertEquals("t", publish.getTopic());
     }
@@ -169,10 +171,10 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
         InternalConfigurations.TOPIC_ALIAS_GLOBAL_MEMORY_HARD_LIMIT_BYTES.set(47);
 
         channel = new EmbeddedChannel(TestMqttDecoder.create(fullConfig));
-        clientConnection = new ClientConnection(channel, null);
+        clientConnection = new DummyClientConnection(channel, null);
         clientConnection.setTopicAliasMapping(new String[3]);
         clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(clientConnection);
 
         final byte[] encoded = {
                 // fixed header
@@ -186,8 +188,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 // properties
                 3,
                 // topic alias
-                0x23, 0, 1,
-        };
+                0x23, 0, 1,};
 
         decodeNullExpected(encoded);
     }
@@ -200,8 +201,8 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
         InternalConfigurations.TOPIC_ALIAS_GLOBAL_MEMORY_HARD_LIMIT_BYTES.set(100);
 
         channel = new EmbeddedChannel(TestMqttDecoder.create(fullConfig));
-        clientConnection = new ClientConnection(channel, null);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        clientConnection = new DummyClientConnection(channel, null);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(clientConnection);
         clientConnection.setTopicAliasMapping(new String[3]);
         clientConnection.proposeClientState(ClientState.AUTHENTICATED);
         clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
@@ -218,8 +219,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 // properties
                 3,
                 // topic alias
-                0x23, 0, 1,
-        };
+                0x23, 0, 1,};
         decode(encoded);
 
 
@@ -235,8 +235,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 // properties
                 3,
                 // topic alias
-                0x23, 0, 1,
-        };
+                0x23, 0, 1,};
 
         decode(encoded2);
 
@@ -253,8 +252,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 // properties
                 3,
                 // topic alias
-                0x23, 0, 1,
-        };
+                0x23, 0, 1,};
 
         final PUBLISH publish = decode(encoded3);
 
@@ -268,8 +266,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   type, flags
                 0b0011_0000,
                 //   remaining length
-                0
-        };
+                0};
         decodeNullExpected(encoded);
     }
 
@@ -289,8 +286,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   properties
                 2,
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         final PUBLISH decodeQos0 = decode(encodedQos0);
         assertEquals(QoS.AT_MOST_ONCE, decodeQos0.getQoS());
 
@@ -308,8 +304,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   properties
                 2,
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         final PUBLISH decodeQos1 = decode(encodedQos1);
         assertEquals(QoS.AT_LEAST_ONCE, decodeQos1.getQoS());
 
@@ -327,8 +322,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   properties
                 2,
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         final PUBLISH decodeQos2 = decode(encodedQos2);
         assertEquals(QoS.EXACTLY_ONCE, decodeQos2.getQoS());
     }
@@ -349,8 +343,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   properties
                 2,
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         decodeNullExpected(encodedQosInvalid);
     }
 
@@ -366,8 +359,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   topic name
                 0, 5, 't', 'o', 'p', 'i', 'c',
                 //   properties
-                0
-        };
+                0};
         decodeNullExpected(encoded);
     }
 
@@ -378,9 +370,9 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
         fullConfig.mqttConfiguration().setRetainedMessagesEnabled(false);
 
         channel = new EmbeddedChannel(TestMqttDecoder.create(fullConfig));
-        final ClientConnection clientConnection = new ClientConnection(channel, null);
+        final ClientConnection clientConnection = new DummyClientConnection(channel, null);
         clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(clientConnection);
 
         final byte[] encoded = {
                 // fixed header
@@ -392,8 +384,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   topic name
                 0, 5, 't', 'o', 'p', 'i', 'c',
                 //   properties
-                0
-        };
+                0};
         decodeNullExpected(encoded);
     }
 
@@ -407,8 +398,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 3,
                 // variable header
                 //   topic name
-                0, 5, 't'
-        };
+                0, 5, 't'};
         decodeNullExpected(encoded);
     }
 
@@ -430,8 +420,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     message expiry interval
                 0x02, 0, 0, 0, 10,
                 // payload
-                0x00
-        };
+                0x00};
         final PUBLISH publish = decode(encoded);
         assertEquals(10, publish.getMessageExpiryInterval());
     }
@@ -443,9 +432,9 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
         fullConfig.mqttConfiguration().setMaxMessageExpiryInterval(100);
 
         channel = new EmbeddedChannel(TestMqttDecoder.create(fullConfig));
-        final ClientConnection clientConnection = new ClientConnection(channel, null);
+        final ClientConnection clientConnection = new DummyClientConnection(channel, null);
         clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(clientConnection);
 
         final byte[] encoded = {
                 // fixed header
@@ -463,8 +452,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     message expiry interval
                 0x02, 0, 0, 0, 105,
                 // payload
-                0x00
-        };
+                0x00};
         final PUBLISH publish = decode(encoded);
         assertEquals(100, publish.getMessageExpiryInterval());
     }
@@ -487,8 +475,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     message expiry interval
                 0x02, 0,
                 // payload
-                0x00
-        };
+                0x00};
         decodeNullExpected(encoded);
     }
 
@@ -512,8 +499,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     message expiry interval
                 0x02, 0, 0, 0, 10,
                 // payload
-                0x00
-        };
+                0x00};
         decodeNullExpected(encoded);
     }
 
@@ -534,8 +520,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     payload format indicator
                 0x01, 1,
                 // payload
-                (byte) 0xE4, (byte) 0xBD, (byte) 0xA0, 0x20, (byte) 0xE5, (byte) 0xA5, (byte) 0xBD
-        };
+                (byte) 0xE4, (byte) 0xBD, (byte) 0xA0, 0x20, (byte) 0xE5, (byte) 0xA5, (byte) 0xBD};
 
         final PUBLISH publish = decode(encoded);
 
@@ -559,8 +544,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   properties
                 2,
                 //     payload format indicator
-                0x01, 3
-        };
+                0x01, 3};
         decodeNullExpected(encoded);
     }
 
@@ -579,8 +563,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   properties
                 1,
                 //     payload format indicator
-                0x01,
-        };
+                0x01,};
         decodeNullExpected(encoded);
     }
 
@@ -602,21 +585,21 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     payload format indicator
                 0x01, 0,
                 // payload
-                0x00
-        };
+                0x00};
         decodeNullExpected(encoded);
     }
 
     @Test
     public void test_decode_PayloadUtf8NotWellFormed_returnsNull() {
 
-        final FullConfigurationService fullConfigurationService = new TestConfigurationBootstrap().getFullConfigurationService();
+        final FullConfigurationService fullConfigurationService =
+                new TestConfigurationBootstrap().getFullConfigurationService();
         fullConfigurationService.securityConfiguration().setPayloadFormatValidation(true);
 
         channel = new EmbeddedChannel(TestMqttDecoder.create(fullConfigurationService));
-        final ClientConnection clientConnection = new ClientConnection(channel, null);
+        final ClientConnection clientConnection = new DummyClientConnection(channel, null);
         clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(clientConnection);
 
         final byte[] encoded = {
                 // fixed header
@@ -632,8 +615,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     payload format indicator
                 0x01, 1,
                 // payload
-                (byte) 0xFF
-        };
+                (byte) 0xFF};
 
         decodeNullExpected(encoded);
     }
@@ -653,8 +635,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   properties
                 2,
                 //     payload format indicator
-                0x01, 1
-        };
+                0x01, 1};
 
         final PUBLISH publish = decode(encoded);
         assertEquals(0, publish.getPayload().length);
@@ -676,7 +657,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     content type
                 0x03, 0, 4, 't', 'e', 'x', 't',
 
-        };
+                };
         final PUBLISH publish = decode(encoded);
         assertEquals("text", publish.getContentType());
     }
@@ -695,8 +676,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   properties
                 14,
                 //     content type
-                0x03, 0, 4, 't', 'e', 'x', 't',
-                0x03, 0, 4, 't', 'e', 'x', 't'
+                0x03, 0, 4, 't', 'e', 'x', 't', 0x03, 0, 4, 't', 'e', 'x', 't'
 
         };
         decodeNullExpected(encoded);
@@ -716,8 +696,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   properties
                 7,
                 //     content type
-                0x03, 0, 4, 't', 'e', 'x', (byte) 0xFF,
-        };
+                0x03, 0, 4, 't', 'e', 'x', (byte) 0xFF,};
         decodeNullExpected(encoded);
     }
 
@@ -735,8 +714,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   properties
                 7,
                 //     content type
-                0x03, 0, 5, 't', 'e', 'x', 't',
-        };
+                0x03, 0, 5, 't', 'e', 'x', 't',};
         decodeNullExpected(encoded);
     }
 
@@ -754,8 +732,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   properties
                 3,
                 //     content type
-                0x03, 0, 4
-        };
+                0x03, 0, 4};
         decodeNullExpected(encoded);
     }
 
@@ -821,8 +798,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     subscription identifier
                 0x0B, 123,
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         decodeNullExpected(encoded);
     }
 
@@ -842,8 +818,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     response topic
                 0x08, 0, 8, 'r', 'e', 's', 'p', 'o', 'n', 's', 'e',
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         final PUBLISH publishInternal = decodeInternal(encoded);
         assertEquals(0, publishInternal.getPacketIdentifier());
     }
@@ -866,8 +841,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     response topic
                 0x08, 0, 8, 'r', 'e', 's', 'p', 'o', 'n', 's', 'e',
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         final PUBLISH publishInternal = decodeInternal(encoded);
         assertEquals(12, publishInternal.getPacketIdentifier());
     }
@@ -890,8 +864,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     response topic
                 0x08, 0, 8, 'r', 'e', 's', 'p', 'o', 'n', 's', 'e',
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         final PUBLISH publishInternal = decodeInternal(encoded);
         assertEquals(12, publishInternal.getPacketIdentifier());
     }
@@ -914,8 +887,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     response topic
                 0x08, 0, 8, 'r', 'e', 's', 'p', 'o', 'n', 's', 'e',
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         decodeNullExpected(encoded);
     }
 
@@ -931,8 +903,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   topic name
                 0, 5, 't', 'o', 'p', 'i', 'c',
                 //   properties
-                0
-        };
+                0};
         decodeNullExpected(encoded);
     }
 
@@ -954,8 +925,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     correlation data
                 0x09, 0, 5, 5, 4, 3, 2, 1,
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         final PUBLISH publish = decode(encoded);
         assertArrayEquals(new byte[]{5, 4, 3, 2, 1}, publish.getCorrelationData());
     }
@@ -976,8 +946,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     response topic
                 0x08, 0, 8, 'r', 'e', 's', 'p', 'o', 'n', 's', 'e',
                 //     correlation data
-                0x09, 0, 5, 5, 4, 3, 2
-        };
+                0x09, 0, 5, 5, 4, 3, 2};
         decodeNullExpected(encoded);
     }
 
@@ -1001,8 +970,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     correlation data
                 0x09, 0, 1, 2, 3, 4, 5, 6,
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         decodeNullExpected(encoded);
     }
 
@@ -1022,10 +990,29 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     response topic
                 0x08, 0, 8, 'r', 'e', 's', 'p', 'o', 'n', 's', 'e',
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         final PUBLISH publish = decode(encoded);
         assertEquals("response", publish.getResponseTopic());
+    }
+
+    @Test
+    public void test_decode_responseTopicEmpty_returnsNull() {
+        final byte[] encoded = {
+                // fixed header
+                //   type, flags
+                0b0011_0000,
+                //   remaining length
+                13,
+                // variable header
+                //   topic name
+                0, 5, 't', 'o', 'p', 'i', 'c',
+                //   properties
+                5,
+                //     response topic
+                0x08, 0, 0,
+                //     payload format indicator
+                0x01, 0};
+        decodeNullExpected(encoded);
     }
 
     @Test
@@ -1045,8 +1032,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 0x08, 0, 8, 'r', 'e', 's', 'p', 'o', 'n', 's', 'e', //
                 0x08, 0, 8, 'r', 'e', 's', 'p', 'o', 'n', 's', 'e',
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         decodeNullExpected(encoded);
     }
 
@@ -1066,8 +1052,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     response topic
                 0x08, 0, 8, 'r', 't', 'o', 'p', 'i', 'c', '/', 'a',
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         PUBLISH publish = decode(encoded);
 
         assertEquals("rtopic/a", publish.getResponseTopic());
@@ -1076,9 +1061,9 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
         decodeNullExpected(encoded);
 
         channel = new EmbeddedChannel(TestMqttDecoder.create());
-        clientConnection = new ClientConnection(channel, null);
+        clientConnection = new DummyClientConnection(channel, null);
         clientConnection.setProtocolVersion(protocolVersion);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(clientConnection);
 
         encoded[20] = 'b';
         publish = decode(encoded);
@@ -1088,9 +1073,9 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
         decodeNullExpected(encoded);
 
         channel = new EmbeddedChannel(TestMqttDecoder.create());
-        clientConnection = new ClientConnection(channel, null);
+        clientConnection = new DummyClientConnection(channel, null);
         clientConnection.setProtocolVersion(protocolVersion);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(clientConnection);
 
         encoded[20] = 'c';
         publish = decode(encoded);
@@ -1113,8 +1098,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     response topic
                 0x08, 0, 8, 'r', 't', 'o', 'p', 'i', 'c', '/', (byte) 0xFF,
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         decodeNullExpected(encoded);
 
     }
@@ -1137,8 +1121,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     payload format indicator
                 0x01, 0,
                 //     topic alias duplicate (error!)
-                0x23, 0, 3
-        };
+                0x23, 0, 3};
         decodeNullExpected(encoded);
     }
 
@@ -1156,8 +1139,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   properties
                 2,
                 //     topic alias
-                0x23, 3,
-        };
+                0x23, 3,};
         decodeNullExpected(encoded);
     }
 
@@ -1165,8 +1147,8 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
     public void decode_noTopicAliasFound_returnsNull() {
         InternalConfigurations.TOPIC_ALIAS_GLOBAL_MEMORY_HARD_LIMIT_BYTES.set(1024 * 1024 * 200);
         channel = new EmbeddedChannel(TestMqttDecoder.create());
-        clientConnection = new ClientConnection(channel, null);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        clientConnection = new DummyClientConnection(channel, null);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(clientConnection);
         clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
         clientConnection.proposeClientState(ClientState.AUTHENTICATED);
         clientConnection.setTopicAliasMapping(new String[3]);
@@ -1185,8 +1167,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     topic alias
                 0x23, 0, 3,
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         decodeInternal(encodedWithTopicName);
 
         final byte[] encodedWithWrongTopicAlias = {
@@ -1203,8 +1184,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     topic alias
                 0x23, 0, 1,
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         decodeNullExpected(encodedWithWrongTopicAlias);
     }
 
@@ -1227,8 +1207,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     topic alias
                 0x23, 0, 4,
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         decodeNullExpected(encodedWithWrongTopicAlias);
     }
 
@@ -1246,8 +1225,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   properties
                 2,
                 //     topic alias
-                0x23, 0,
-        };
+                0x23, 0,};
         decodeNullExpected(encodedWithWrongTopicAlias);
     }
 
@@ -1267,8 +1245,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     topic alias
                 0x23, 0, 0,
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         decodeNullExpected(encoded);
     }
 
@@ -1292,8 +1269,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     topic alias too large
                 0x23, 0, 4,
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         decodeNullExpected(encoded);
     }
 
@@ -1311,8 +1287,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   properties
                 2,
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         PUBLISH decode = decode(encoded);
         assertEquals("topic/a", decode.getTopic());
 
@@ -1320,9 +1295,9 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
         decodeNullExpected(encoded);
 
         channel = new EmbeddedChannel(TestMqttDecoder.create());
-        clientConnection = new ClientConnection(channel, null);
+        clientConnection = new DummyClientConnection(channel, null);
         clientConnection.setProtocolVersion(protocolVersion);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(clientConnection);
 
         encoded[10] = 'b';
         decode = decode(encoded);
@@ -1332,9 +1307,9 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
         decodeNullExpected(encoded);
 
         channel = new EmbeddedChannel(TestMqttDecoder.create());
-        clientConnection = new ClientConnection(channel, null);
+        clientConnection = new DummyClientConnection(channel, null);
         clientConnection.setProtocolVersion(protocolVersion);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(clientConnection);
 
         encoded[10] = 'c';
         decode = decode(encoded);
@@ -1355,8 +1330,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   properties
                 2,
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         final PUBLISH decode = decode(encoded);
         assertEquals("topic/a", decode.getTopic());
 
@@ -1381,8 +1355,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     invalid negative identifier
                 (byte) 0xFF, 0, 3,
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         decodeNullExpected(encoded);
     }
 
@@ -1402,8 +1375,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //     invalid identifier
                 (byte) 0x05, 0, 3,
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         decodeNullExpected(encoded);
     }
 
@@ -1419,8 +1391,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   topic name
                 0, 5, 't', 'o', 'p', 'i', 'c',
                 //   properties length negative
-                -1
-        };
+                -1};
         decodeNullExpected(encoded);
     }
 
@@ -1438,8 +1409,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   properties
                 3,
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         decodeNullExpected(encoded);
     }
 
@@ -1457,8 +1427,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   properties
                 1,
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         decodeNullExpected(encoded);
     }
 
@@ -1469,8 +1438,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   type, flags
                 0b0011_0000,
                 //   remaining length
-                0
-        };
+                0};
         decodeNullExpected(encoded);
     }
 
@@ -1488,8 +1456,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   properties length
                 2,
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         decodeNullExpected(encoded);
     }
 
@@ -1507,8 +1474,7 @@ public class Mqtt5PublishDecoderTest extends AbstractMqtt5DecoderTest {
                 //   properties length
                 2,
                 //     payload format indicator
-                0x01, 0
-        };
+                0x01, 0};
         decodeNullExpected(encoded);
     }
 

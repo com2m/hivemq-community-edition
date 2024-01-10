@@ -20,12 +20,13 @@ import com.hivemq.bootstrap.ioc.SingletonModule;
 import com.hivemq.bootstrap.ioc.lazysingleton.LazySingleton;
 import com.hivemq.configuration.service.PersistenceConfigurationService;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
-import com.hivemq.mqtt.topic.tree.LocalTopicTree;
-import com.hivemq.mqtt.topic.tree.TopicTreeImpl;
 import com.hivemq.persistence.PersistenceStartup;
 import com.hivemq.persistence.clientqueue.ClientQueuePersistence;
 import com.hivemq.persistence.clientqueue.ClientQueuePersistenceImpl;
-import com.hivemq.persistence.clientsession.*;
+import com.hivemq.persistence.clientsession.ClientSessionPersistence;
+import com.hivemq.persistence.clientsession.ClientSessionPersistenceProvider;
+import com.hivemq.persistence.clientsession.ClientSessionSubscriptionPersistence;
+import com.hivemq.persistence.clientsession.ClientSessionSubscriptionPersistenceProvider;
 import com.hivemq.persistence.connection.ConnectionPersistence;
 import com.hivemq.persistence.connection.ConnectionPersistenceImpl;
 import com.hivemq.persistence.ioc.provider.local.IncomingMessageFlowPersistenceLocalProvider;
@@ -74,12 +75,8 @@ class LocalPersistenceModule extends SingletonModule<Class<LocalPersistenceModul
         bind(ClientSessionPersistence.class).toProvider(ClientSessionPersistenceProvider.class).in(LazySingleton.class);
 
         /* Client Session Sub */
-        bind(SharedSubscriptionService.class).to(SharedSubscriptionServiceImpl.class).in(LazySingleton.class);
         bind(ClientSessionSubscriptionPersistence.class).toProvider(ClientSessionSubscriptionPersistenceProvider.class)
                 .in(LazySingleton.class);
-
-        /* Topic Tree */
-        bind(LocalTopicTree.class).to(TopicTreeImpl.class).in(Singleton.class);
 
         /* QoS Handling */
         bind(IncomingMessageFlowPersistence.class).to(IncomingMessageFlowPersistenceImpl.class);
@@ -91,7 +88,8 @@ class LocalPersistenceModule extends SingletonModule<Class<LocalPersistenceModul
 
         /* Payload Persistence */
         if (persistenceConfigurationService.getMode() == PersistenceConfigurationService.PersistenceMode.IN_MEMORY) {
-            bind(PublishPayloadPersistence.class).toInstance(persistenceInjector.getInstance(PublishPayloadNoopPersistenceImpl.class));
+            bind(PublishPayloadPersistence.class).toInstance(persistenceInjector.getInstance(
+                    PublishPayloadNoopPersistenceImpl.class));
         } else {
             bind(PublishPayloadPersistence.class).toInstance(persistenceInjector.getInstance(PublishPayloadPersistence.class));
             bind(PublishPayloadPersistenceImpl.class).toInstance(persistenceInjector.getInstance(

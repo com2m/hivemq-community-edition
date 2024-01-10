@@ -15,13 +15,15 @@
  */
 package com.hivemq.websocket;
 
-import com.hivemq.util.ChannelUtils;
+import com.hivemq.bootstrap.ClientConnectionContext;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.Optional;
 
 /**
  * A Websocket frame handler for text frames. MQTT does not allow any text frames, so clients
@@ -38,8 +40,13 @@ public class WebSocketTextFrameHandler extends SimpleChannelInboundHandler<TextW
         final Channel channel = ctx.channel();
         channel.disconnect();
         if (log.isDebugEnabled()) {
-            log.debug("Sending websocket text frames is illegal, only binary frames are allowed for MQTT over websockets. " +
-                    "Disconnecting client with IP{}.", ChannelUtils.getChannelIP(channel));
+            final ClientConnectionContext clientConnectionContext = ClientConnectionContext.of(channel);
+            final Optional<String> channelIP = clientConnectionContext.getChannelIP();
+
+            log.debug(
+                    "Sending websocket text frames is illegal, only binary frames are allowed for MQTT over websockets. " +
+                            "Disconnecting client with IP{}.",
+                    channelIP);
         }
     }
 }

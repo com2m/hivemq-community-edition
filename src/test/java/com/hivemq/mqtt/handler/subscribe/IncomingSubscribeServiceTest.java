@@ -21,6 +21,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.Futures;
 import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.configuration.service.MqttConfigurationService;
 import com.hivemq.configuration.service.RestrictionsConfigurationService;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
@@ -40,36 +41,35 @@ import com.hivemq.mqtt.message.subscribe.Topic;
 import com.hivemq.persistence.clientsession.ClientSessionSubscriptionPersistence;
 import com.hivemq.persistence.clientsession.SharedSubscriptionService;
 import com.hivemq.persistence.retained.RetainedMessagePersistence;
-import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.util.concurrent.ImmediateEventExecutor;
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import util.InitFutureUtilsExecutorRule;
+import util.DummyClientConnection;
 import util.TestConfigurationBootstrap;
 
 import java.util.HashSet;
 import java.util.Queue;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @SuppressWarnings("ALL")
 public class IncomingSubscribeServiceTest {
-
-    @Rule
-    public InitFutureUtilsExecutorRule initFutureUtilsExecutorRule = new InitFutureUtilsExecutorRule();
 
     @Mock
     private ClientSessionSubscriptionPersistence clientSessionSubscriptionPersistence;
@@ -107,15 +107,23 @@ public class IncomingSubscribeServiceTest {
     public void setUp() throws Exception {
 
         MockitoAnnotations.initMocks(this);
-        incomingSubscribeService = new IncomingSubscribeService(clientSessionSubscriptionPersistence, retainedMessagePersistence, sharedSubscriptionService, retainedMessagesSender, mqttConfigurationService, restrictionsConfigurationService, new MqttServerDisconnectorImpl(eventLog));
+        incomingSubscribeService = new IncomingSubscribeService(clientSessionSubscriptionPersistence,
+                retainedMessagePersistence,
+                sharedSubscriptionService,
+                retainedMessagesSender,
+                mqttConfigurationService,
+                restrictionsConfigurationService,
+                new MqttServerDisconnectorImpl(eventLog));
 
         channel = new EmbeddedChannel();
-        clientConnection = new ClientConnection(channel, null);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId("client");
+        clientConnection = new DummyClientConnection(channel, null);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(clientConnection);
+        ClientConnection.of(channel).setClientId("client");
 
-        when(clientSessionSubscriptionPersistence.addSubscription(anyString(), any(Topic.class))).thenReturn(Futures.immediateFuture(null));
-        when(clientSessionSubscriptionPersistence.addSubscriptions(anyString(), any(ImmutableSet.class))).thenReturn(Futures.<Void>immediateFuture(null));
+        when(clientSessionSubscriptionPersistence.addSubscription(anyString(),
+                any(Topic.class))).thenReturn(Futures.immediateFuture(null));
+        when(clientSessionSubscriptionPersistence.addSubscriptions(anyString(), any(ImmutableSet.class))).thenReturn(
+                Futures.<Void>immediateFuture(null));
         when(ctx.channel()).thenReturn(channel);
         when(ctx.writeAndFlush(any())).thenReturn(channelFuture);
         when(ctx.executor()).thenReturn(ImmediateEventExecutor.INSTANCE);
@@ -247,7 +255,9 @@ public class IncomingSubscribeServiceTest {
     @Test
     public void test_subscription_metric() throws Exception {
 
-        final SUBSCRIBE subscribe = new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(new Topic("t1", QoS.AT_LEAST_ONCE), new Topic("t2", QoS.AT_LEAST_ONCE))), 1);
+        final SUBSCRIBE subscribe =
+                new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(new Topic("t1", QoS.AT_LEAST_ONCE),
+                        new Topic("t2", QoS.AT_LEAST_ONCE))), 1);
 
         incomingSubscribeService.processSubscribe(ctx, subscribe, false);
     }
@@ -255,7 +265,9 @@ public class IncomingSubscribeServiceTest {
     @Test
     public void test_send_invalid_subscribe_message() throws Exception {
 
-        final SUBSCRIBE subscribe = new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(new Topic("not/#/allowed", QoS.AT_LEAST_ONCE))), 1);
+        final SUBSCRIBE subscribe =
+                new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(new Topic("not/#/allowed", QoS.AT_LEAST_ONCE))),
+                        1);
 
         incomingSubscribeService.processSubscribe(ctx, subscribe, false);
 
@@ -268,20 +280,20 @@ public class IncomingSubscribeServiceTest {
     public void single_topic_dont_batch() throws Exception {
 
         final HashSet<Topic> topics = Sets.newHashSet(Topic.topicFromString("topic1"));
-        assertFalse(incomingSubscribeService.batch(topics));
+        assertFalse(IncomingSubscribeService.batch(topics));
     }
 
     @Test
     public void test_batch() throws Exception {
 
         final HashSet<Topic> topics = Sets.newHashSet(Topic.topicFromString("topic1"), Topic.topicFromString("topic2"));
-        assertTrue(incomingSubscribeService.batch(topics));
+        assertTrue(IncomingSubscribeService.batch(topics));
     }
 
     @Test
     public void test_subscribe_wildcard_disabled_mqtt5() {
         when(mqttConfigurationService.wildcardSubscriptionsEnabled()).thenReturn(false);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv5);
+        ClientConnection.of(channel).setProtocolVersion(ProtocolVersion.MQTTv5);
         final Topic topic = new Topic("#", QoS.EXACTLY_ONCE);
 
         final SUBSCRIBE subscribe = new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(topic)), 10);
@@ -296,7 +308,7 @@ public class IncomingSubscribeServiceTest {
     @Test
     public void test_subscribe_wildcard_disabled_mqtt3_1_1() {
         when(mqttConfigurationService.wildcardSubscriptionsEnabled()).thenReturn(false);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1_1);
+        ClientConnection.of(channel).setProtocolVersion(ProtocolVersion.MQTTv3_1_1);
         final Topic topic = new Topic("#", QoS.EXACTLY_ONCE);
 
         final SUBSCRIBE subscribe = new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(topic)), 10);
@@ -311,7 +323,7 @@ public class IncomingSubscribeServiceTest {
     @Test
     public void test_subscribe_wildcard_disabled_mqtt3_1() {
         when(mqttConfigurationService.wildcardSubscriptionsEnabled()).thenReturn(false);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1);
+        ClientConnection.of(channel).setProtocolVersion(ProtocolVersion.MQTTv3_1);
         final Topic topic = new Topic("#", QoS.EXACTLY_ONCE);
 
         final SUBSCRIBE subscribe = new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(topic)), 10);
@@ -325,7 +337,7 @@ public class IncomingSubscribeServiceTest {
     @Test
     public void test_shared_subscription_disabled_mqtt5() {
         when(mqttConfigurationService.sharedSubscriptionsEnabled()).thenReturn(false);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv5);
+        ClientConnection.of(channel).setProtocolVersion(ProtocolVersion.MQTTv5);
         final Topic topic = new Topic("$share/group1/topic1", QoS.EXACTLY_ONCE);
 
         final SUBSCRIBE subscribe = new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(topic)), 10);
@@ -341,7 +353,7 @@ public class IncomingSubscribeServiceTest {
     public void test_shared_subscription_disabled_mqtt3_1_1() {
         when(mqttConfigurationService.sharedSubscriptionsEnabled()).thenReturn(false);
 
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1_1);
+        ClientConnection.of(channel).setProtocolVersion(ProtocolVersion.MQTTv3_1_1);
         final Topic topic = new Topic("$share/group1/topic1", QoS.EXACTLY_ONCE);
 
         final SUBSCRIBE subscribe = new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(topic)), 10);
@@ -357,7 +369,7 @@ public class IncomingSubscribeServiceTest {
     public void test_shared_subscription_disabled_mqtt3_1() {
         when(mqttConfigurationService.sharedSubscriptionsEnabled()).thenReturn(false);
 
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1);
+        ClientConnection.of(channel).setProtocolVersion(ProtocolVersion.MQTTv3_1);
         final Topic topic = new Topic("$share/group1/topic1", QoS.EXACTLY_ONCE);
 
         final SUBSCRIBE subscribe = new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(topic)), 10);
@@ -378,9 +390,10 @@ public class IncomingSubscribeServiceTest {
         final SUBSCRIBE subscribe = new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(topic)), 10);
 
         final ModifiableDefaultPermissionsImpl permissions = new ModifiableDefaultPermissionsImpl();
-        permissions.add(new TopicPermissionBuilderImpl(new TestConfigurationBootstrap().getFullConfigurationService()).topicFilter("#").type(TopicPermission.PermissionType.ALLOW).build());
+        permissions.add(new TopicPermissionBuilderImpl(new TestConfigurationBootstrap().getFullConfigurationService()).topicFilter(
+                "#").type(TopicPermission.PermissionType.ALLOW).build());
 
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setAuthPermissions(permissions);
+        ClientConnection.of(channel).setAuthPermissions(permissions);
 
         incomingSubscribeService.processSubscribe(ctx, subscribe, false);
 
@@ -400,9 +413,10 @@ public class IncomingSubscribeServiceTest {
         final SUBSCRIBE subscribe = new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(topic)), 10);
 
         final ModifiableDefaultPermissionsImpl permissions = new ModifiableDefaultPermissionsImpl();
-        permissions.add(new TopicPermissionBuilderImpl(new TestConfigurationBootstrap().getFullConfigurationService()).topicFilter("#").type(TopicPermission.PermissionType.DENY).build());
+        permissions.add(new TopicPermissionBuilderImpl(new TestConfigurationBootstrap().getFullConfigurationService()).topicFilter(
+                "#").type(TopicPermission.PermissionType.DENY).build());
 
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setAuthPermissions(permissions);
+        ClientConnection.of(channel).setAuthPermissions(permissions);
 
         incomingSubscribeService.processSubscribe(ctx, subscribe, false);
 
@@ -424,9 +438,10 @@ public class IncomingSubscribeServiceTest {
         final SUBSCRIBE subscribe = new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(topic1, topic2, topic3)), 10);
 
         final ModifiableDefaultPermissionsImpl permissions = new ModifiableDefaultPermissionsImpl();
-        permissions.add(new TopicPermissionBuilderImpl(new TestConfigurationBootstrap().getFullConfigurationService()).topicFilter("#").type(TopicPermission.PermissionType.ALLOW).build());
+        permissions.add(new TopicPermissionBuilderImpl(new TestConfigurationBootstrap().getFullConfigurationService()).topicFilter(
+                "#").type(TopicPermission.PermissionType.ALLOW).build());
 
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setAuthPermissions(permissions);
+        ClientConnection.of(channel).setAuthPermissions(permissions);
 
         incomingSubscribeService.processSubscribe(ctx, subscribe, false);
 
@@ -450,9 +465,10 @@ public class IncomingSubscribeServiceTest {
         final SUBSCRIBE subscribe = new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(topic1, topic2, topic3)), 10);
 
         final ModifiableDefaultPermissionsImpl permissions = new ModifiableDefaultPermissionsImpl();
-        permissions.add(new TopicPermissionBuilderImpl(new TestConfigurationBootstrap().getFullConfigurationService()).topicFilter("#").type(TopicPermission.PermissionType.DENY).build());
+        permissions.add(new TopicPermissionBuilderImpl(new TestConfigurationBootstrap().getFullConfigurationService()).topicFilter(
+                "#").type(TopicPermission.PermissionType.DENY).build());
 
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setAuthPermissions(permissions);
+        ClientConnection.of(channel).setAuthPermissions(permissions);
 
         incomingSubscribeService.processSubscribe(ctx, subscribe, false);
 
@@ -478,14 +494,17 @@ public class IncomingSubscribeServiceTest {
         final Topic topic3 = new Topic("test3", QoS.EXACTLY_ONCE);
         final Topic topic4 = new Topic("test4", QoS.EXACTLY_ONCE);
 
-        final SUBSCRIBE subscribe = new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(topic1, topic2, topic3, topic4)), 10);
+        final SUBSCRIBE subscribe =
+                new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(topic1, topic2, topic3, topic4)), 10);
 
         final ModifiableDefaultPermissionsImpl permissions = new ModifiableDefaultPermissionsImpl();
-        permissions.add(new TopicPermissionBuilderImpl(new TestConfigurationBootstrap().getFullConfigurationService()).topicFilter("test1").type(TopicPermission.PermissionType.ALLOW).build());
-        permissions.add(new TopicPermissionBuilderImpl(new TestConfigurationBootstrap().getFullConfigurationService()).topicFilter("test4").type(TopicPermission.PermissionType.ALLOW).build());
+        permissions.add(new TopicPermissionBuilderImpl(new TestConfigurationBootstrap().getFullConfigurationService()).topicFilter(
+                "test1").type(TopicPermission.PermissionType.ALLOW).build());
+        permissions.add(new TopicPermissionBuilderImpl(new TestConfigurationBootstrap().getFullConfigurationService()).topicFilter(
+                "test4").type(TopicPermission.PermissionType.ALLOW).build());
         permissions.setDefaultBehaviour(DefaultAuthorizationBehaviour.DENY);
 
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setAuthPermissions(permissions);
+        ClientConnection.of(channel).setAuthPermissions(permissions);
 
         incomingSubscribeService.processSubscribe(ctx, subscribe, false);
 
@@ -530,11 +549,13 @@ public class IncomingSubscribeServiceTest {
 
         final SUBSCRIBE subscribe = new SUBSCRIBE(ImmutableList.copyOf(Lists.newArrayList(topic1, topic2, topic3)), 10);
 
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setAuthPermissions(null);
+        ClientConnection.of(channel).setAuthPermissions(null);
 
-        incomingSubscribeService.processSubscribe(ctx, subscribe,
+        incomingSubscribeService.processSubscribe(ctx,
+                subscribe,
                 new Mqtt5SubAckReasonCode[]{Mqtt5SubAckReasonCode.GRANTED_QOS_1, null, null},
-                new String[3], true);
+                new String[3],
+                true);
 
         final SUBACK response = channel.readOutbound();
 

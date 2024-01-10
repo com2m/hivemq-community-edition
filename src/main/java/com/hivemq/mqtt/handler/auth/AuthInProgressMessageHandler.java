@@ -16,6 +16,7 @@
 package com.hivemq.mqtt.handler.auth;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.handler.connack.MqttConnacker;
 import com.hivemq.mqtt.message.auth.AUTH;
@@ -28,8 +29,6 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-
-import static com.hivemq.util.ChannelUtils.getClientId;
 
 /**
  * @author Georg Held
@@ -59,10 +58,11 @@ public class AuthInProgressMessageHandler extends ChannelInboundHandlerAdapter {
             return;
         }
 
-        final String reasonString = "Client must not send a message other than AUTH or DISCONNECT during enhanced authentication";
-        connacker.connackError(
-                ctx.channel(),
-                String.format(DISCONNECT_LOG_MESSAGE, getClientId(ctx.channel())),
+        final String reasonString =
+                "Client must not send a message other than AUTH or DISCONNECT during enhanced authentication";
+        final ClientConnectionContext clientConnectionContext = ClientConnectionContext.of(ctx.channel());
+        connacker.connackError(ctx.channel(),
+                String.format(DISCONNECT_LOG_MESSAGE, clientConnectionContext.getClientId()),
                 "Sent message other than AUTH or DISCONNECT during enhanced authentication",
                 Mqtt5ConnAckReasonCode.PROTOCOL_ERROR,
                 reasonString,

@@ -16,7 +16,7 @@
 package com.hivemq.extensions.handler;
 
 import com.google.common.collect.ImmutableMap;
-import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.bootstrap.ClientState;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
@@ -41,7 +41,6 @@ import com.hivemq.extensions.packets.connack.ModifiableConnackPacketImpl;
 import com.hivemq.extensions.services.interceptor.Interceptors;
 import com.hivemq.logging.EventLog;
 import com.hivemq.mqtt.message.connack.CONNACK;
-import com.hivemq.util.ChannelAttributes;
 import com.hivemq.util.Exceptions;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -97,8 +96,8 @@ public class ConnackOutboundInterceptorHandler {
             final @NotNull ChannelPromise promise) {
 
         final Channel channel = ctx.channel();
-        final ClientConnection clientConnection = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get();
-        final String clientId = clientConnection.getClientId();
+        final ClientConnectionContext clientConnectionContext = ClientConnectionContext.of(channel);
+        final String clientId = clientConnectionContext.getClientId();
         if (clientId == null) {
             ctx.write(connack, promise);
             return;
@@ -113,7 +112,7 @@ public class ConnackOutboundInterceptorHandler {
 
         final ClientInformation clientInfo = ExtensionInformationUtil.getAndSetClientInformation(channel, clientId);
         final ConnectionInformation connectionInfo = ExtensionInformationUtil.getAndSetConnectionInformation(channel);
-        final boolean requestResponseInformation = clientConnection.isRequestResponseInformation();
+        final boolean requestResponseInformation = clientConnectionContext.isRequestResponseInformation();
 
         final ConnackOutboundProviderInputImpl providerInput =
                 new ConnackOutboundProviderInputImpl(serverInformation, clientInfo, connectionInfo);
@@ -199,12 +198,12 @@ public class ConnackOutboundInterceptorHandler {
         @Override
         public void run() {
             if (outputHolder.get().isPrevent()) {
-                final ClientConnection clientConnection = ctx.channel().attr(ChannelAttributes.CLIENT_CONNECTION).get();
-                clientConnection.proposeClientState(ClientState.DISCONNECTING);
+                final ClientConnectionContext clientConnectionContext = ClientConnectionContext.of(ctx.channel());
+                clientConnectionContext.proposeClientState(ClientState.DISCONNECTING);
 
-                eventLog.clientWasDisconnected(
-                        ctx.channel(), "Connection prevented by extension in CONNACK outbound interceptor");
-                clientConnection.proposeClientState(ClientState.DISCONNECTED_BY_SERVER);
+                eventLog.clientWasDisconnected(ctx.channel(),
+                        "Connection prevented by extension in CONNACK outbound interceptor");
+                clientConnectionContext.proposeClientState(ClientState.DISCONNECTED_BY_SERVER);
                 ctx.channel().close();
             } else {
                 ctx.writeAndFlush(CONNACK.from(inputHolder.get().getConnackPacket()), promise);
@@ -245,7 +244,9 @@ public class ConnackOutboundInterceptorHandler {
             } catch (final Throwable e) {
                 log.warn(
                         "Uncaught exception was thrown from extension with id \"{}\" on outbound CONNACK interception. " +
-                                "Extensions are responsible for their own exception handling.", extensionId, e);
+                                "Extensions are responsible for their own exception handling.",
+                        extensionId,
+                        e);
                 output.prevent();
                 Exceptions.rethrowError(e);
             }

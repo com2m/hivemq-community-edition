@@ -15,13 +15,12 @@
  */
 package com.hivemq.extensions.auth;
 
+import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extensions.executor.task.PluginInOutTaskContext;
 import com.hivemq.mqtt.handler.auth.MqttAuthSender;
 import com.hivemq.mqtt.message.mqtt5.Mqtt5UserProperties;
 import com.hivemq.mqtt.message.reason.Mqtt5AuthReasonCode;
-import com.hivemq.util.ChannelAttributes;
-import com.hivemq.util.ChannelUtils;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
@@ -119,15 +118,16 @@ abstract class AuthContext<T extends AuthOutput<?>> extends PluginInOutTaskConte
             });
         } catch (final RejectedExecutionException ex) {
             if (!ctx.executor().isShutdown()) {
+                final ClientConnectionContext clientConnectionContext = ClientConnectionContext.of(ctx.channel());
                 log.error("Execution of authentication was rejected for client with IP {}.",
-                        ChannelUtils.getChannelIP(ctx.channel()).orElse("UNKNOWN"), ex);
+                        clientConnectionContext.getChannelIP().orElse("UNKNOWN"),
+                        ex);
             }
         }
     }
 
     private void continueAuthentication(final @NotNull T output) {
-        final ChannelFuture authFuture = authSender.sendAuth(
-                ctx.channel(),
+        final ChannelFuture authFuture = authSender.sendAuth(ctx.channel(),
                 output.getAuthenticationData(),
                 Mqtt5AuthReasonCode.CONTINUE_AUTHENTICATION,
                 Mqtt5UserProperties.of(output.getOutboundUserProperties().asInternalList()),
@@ -137,7 +137,7 @@ abstract class AuthContext<T extends AuthOutput<?>> extends PluginInOutTaskConte
             if (future.isSuccess()) {
                 final ScheduledFuture<?> timeoutFuture =
                         ctx.executor().schedule(this::onTimeout, output.getTimeout(), TimeUnit.SECONDS);
-                ctx.channel().attr(ChannelAttributes.CLIENT_CONNECTION).get().setAuthFuture(timeoutFuture);
+                ClientConnectionContext.of(ctx.channel()).setAuthFuture(timeoutFuture);
             } else if (future.channel().isActive()) {
                 onSendException(future.cause());
             }
@@ -145,7 +145,7 @@ abstract class AuthContext<T extends AuthOutput<?>> extends PluginInOutTaskConte
     }
 
     void succeedAuthentication(final @NotNull T output) {
-        ctx.channel().attr(ChannelAttributes.CLIENT_CONNECTION).get().setAuthPermissions(output.getDefaultPermissions());
+        ClientConnectionContext.of(ctx.channel()).setAuthPermissions(output.getDefaultPermissions());
     }
 
     abstract void failAuthentication(@NotNull T output);

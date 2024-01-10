@@ -16,9 +16,11 @@
 
 package com.hivemq.mqtt.handler.connect;
 
-import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientConnectionContext;
+import com.hivemq.bootstrap.UndefinedClientConnection;
+import com.hivemq.configuration.service.entity.Listener;
+import com.hivemq.configuration.service.entity.TlsTcpListener;
 import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnector;
-import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -33,7 +35,11 @@ import static io.netty.handler.timeout.IdleStateEvent.FIRST_WRITER_IDLE_STATE_EV
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * @author Florian Limpöck
@@ -45,6 +51,7 @@ public class NoTlsHandshakeIdleHandlerTest {
     private NoTlsHandshakeIdleHandler handler;
     private EmbeddedChannel channel;
     private AtomicBoolean userEventTriggered;
+    private final Listener connectedListener = mock(TlsTcpListener.class);
 
     @Before
     public void setUp() throws Exception {
@@ -58,7 +65,10 @@ public class NoTlsHandshakeIdleHandlerTest {
             }
         };
         channel = new EmbeddedChannel();
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
+        final ClientConnectionContext clientConnection =
+                new UndefinedClientConnection(channel, null, connectedListener);
+
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(clientConnection);
         channel.pipeline().addLast(handler);
         channel.pipeline().addLast(eventAdapter);
     }
@@ -82,6 +92,8 @@ public class NoTlsHandshakeIdleHandlerTest {
 
     @Test
     public void test_idle_state_reader_event() throws Exception {
+
+        when(connectedListener.getPort()).thenReturn(1234);
 
         handler.userEventTriggered(channel.pipeline().context(handler), FIRST_READER_IDLE_STATE_EVENT);
 
