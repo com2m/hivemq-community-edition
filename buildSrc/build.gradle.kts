@@ -6,7 +6,8 @@ group = "com.hivemq"
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(8))
+        // Upgraded to fix mac build
+        languageVersion.set(JavaLanguageVersion.of(11))
     }
 }
 
