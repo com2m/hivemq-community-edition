@@ -25,12 +25,38 @@ import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SslProvider;
 import io.netty.handler.ssl.SupportedCipherSuiteFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLException;
+import javax.net.ssl.X509ExtendedKeyManager;
+import javax.net.ssl.X509KeyManager;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.net.Socket;
+import java.security.KeyStore;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.Principal;
+import java.security.PrivateKey;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateException;
+import java.security.cert.CertificateParsingException;
+import java.security.cert.X509Certificate;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @LazySingleton
 public class SslContextFactory {
+    private static final Logger log = LoggerFactory.getLogger(SslContextFactory.class);
+
+    public static final int DNS_NAME_TYPE = 2;
 
     /**
      * Creates a new {@link SslContext} according to the information stored in the {@link Tls} object
@@ -41,7 +67,52 @@ public class SslContextFactory {
      */
     public @NotNull SslContext createSslContext(final @NotNull Tls tls) {
         try {
-            final SslContextBuilder builder = SslContextBuilder.forServer(SslUtil.getKeyManagerFactory(tls))
+            final KeyManagerFactory keyManagerFactory = SslUtil.getKeyManagerFactory(tls);
+            final X509KeyManager origKm = (X509KeyManager) keyManagerFactory.getKeyManagers()[0];
+
+            final Map<String, String> dnsHostnameMap = createDnsHostnameMap(tls.getKeystorePath(), tls.getKeystorePassword());
+
+            final X509ExtendedKeyManager customKeyManager = new X509ExtendedKeyManager() {
+
+                @Override
+                public String[] getClientAliases(final String keyType, final Principal[] issuers) {
+                    return origKm.getClientAliases(keyType, issuers);
+                }
+
+                @Override
+                public String chooseClientAlias(final String[] keyType, final Principal[] issuers, final Socket socket) {
+                    return origKm.chooseClientAlias(keyType, issuers, socket);
+                }
+
+                @Override
+                public String[] getServerAliases(final String keyType, final Principal[] issuers) {
+                    return origKm.getServerAliases(keyType, issuers);
+                }
+
+                @Override
+                public String chooseServerAlias(final String keyType, final Principal[] issuers, final Socket socket) {
+                    return origKm.chooseServerAlias(keyType, issuers, socket);
+                }
+
+                @Override
+                public X509Certificate[] getCertificateChain(final String alias) {
+                    return origKm.getCertificateChain(alias);
+                }
+
+                @Override
+                public PrivateKey getPrivateKey(final String alias) {
+                    return origKm.getPrivateKey(alias);
+                }
+
+                @Override
+                public String chooseEngineServerAlias(final String keyType, final Principal[] issuers, final SSLEngine engine) {
+                    final String certificateAlias = dnsHostnameMap.get(engine.getPeerHost());
+                    log.info("Choose engine server alias for host: {} found alias: {}", engine.getPeerHost(), certificateAlias);
+                    return certificateAlias;
+                }
+            };
+
+            final SslContextBuilder builder = SslContextBuilder.forServer(customKeyManager)
                     .sslProvider(SslProvider.JDK)
                     .trustManager(SslUtil.getTrustManagerFactory(tls))
                     .clientAuth(toClientAuth(tls.getClientAuthMode()));
@@ -61,6 +132,61 @@ public class SslContextFactory {
             return builder.build();
         } catch (final SSLException e) {
             throw new SslException("Not able to create SSL server context", e);
+        }
+    }
+
+
+    public Map<String, String> createDnsHostnameMap(final @NotNull String keystorePath,
+                                                    final @NotNull String keystorePassword) {
+        // Map certificate dns names => keystore alias
+        final HashMap<String,String> dnsHostnameMap = new HashMap<>();
+        try (final FileInputStream fis = new FileInputStream(keystorePath)) {
+            final KeyStore keystore = KeyStore.getInstance(KeyStore.getDefaultType());
+            keystore.load(fis, keystorePassword.toCharArray());
+
+            final Enumeration<String> aliases = keystore.aliases();
+            if (aliases == null) {
+                return Collections.emptyMap();
+            }
+            aliases.asIterator().forEachRemaining((final String alias) -> {
+                try {
+                    final Certificate[] certificateChain = keystore.getCertificateChain(alias);
+                    for (final Certificate certificateChainItem : certificateChain) {
+                        if (!(certificateChainItem instanceof X509Certificate)) {
+                            continue;
+                        }
+                        final X509Certificate x509Cert = (X509Certificate) certificateChainItem;
+                        fillCertificateDnsHostnameMap(dnsHostnameMap, alias, x509Cert);
+                    }
+                } catch (final KeyStoreException e) {
+                    log.warn("Failed to get certificate with alias {} from keystore", alias);
+                }
+            });
+            log.info("Parsed hostNames: {}", dnsHostnameMap.isEmpty() ? "no hostnames available" : String.join(", ", dnsHostnameMap.values()));
+        } catch (final IOException | NoSuchAlgorithmException | CertificateException | KeyStoreException e) {
+            log.warn("Failed to open keystore for certificate processing");
+        }
+
+        return dnsHostnameMap;
+    }
+
+    private static void fillCertificateDnsHostnameMap(final HashMap<String, String> hostnameMap, final String alias, final X509Certificate x509Cert) {
+        try {
+            final Collection<List<?>> altNames = x509Cert.getSubjectAlternativeNames();
+
+            if (altNames != null) {
+                for (final List<?> altName : altNames) {
+                    if (altName.size() < 2) continue;
+                    if ((Integer) altName.get(0) == DNS_NAME_TYPE) {
+                        final Object data = altName.get(1);
+                        if (data instanceof String) {
+                            hostnameMap.put((String) data, alias);
+                        }
+                    }
+                }
+            }
+        } catch (CertificateParsingException e) {
+            log.warn("Failed to parse certificate for alias: {}", alias);
         }
     }
 
