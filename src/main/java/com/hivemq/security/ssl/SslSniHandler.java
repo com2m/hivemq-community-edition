@@ -19,13 +19,16 @@ import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.annotations.Nullable;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.ssl.JdkSslServerContext;
 import io.netty.handler.ssl.SniHandler;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.util.ReferenceCountUtil;
+import io.netty.util.concurrent.Future;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
 import java.util.NoSuchElementException;
 
 import static com.hivemq.bootstrap.netty.ChannelHandlerNames.SSL_HANDLER;
@@ -36,10 +39,14 @@ public class SslSniHandler extends SniHandler {
 
     private final @NotNull SslHandler sslHandler;
 
+    private final @NotNull HashMap<String, SslHandler> aliasSslHandlerMap = new HashMap<>();
+
     public SslSniHandler(final @NotNull SslHandler sslHandler, final @NotNull SslContext sslContext) {
         super((input, promise) -> {
             //This could be used to return a different SslContext depending on the provided hostname
             //For now the same SslContext is returned independent of the provided hostname
+
+            log.info("SSLContext with input {}, cipherSuites {} and attributes {}", input, sslContext.cipherSuites(), sslContext.attributes());
             promise.setSuccess(sslContext);
             return promise;
         });
@@ -47,10 +54,16 @@ public class SslSniHandler extends SniHandler {
     }
 
     @Override
+    protected Future<SslContext> lookup(ChannelHandlerContext ctx, String hostname) throws Exception {
+        log.info("lookup ChannelHandlerContext ctx: {} hostname: {}", ctx, hostname);
+        return mapping.map(hostname, ctx.executor().<SslContext>newPromise());
+    }
+
+    @Override
     protected void replaceHandler(
             final @NotNull ChannelHandlerContext ctx,
             final @Nullable String hostname,
-            final @NotNull SslContext sslContext) throws Exception {
+            final @NotNull SslContext sslContext) {
 
         if (hostname != null) {
             final ClientConnectionContext clientConnectionContext = ClientConnectionContext.of(ctx.channel());
@@ -64,7 +77,12 @@ public class SslSniHandler extends SniHandler {
 
         SslHandler sslHandlerInstance = null;
         try {
-            sslHandlerInstance = sslHandler;
+            final int port = ClientConnectionContext.of(ctx.channel()).getConnectedListener().getPort();
+            log.info("Replace ssl handler for hostname: {} and port: {}", hostname, port);
+            if (!aliasSslHandlerMap.containsKey(hostname)) {
+                aliasSslHandlerMap.put(hostname, sslContext.newHandler(ctx.alloc(), hostname, port));
+            }
+            sslHandlerInstance = aliasSslHandlerMap.get(hostname);
             ctx.pipeline().replace(this, SSL_HANDLER, sslHandlerInstance);
             sslHandlerInstance = null;
         } catch (final NoSuchElementException ignored) {
