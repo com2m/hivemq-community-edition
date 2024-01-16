@@ -17,72 +17,96 @@ package com.hivemq.diagnostic;
 
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
+import com.hivemq.common.shutdown.HiveMQShutdownHook;
+import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.configuration.info.SystemInformation;
 import com.hivemq.diagnostic.data.DiagnosticData;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
+import com.hivemq.extension.sdk.api.annotations.Nullable;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.contrib.java.lang.system.RestoreSystemProperties;
 import org.junit.rules.TemporaryFolder;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.mockito.ArgumentCaptor;
 
 import java.io.File;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class DiagnosticModeTest {
 
-    private AutoCloseable closeableMock;
-
     @Rule
-    public TemporaryFolder temporaryFolder = new TemporaryFolder();
+    public final @NotNull TemporaryFolder temporaryFolder = new TemporaryFolder();
 
-    @Rule
-    public final RestoreSystemProperties restoreSystemProperties = new RestoreSystemProperties();
+    private final @NotNull DiagnosticData diagnosticData = mock(DiagnosticData.class);
 
-    @Mock
-    private DiagnosticData diagnosticData;
+    private final @NotNull SystemInformation systemInformation = mock(SystemInformation.class);
 
-    @Mock
-    private SystemInformation systemInformation;
+    private final @NotNull ShutdownHooks shutdownHooks = mock(ShutdownHooks.class);
 
-    private File hivemqHomeFolder;
+    private final @NotNull ScheduledExecutorService executor = mock(ScheduledExecutorService.class);
 
-    private MetricRegistry metricRegistry;
+    private @NotNull File hivemqHomeFolder;
 
-    private DiagnosticMode diagnosticMode;
+    private @NotNull MetricRegistry metricRegistry;
+
+    private @NotNull DiagnosticMode diagnosticMode;
+
+    private @Nullable HiveMQShutdownHook shutdownHook;
 
     @Before
     public void setUp() throws Exception {
-        closeableMock = MockitoAnnotations.openMocks(this);
         hivemqHomeFolder = temporaryFolder.newFolder();
 
         when(diagnosticData.get()).thenReturn("value");
         when(systemInformation.getLogFolder()).thenReturn(temporaryFolder.newFolder());
         when(systemInformation.getHiveMQHomeFolder()).thenReturn(hivemqHomeFolder);
 
+        when(executor.scheduleWithFixedDelay(any(), anyLong(), anyLong(), any())).thenAnswer(invocation -> {
+            assertTrue(invocation.getArgument(0) instanceof Runnable);
+            final Runnable runnable = invocation.getArgument(0);
+            runnable.run();
+            return mock(ScheduledFuture.class);
+        });
+        when(executor.awaitTermination(anyLong(), any())).thenReturn(true);
+
         metricRegistry = new MetricRegistry();
-        System.setProperty("hivemq.home", hivemqHomeFolder.getAbsolutePath());
+
+        diagnosticMode = new DiagnosticMode(diagnosticData, systemInformation, metricRegistry, shutdownHooks, executor);
     }
 
     @After
-    public void tearDown() throws Exception {
-        if (diagnosticMode != null) {
-            diagnosticMode.stop();
+    public void tearDown() {
+        if (shutdownHook != null) {
+            shutdownHook.run();
+            verify(executor).shutdown();
         }
-        closeableMock.close();
+    }
+
+    private void captureShutdownHook() {
+        final ArgumentCaptor<HiveMQShutdownHook> stopShutdownHookCaptor =
+                ArgumentCaptor.forClass(HiveMQShutdownHook.class);
+        verify(shutdownHooks).add(stopShutdownHookCaptor.capture());
+        shutdownHook = stopShutdownHookCaptor.getValue();
     }
 
     @Test(timeout = 5000)
     public void test_metric_logging() throws Exception {
-        diagnosticMode = new DiagnosticMode(diagnosticData, systemInformation, metricRegistry);
         diagnosticMode.init();
+        captureShutdownHook();
         final File diagnosticsFolder = new File(hivemqHomeFolder, DiagnosticMode.FILE_NAME_DIAGNOSTICS_FOLDER);
         assertTrue(diagnosticsFolder.isDirectory());
 
@@ -99,8 +123,8 @@ public class DiagnosticModeTest {
 
     @Test
     public void test_diagnostic_mode_creates_files() throws Exception {
-        diagnosticMode = new DiagnosticMode(diagnosticData, systemInformation, metricRegistry);
         diagnosticMode.init();
+        captureShutdownHook();
 
         final File diagnosticsFolder = new File(hivemqHomeFolder, DiagnosticMode.FILE_NAME_DIAGNOSTICS_FOLDER);
         assertTrue(diagnosticsFolder.isDirectory());
@@ -121,19 +145,19 @@ public class DiagnosticModeTest {
         assertTrue(diagnosticsFolder.createNewFile());
         assertTrue(diagnosticsFolder.isFile());
 
-        diagnosticMode = new DiagnosticMode(diagnosticData, systemInformation, metricRegistry);
         diagnosticMode.init();
+        captureShutdownHook();
 
         //We're making sure that the file was deleted and a folder is now there instead
         assertTrue(diagnosticsFolder.isDirectory());
     }
 
     @Test
-    public void test_can_not_create_diagnostic_folder() throws Exception {
+    public void test_can_not_create_diagnostic_folder() {
         hivemqHomeFolder.setWritable(false);
 
-        diagnosticMode = new DiagnosticMode(diagnosticData, systemInformation, metricRegistry);
         diagnosticMode.init();
+        // Expect init to have failed and logged an error message. No need to get the shutdownHook.
 
         //No Exception, this is good!
         assertTrue(hivemqHomeFolder.listFiles().length == 0);
@@ -146,8 +170,8 @@ public class DiagnosticModeTest {
         assertTrue(diagnosticsFolder.createNewFile());
         hivemqHomeFolder.setWritable(false);
 
-        diagnosticMode = new DiagnosticMode(diagnosticData, systemInformation, metricRegistry);
         diagnosticMode.init();
+        // Expect init to have failed and logged an error message. No need to get the shutdownHook.
 
         //No Exception, this is good!
         assertNull(diagnosticsFolder.listFiles());
@@ -163,8 +187,8 @@ public class DiagnosticModeTest {
         final File migrationLogFile = new File(logFolder, DiagnosticMode.FILE_NAME_MIGRATION_LOG);
         assertTrue(migrationLogFile.createNewFile());
 
-        diagnosticMode = new DiagnosticMode(diagnosticData, systemInformation, metricRegistry);
         diagnosticMode.init();
+        // Expect init to have failed and logged an error message. No need to get the shutdownHook.
 
         final File diagnosticsFolder = new File(hivemqHomeFolder, DiagnosticMode.FILE_NAME_DIAGNOSTICS_FOLDER);
         final File file = new File(diagnosticsFolder, DiagnosticMode.FILE_NAME_MIGRATION_LOG);

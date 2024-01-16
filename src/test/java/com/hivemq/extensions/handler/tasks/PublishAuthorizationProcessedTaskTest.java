@@ -17,6 +17,7 @@
 package com.hivemq.extensions.handler.tasks;
 
 import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.packets.disconnect.DisconnectReasonCode;
@@ -31,18 +32,20 @@ import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.publish.PUBLISH;
 import com.hivemq.mqtt.message.reason.Mqtt5DisconnectReasonCode;
-import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
+import util.DummyClientConnection;
 import util.DummyHandler;
 import util.TestMessageUtil;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
@@ -61,8 +64,8 @@ public class PublishAuthorizationProcessedTaskTest {
         incomingPublishService = mock(IncomingPublishService.class);
 
         channel = new EmbeddedChannel(new DummyHandler());
-        clientConnection = new ClientConnection(channel, mock(PublishFlushHandler.class));
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        clientConnection = new DummyClientConnection(channel, mock(PublishFlushHandler.class));
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(clientConnection);
         final ChannelHandlerContext ctx = channel.pipeline().context(DummyHandler.class);
         final PUBLISH publish = TestMessageUtil.createMqtt5Publish("topic", QoS.AT_LEAST_ONCE);
         task = new PublishAuthorizationProcessedTask(publish, ctx, mqtt5ServerDisconnector, incomingPublishService);

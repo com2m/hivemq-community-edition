@@ -26,15 +26,17 @@ import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.configuration.service.PersistenceConfigurationService;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.topic.tree.TopicTreeStartup;
-import com.hivemq.persistence.*;
+import com.hivemq.persistence.InMemorySingleWriter;
+import com.hivemq.persistence.PersistenceShutdownHookInstaller;
+import com.hivemq.persistence.ScheduledCleanUpService;
+import com.hivemq.persistence.SingleWriterService;
+import com.hivemq.persistence.SingleWriterServiceImpl;
 import com.hivemq.persistence.ioc.annotation.PayloadPersistence;
 import com.hivemq.persistence.ioc.annotation.Persistence;
 import com.hivemq.persistence.ioc.provider.local.PayloadPersistenceScheduledExecutorProvider;
 import com.hivemq.persistence.ioc.provider.local.PersistenceExecutorProvider;
 import com.hivemq.persistence.ioc.provider.local.PersistenceScheduledExecutorProvider;
-import com.hivemq.persistence.util.AbstractFutureUtils;
 import com.hivemq.persistence.util.FutureUtils;
-import com.hivemq.persistence.util.FutureUtilsImpl;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
@@ -60,7 +62,8 @@ public class PersistenceModule extends SingletonModule<Class<PersistenceModule>>
 
         install(new LocalPersistenceModule(persistenceInjector, persistenceConfigurationService));
 
-        if ((persistenceConfigurationService.getMode() == PersistenceConfigurationService.PersistenceMode.IN_MEMORY) && InternalConfigurations.IN_MEMORY_SINGLE_WRITER.get()) {
+        if ((persistenceConfigurationService.getMode() == PersistenceConfigurationService.PersistenceMode.IN_MEMORY) &&
+                InternalConfigurations.IN_MEMORY_SINGLE_WRITER.get()) {
             bind(SingleWriterService.class).to(InMemorySingleWriter.class);
         } else {
             bind(SingleWriterService.class).to(SingleWriterServiceImpl.class);
@@ -90,9 +93,8 @@ public class PersistenceModule extends SingletonModule<Class<PersistenceModule>>
 
         bind(TopicTreeStartup.class).asEagerSingleton();
 
-        bind(CleanUpService.class).asEagerSingleton();
+        bind(ScheduledCleanUpService.class).asEagerSingleton();
 
-        bind(AbstractFutureUtils.class).to(FutureUtilsImpl.class).asEagerSingleton();
         requestStaticInjection(FutureUtils.class);
     }
 

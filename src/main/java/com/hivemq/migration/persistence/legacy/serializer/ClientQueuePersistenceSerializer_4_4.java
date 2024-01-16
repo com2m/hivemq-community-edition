@@ -28,7 +28,6 @@ import com.hivemq.mqtt.message.publish.PUBLISH;
 import com.hivemq.mqtt.message.publish.PUBLISHFactory;
 import com.hivemq.mqtt.message.pubrel.PUBREL;
 import com.hivemq.persistence.local.xodus.XodusUtils;
-import com.hivemq.persistence.payload.PublishPayloadPersistence;
 import com.hivemq.util.Bytes;
 import jetbrains.exodus.ByteIterable;
 import org.slf4j.Logger;
@@ -39,10 +38,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import static com.hivemq.persistence.clientqueue.ClientQueuePersistenceImpl.Key;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-/**
- * @author Lukas Brandl
- * @author Silvio Giebl
- */
 public class ClientQueuePersistenceSerializer_4_4 {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClientQueuePersistenceSerializer_4_4.class);
@@ -69,13 +64,6 @@ public class ClientQueuePersistenceSerializer_4_4 {
     // The messages must preserve the order in which they are added to the persistence
     // ID's < Long.MAX_VALUE / 2 are reserved for messages that should be polled with priority
     public static final AtomicLong NEXT_PUBLISH_NUMBER = new AtomicLong(Long.MAX_VALUE / 2);
-
-    @NotNull
-    private final PublishPayloadPersistence payloadPersistence;
-
-    public ClientQueuePersistenceSerializer_4_4(@NotNull final PublishPayloadPersistence payloadPersistence) {
-        this.payloadPersistence = payloadPersistence;
-    }
 
     // ********** Key **********
 
@@ -179,7 +167,7 @@ public class ClientQueuePersistenceSerializer_4_4 {
             final PUBREL pubrel = new PUBREL(packetId);
             if (serializedValue.getLength() >= Short.BYTES + 1 + Long.BYTES * 2) {
                 final long expiry = Bytes.readLong(bytes, Short.BYTES + 1);
-                pubrel.setExpiryInterval(expiry);
+                pubrel.setMessageExpiryInterval(expiry);
                 final long timestamp = Bytes.readLong(bytes, Short.BYTES + 1 + Long.BYTES);
                 pubrel.setPublishTimestamp(timestamp);
             }
@@ -198,7 +186,11 @@ public class ClientQueuePersistenceSerializer_4_4 {
     }
 
     @NotNull
-    private byte[] createPubrelBytes(final int packetId, final boolean retained, @Nullable final Long expiry, @Nullable final Long publishTimestamp) {
+    private byte[] createPubrelBytes(
+            final int packetId,
+            final boolean retained,
+            @Nullable final Long expiry,
+            @Nullable final Long publishTimestamp) {
         final byte[] result;
         if (expiry != null && publishTimestamp != null) {
             result = new byte[Short.BYTES + 1 + Long.BYTES * 2];
@@ -227,32 +219,46 @@ public class ClientQueuePersistenceSerializer_4_4 {
 
         final byte[] topic = message.getTopic().getBytes(UTF_8);
         final byte[] hivemqId = message.getHivemqId().getBytes(UTF_8);
-        final byte[] responseTopic = message.getResponseTopic() == null ? null : message.getResponseTopic().getBytes(UTF_8);
+        final byte[] responseTopic =
+                message.getResponseTopic() == null ? null : message.getResponseTopic().getBytes(UTF_8);
         final byte[] contentType = message.getContentType() == null ? null : message.getContentType().getBytes(UTF_8);
         final byte[] correlationData = message.getCorrelationData();
         final ImmutableIntArray subscriptionIdentifiers = message.getSubscriptionIdentifiers();
         final int subscriptionIdentifierLength = subscriptionIdentifiers == null ? 0 : subscriptionIdentifiers.length();
-        final int payloadFormatIndicator = message.getPayloadFormatIndicator() != null ? message.getPayloadFormatIndicator().getCode() : -1;
+        final int payloadFormatIndicator =
+                message.getPayloadFormatIndicator() != null ? message.getPayloadFormatIndicator().getCode() : -1;
         final Mqtt5UserProperties userProperties = message.getUserProperties();
 
-        final byte[] result = new byte[
-                Short.BYTES + // packet id
-                        1 + // PUBLISH_BIT, dup, retain, qos
-                        1 + // present flags
-                        XodusUtils.shortLengthArraySize(topic) + // topic
-                        Long.BYTES + // timestamp
-                        Long.BYTES + // publish id
-                        XodusUtils.shortLengthArraySize(hivemqId) + // hivemq id
-                        Long.BYTES + // payload id
-                        Long.BYTES + // message expiry
-                        (responseTopic == null ? 0 : XodusUtils.shortLengthArraySize(responseTopic)) + // response topic
-                        (contentType == null ? 0 : XodusUtils.shortLengthArraySize(contentType)) + // content type
-                        (correlationData == null ? 0 : XodusUtils.shortLengthArraySize(correlationData)) + // correlation data
-                        (subscriptionIdentifiers == null ? 0 : Integer.BYTES + subscriptionIdentifierLength * Integer.BYTES) + // subscription identifiers
+        final byte[] result = new byte[Short.BYTES +
+                // packet id
+                1 +
+                // PUBLISH_BIT, dup, retain, qos
+                1 +
+                // present flags
+                XodusUtils.shortLengthArraySize(topic) +
+                // topic
+                Long.BYTES +
+                // timestamp
+                Long.BYTES +
+                // publish id
+                XodusUtils.shortLengthArraySize(hivemqId) +
+                // hivemq id
+                Long.BYTES +
+                // payload id
+                Long.BYTES +
+                // message expiry
+                (responseTopic == null ? 0 : XodusUtils.shortLengthArraySize(responseTopic)) +
+                // response topic
+                (contentType == null ? 0 : XodusUtils.shortLengthArraySize(contentType)) +
+                // content type
+                (correlationData == null ? 0 : XodusUtils.shortLengthArraySize(correlationData)) +
+                // correlation data
+                (subscriptionIdentifiers == null ? 0 : Integer.BYTES + subscriptionIdentifierLength * Integer.BYTES) +
+                // subscription identifiers
 
-                        1 + // payload format indicator
-                        (userProperties.asList().size() == 0 ? 0 : PropertiesSerializationUtil.encodedSize(userProperties))
-                ];
+                1 +
+                // payload format indicator
+                (userProperties.asList().size() == 0 ? 0 : PropertiesSerializationUtil.encodedSize(userProperties))];
 
         int cursor = 0;
 
@@ -341,11 +347,15 @@ public class ClientQueuePersistenceSerializer_4_4 {
         builder.withRetain((serialized[cursor] & RETAINED_BIT) == RETAINED_BIT);
         cursor += 1;
 
-        final boolean responseTopicPresent = (serialized[cursor] & RESPONSE_TOPIC_PRESENT_BIT) == RESPONSE_TOPIC_PRESENT_BIT;
+        final boolean responseTopicPresent =
+                (serialized[cursor] & RESPONSE_TOPIC_PRESENT_BIT) == RESPONSE_TOPIC_PRESENT_BIT;
         final boolean contentTypePresent = (serialized[cursor] & CONTENT_TYPE_PRESENT_BIT) == CONTENT_TYPE_PRESENT_BIT;
-        final boolean correlationDataPresent = (serialized[cursor] & CORRELATION_DATA_PRESENT_BIT) == CORRELATION_DATA_PRESENT_BIT;
-        final boolean subscriptionIndetifiersPresent = (serialized[cursor] & SUBSCRIPTION_IDENTIFIERS_PRESENT_BIT) == SUBSCRIPTION_IDENTIFIERS_PRESENT_BIT;
-        final boolean userPropertiesPresent = (serialized[cursor] & USER_PROPERTIES_PRESENT_BIT) == USER_PROPERTIES_PRESENT_BIT;
+        final boolean correlationDataPresent =
+                (serialized[cursor] & CORRELATION_DATA_PRESENT_BIT) == CORRELATION_DATA_PRESENT_BIT;
+        final boolean subscriptionIndetifiersPresent =
+                (serialized[cursor] & SUBSCRIPTION_IDENTIFIERS_PRESENT_BIT) == SUBSCRIPTION_IDENTIFIERS_PRESENT_BIT;
+        final boolean userPropertiesPresent =
+                (serialized[cursor] & USER_PROPERTIES_PRESENT_BIT) == USER_PROPERTIES_PRESENT_BIT;
         cursor += 1;
 
         final int topicLength = Bytes.readUnsignedShort(serialized, cursor);
@@ -418,6 +428,6 @@ public class ClientQueuePersistenceSerializer_4_4 {
             builder.withUserProperties(PropertiesSerializationUtil.read(serialized, cursor));
         }
 
-        return new PUBLISH_4_4(builder.withPersistence(payloadPersistence).build(), payloadId);
+        return new PUBLISH_4_4(builder.build(), payloadId);
     }
 }

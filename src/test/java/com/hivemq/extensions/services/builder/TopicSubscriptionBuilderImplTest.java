@@ -27,31 +27,22 @@ import com.hivemq.extensions.packets.subscribe.SubscriptionImpl;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.mqtt5.Mqtt5RetainHandling;
 import com.hivemq.mqtt.message.subscribe.Topic;
-import com.hivemq.persistence.clientsession.SharedSubscriptionService;
-import com.hivemq.persistence.clientsession.SharedSubscriptionServiceImpl.SharedSubscription;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import util.TestConfigurationBootstrap;
 
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.when;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
-/**
- * @author Florian Limpöck
- * @since 4.0.0
- */
 @SuppressWarnings("NullabilityAnnotations")
 public class TopicSubscriptionBuilderImplTest {
 
     private FullConfigurationService fullConfigurationService;
 
     private TopicSubscriptionBuilder topicSubscriptionBuilder;
-
-    @Mock
-    private SharedSubscriptionService sharedSubscriptionService;
 
     @Before
     public void setUp() throws Exception {
@@ -65,12 +56,15 @@ public class TopicSubscriptionBuilderImplTest {
     @Test
     public void test_from_subscription() {
 
-        final SubscriptionImpl subscription = new SubscriptionImpl(
-                new Topic("topic", QoS.AT_LEAST_ONCE, false, true, Mqtt5RetainHandling.DO_NOT_SEND, null));
+        final SubscriptionImpl subscription = new SubscriptionImpl(new Topic("topic",
+                QoS.AT_LEAST_ONCE,
+                false,
+                true,
+                Mqtt5RetainHandling.DO_NOT_SEND,
+                null));
 
-        final TopicSubscription topic = topicSubscriptionBuilder.fromSubscription(subscription)
-                .subscriptionIdentifier(1)
-                .build();
+        final TopicSubscription topic =
+                topicSubscriptionBuilder.fromSubscription(subscription).subscriptionIdentifier(1).build();
 
         assertEquals("topic", topic.getTopicFilter());
         assertEquals(Qos.AT_LEAST_ONCE, topic.getQos());
@@ -281,8 +275,6 @@ public class TopicSubscriptionBuilderImplTest {
 
     @Test(expected = IllegalArgumentException.class)
     public void test_with_topic_contains_empty_shared_sub() {
-
-        when(sharedSubscriptionService.checkForSharedSubscription("$share/group/")).thenReturn(new SharedSubscription("", "group"));
         topicSubscriptionBuilder.topicFilter("$share/group/").build();
     }
 
@@ -311,8 +303,7 @@ public class TopicSubscriptionBuilderImplTest {
     @Test(expected = NullPointerException.class)
     public void test_without_topic() {
 
-        topicSubscriptionBuilder
-                .qos(Qos.AT_LEAST_ONCE)
+        topicSubscriptionBuilder.qos(Qos.AT_LEAST_ONCE)
                 .retainAsPublished(true)
                 .noLocal(false)
                 .subscriptionIdentifier(1)

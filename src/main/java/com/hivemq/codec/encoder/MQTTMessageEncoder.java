@@ -17,11 +17,10 @@
 package com.hivemq.codec.encoder;
 
 import com.google.inject.Inject;
-import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.metrics.handler.GlobalMQTTMessageCounter;
 import com.hivemq.mqtt.message.Message;
-import com.hivemq.util.ChannelAttributes;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -47,16 +46,17 @@ public class MQTTMessageEncoder extends MessageToByteEncoder<Message> {
     @Override
     protected void encode(
             final @NotNull ChannelHandlerContext ctx, final @NotNull Message msg, final @NotNull ByteBuf out) {
-        final ClientConnection clientConnection = ctx.channel().attr(ChannelAttributes.CLIENT_CONNECTION).get();
+        final ClientConnectionContext clientConnectionContext = ClientConnectionContext.of(ctx.channel());
         globalMQTTMessageCounter.countOutbound(msg);
-        encoderFactory.encode(clientConnection, msg, out);
+        encoderFactory.encode(clientConnectionContext, msg, out);
         globalMQTTMessageCounter.countOutboundTraffic(out.readableBytes());
     }
 
     @Override
     protected @NotNull ByteBuf allocateBuffer(
             final @NotNull ChannelHandlerContext ctx, final @NotNull Message msg, final boolean preferDirect) {
-        final ClientConnection clientConnection = ctx.channel().attr(ChannelAttributes.CLIENT_CONNECTION).get();
-        return encoderFactory.allocateBuffer(clientConnection, msg, preferDirect);
+
+        final ClientConnectionContext clientConnectionContext = ClientConnectionContext.of(ctx.channel());
+        return encoderFactory.allocateBuffer(clientConnectionContext, msg, preferDirect);
     }
 }

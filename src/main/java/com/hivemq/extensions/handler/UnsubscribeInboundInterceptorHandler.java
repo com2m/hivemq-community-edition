@@ -38,7 +38,6 @@ import com.hivemq.extensions.packets.unsubscribe.UnsubscribePacketImpl;
 import com.hivemq.mqtt.message.reason.Mqtt5UnsubAckReasonCode;
 import com.hivemq.mqtt.message.unsuback.UNSUBACK;
 import com.hivemq.mqtt.message.unsubscribe.UNSUBSCRIBE;
-import com.hivemq.util.ChannelAttributes;
 import com.hivemq.util.Exceptions;
 import com.hivemq.util.ReasonStrings;
 import io.netty.channel.Channel;
@@ -80,11 +79,10 @@ public class UnsubscribeInboundInterceptorHandler {
 
 
     public void handleInboundUnsubscribe(
-            final @NotNull ChannelHandlerContext ctx,
-            final @NotNull UNSUBSCRIBE unsubscribe) {
+            final @NotNull ChannelHandlerContext ctx, final @NotNull UNSUBSCRIBE unsubscribe) {
 
         final Channel channel = ctx.channel();
-        final ClientConnection clientConnection = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get();
+        final ClientConnection clientConnection = ClientConnection.of(channel);
         final String clientId = clientConnection.getClientId();
         if (clientId == null) {
             return;
@@ -119,7 +117,8 @@ public class UnsubscribeInboundInterceptorHandler {
 
         for (final UnsubscribeInboundInterceptor interceptor : interceptors) {
 
-            final HiveMQExtension extension = hiveMQExtensions.getExtensionForClassloader(interceptor.getClass().getClassLoader());
+            final HiveMQExtension extension =
+                    hiveMQExtensions.getExtensionForClassloader(interceptor.getClass().getClassLoader());
             if (extension == null) {
                 context.finishInterceptor();
                 continue;
@@ -197,10 +196,10 @@ public class UnsubscribeInboundInterceptorHandler {
             for (int i = 0; i < size; i++) {
                 reasonCodesBuilder.add(Mqtt5UnsubAckReasonCode.UNSPECIFIED_ERROR);
             }
-            ctx.channel().writeAndFlush(new UNSUBACK(
-                    output.getUnsubscribePacket().getPacketIdentifier(),
-                    reasonCodesBuilder.build(),
-                    ReasonStrings.UNSUBACK_EXTENSION_PREVENTED));
+            ctx.channel()
+                    .writeAndFlush(new UNSUBACK(output.getUnsubscribePacket().getPacketIdentifier(),
+                            reasonCodesBuilder.build(),
+                            ReasonStrings.UNSUBACK_EXTENSION_PREVENTED));
         }
     }
 
@@ -229,7 +228,9 @@ public class UnsubscribeInboundInterceptorHandler {
             } catch (final Throwable e) {
                 log.warn(
                         "Uncaught exception was thrown from extension with id \"{}\" on inbound UNSUBSCRIBE interception. " +
-                                "Extensions are responsible for their own exception handling.", extensionId, e);
+                                "Extensions are responsible for their own exception handling.",
+                        extensionId,
+                        e);
                 output.preventDelivery();
                 Exceptions.rethrowError(e);
             }

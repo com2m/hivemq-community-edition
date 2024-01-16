@@ -38,7 +38,12 @@ import com.hivemq.extension.sdk.api.services.subscription.SubscriptionStore;
 import com.hivemq.extensions.ExtensionBootstrap;
 import com.hivemq.extensions.HiveMQExtensions;
 import com.hivemq.extensions.ioc.annotation.PluginStartStop;
-import com.hivemq.extensions.loader.*;
+import com.hivemq.extensions.loader.ExtensionBuilderDependencies;
+import com.hivemq.extensions.loader.ExtensionLifecycleHandler;
+import com.hivemq.extensions.loader.ExtensionLoader;
+import com.hivemq.extensions.loader.ExtensionServicesDependencies;
+import com.hivemq.extensions.loader.ExtensionStaticInitializer;
+import com.hivemq.extensions.loader.HiveMQExtensionFactory;
 import com.hivemq.extensions.services.auth.Authenticators;
 import com.hivemq.limitation.TopicAliasLimiter;
 import com.hivemq.metrics.MetricsHolder;
@@ -51,7 +56,6 @@ import com.hivemq.mqtt.services.InternalPublishService;
 import com.hivemq.mqtt.services.PublishDistributor;
 import com.hivemq.mqtt.services.PublishPollService;
 import com.hivemq.mqtt.topic.tree.LocalTopicTree;
-import com.hivemq.mqtt.topic.tree.TopicTreeImpl;
 import com.hivemq.persistence.clientqueue.ClientQueuePersistence;
 import com.hivemq.persistence.clientsession.ClientSessionPersistence;
 import com.hivemq.persistence.clientsession.ClientSessionSubscriptionPersistence;
@@ -69,7 +73,9 @@ import util.TestConfigurationBootstrap;
 
 import java.util.concurrent.ExecutorService;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertSame;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -105,7 +111,7 @@ public class ExtensionModuleTest {
                 bind(PublishPayloadPersistence.class).toInstance(mock(PublishPayloadPersistence.class));
                 bind(ClientSessionPersistence.class).toInstance(mock(ClientSessionPersistence.class));
                 bind(PublishDistributor.class).toInstance(mock(PublishDistributor.class));
-                bind(LocalTopicTree.class).toInstance(mock(TopicTreeImpl.class));
+                bind(LocalTopicTree.class).toInstance(mock(LocalTopicTree.class));
                 bind(IncomingPublishService.class).toInstance(mock(IncomingPublishService.class));
                 bind(RetainedMessagePersistence.class).toInstance(mock(RetainedMessagePersistence.class));
                 bind(ListeningExecutorService.class).annotatedWith(Persistence.class)

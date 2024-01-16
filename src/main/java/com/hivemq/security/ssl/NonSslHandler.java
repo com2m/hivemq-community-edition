@@ -19,11 +19,15 @@ import com.google.inject.Inject;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnector;
 import io.netty.buffer.ByteBuf;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ByteToMessageDecoder;
 import io.netty.handler.ssl.SslHandler;
 
 import java.util.List;
+
+import static com.hivemq.logging.LoggingUtils.appendListenerToMessage;
+
 
 /**
  * @author Christoph Schäbel
@@ -38,7 +42,9 @@ public class NonSslHandler extends ByteToMessageDecoder {
     }
 
     @Override
-    protected void decode(final @NotNull ChannelHandlerContext ctx, final @NotNull ByteBuf in, final @NotNull List<Object> out) throws Exception {
+    protected void decode(
+            final @NotNull ChannelHandlerContext ctx, final @NotNull ByteBuf in, final @NotNull List<Object> out)
+            throws Exception {
 
         //Needs minimum 5 bytes to be able to tell what it is.
         if (in.readableBytes() < 11) {
@@ -56,9 +62,11 @@ public class NonSslHandler extends ByteToMessageDecoder {
                 in.getUnsignedByte(10) == 'T';
 
         if (encrypted && !(isConnectPacket && isMqttPacket)) {
-            mqttServerDisconnector.logAndClose(ctx.channel(),
+            final Channel channel = ctx.channel();
+            final String eventLogMessage = appendListenerToMessage(channel, "SSL connection to non-SSL listener");
+            mqttServerDisconnector.logAndClose(channel,
                     "SSL connection on non-SSL listener, dropping connection for client with IP '{}'",
-                    "SSL connection to non-SSL listener");
+                    eventLogMessage);
             in.clear();
             return;
         }

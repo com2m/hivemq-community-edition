@@ -17,6 +17,7 @@ package com.hivemq.persistence;
 
 import com.google.common.base.Preconditions;
 import com.hivemq.codec.encoder.mqtt5.Mqtt5PayloadFormatIndicator;
+import com.hivemq.configuration.entity.mqtt.MqttConfigurationDefaults;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.annotations.Nullable;
 import com.hivemq.mqtt.message.QoS;
@@ -41,7 +42,7 @@ public class RetainedMessage {
 
     private long publishId;
 
-    private final long messageExpiryInterval;
+    protected final long messageExpiryInterval;
 
     private final @NotNull Mqtt5UserProperties userProperties;
 
@@ -62,8 +63,7 @@ public class RetainedMessage {
             @NotNull final QoS qos,
             final long publishId,
             final long messageExpiryInterval) {
-        this(
-                message,
+        this(message,
                 qos,
                 publishId,
                 messageExpiryInterval,
@@ -100,8 +100,7 @@ public class RetainedMessage {
     }
 
     public RetainedMessage(
-            @NotNull final PUBLISH publish,
-            final long messageExpiryInterval) {
+            @NotNull final PUBLISH publish, final long messageExpiryInterval) {
         this.message = publish.getPayload();
         this.qos = publish.getQoS();
         this.publishId = publish.getPublishId();
@@ -115,8 +114,7 @@ public class RetainedMessage {
     }
 
     public RetainedMessage copyWithoutPayload() {
-        return new RetainedMessage(
-                null,
+        return new RetainedMessage(null,
                 qos,
                 publishId,
                 messageExpiryInterval,
@@ -232,5 +230,22 @@ public class RetainedMessage {
         int result = Objects.hash(qos, publishId, messageExpiryInterval, userProperties);
         result = 31 * result + Arrays.hashCode(message);
         return result;
+    }
+
+    public long getRemainingExpiry() {
+        if (isExpiryDisabled()) {
+            return PUBLISH.MESSAGE_EXPIRY_INTERVAL_NOT_SET;
+        }
+        final long waitingSeconds = (System.currentTimeMillis() - timestamp) / 1000;
+        return Math.max(0, messageExpiryInterval - waitingSeconds);
+    }
+
+    public boolean isExpiryDisabled() {
+        return (messageExpiryInterval == MqttConfigurationDefaults.TTL_DISABLED) ||
+                (messageExpiryInterval == PUBLISH.MESSAGE_EXPIRY_INTERVAL_NOT_SET);
+    }
+
+    public boolean hasExpired() {
+        return getRemainingExpiry() == 0;
     }
 }

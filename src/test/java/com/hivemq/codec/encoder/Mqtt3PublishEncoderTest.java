@@ -16,16 +16,17 @@
 package com.hivemq.codec.encoder;
 
 import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.publish.PUBLISH;
 import com.hivemq.mqtt.message.publish.PUBLISHFactory;
-import com.hivemq.util.ChannelAttributes;
 import com.hivemq.util.Strings;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.Before;
 import org.junit.Test;
+import util.DummyClientConnection;
 import util.encoder.TestMessageEncoder;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -41,8 +42,8 @@ public class Mqtt3PublishEncoderTest {
     public void setUp() throws Exception {
         channel = new EmbeddedChannel(new TestMessageEncoder());
         channel.config().setAllocator(new UnpooledByteBufAllocator(false));
-        clientConnection = new ClientConnection(channel, null);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        clientConnection = new DummyClientConnection(channel, null);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(clientConnection);
     }
 
     @Test

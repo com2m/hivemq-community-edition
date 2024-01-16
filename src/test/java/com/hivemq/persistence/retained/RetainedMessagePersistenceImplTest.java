@@ -17,69 +17,59 @@ package com.hivemq.persistence.retained;
 
 import com.google.common.collect.Sets;
 import com.hivemq.extensions.iteration.Chunker;
-import com.hivemq.mqtt.topic.TopicMatcher;
 import com.hivemq.persistence.RetainedMessage;
 import com.hivemq.persistence.SingleWriterService;
 import com.hivemq.persistence.local.xodus.bucket.BucketUtils;
 import com.hivemq.persistence.payload.PublishPayloadPersistence;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import util.InitFutureUtilsExecutorRule;
 import util.TestMessageUtil;
 import util.TestSingleWriterFactory;
 
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
- * @author Florian Limpöck
  * @since 4.1.0
  */
 public class RetainedMessagePersistenceImplTest {
 
-    private AutoCloseable closeableMock;
-
-    @Rule
-    public InitFutureUtilsExecutorRule initFutureUtilsExecutorRule = new InitFutureUtilsExecutorRule();
-
-    @Mock
-    private RetainedMessageLocalPersistence localPersistence;
-
-    @Mock
-    private TopicMatcher topicMatcher;
-
-    @Mock
-    private PublishPayloadPersistence payloadPersistence;
+    private final RetainedMessageLocalPersistence localPersistence = mock(RetainedMessageLocalPersistence.class);
 
     private RetainedMessagePersistenceImpl retainedMessagePersistence;
-
     private RetainedMessage message;
-
     private SingleWriterService singleWriterService;
 
     @Before
     public void setUp() throws Exception {
-        closeableMock = MockitoAnnotations.openMocks(this);
         message = new RetainedMessage(TestMessageUtil.createMqtt3Publish(), 1000);
         singleWriterService = TestSingleWriterFactory.defaultSingleWriter();
-        retainedMessagePersistence =
-                new RetainedMessagePersistenceImpl(localPersistence, topicMatcher, payloadPersistence,
-                        singleWriterService, new Chunker());
+        retainedMessagePersistence = new RetainedMessagePersistenceImpl(localPersistence,
+                singleWriterService,
+                new Chunker());
     }
 
     @After
     public void tearDown() throws Exception {
         retainedMessagePersistence.closeDB();
         singleWriterService.stop();
-        closeableMock.close();
     }
 
     @Test(expected = NullPointerException.class)
@@ -122,28 +112,28 @@ public class RetainedMessagePersistenceImplTest {
     public void test_get_with_wildcards_topic_without_wildcard() throws Throwable {
         try {
             retainedMessagePersistence.getWithWildcards("topic").get();
-        } catch (final InterruptedException |
-                ExecutionException e) {
+        } catch (final InterruptedException | ExecutionException e) {
             throw e.getCause();
         }
     }
 
     @Test
-    public void test_get_success_null() throws ExecutionException, InterruptedException {
+    public void test_get_success_null() throws Exception {
         when(localPersistence.get("topic", BucketUtils.getBucket("topic", 64))).thenReturn(null);
         assertNull(retainedMessagePersistence.get("topic").get());
     }
 
     @Test
-    public void test_get_success_message() throws ExecutionException, InterruptedException {
+    public void test_get_success_message() throws Exception {
         when(localPersistence.get("topic", BucketUtils.getBucket("topic", 64))).thenReturn(message);
         assertEquals(message, retainedMessagePersistence.get("topic").get());
     }
 
     @Test
-    public void test_get_with_wildcards_success() throws ExecutionException, InterruptedException {
-        when(localPersistence.getAllTopics(anyString(), anyInt())).thenReturn(
-                Sets.newHashSet("topic/1", "topic/2", "topic/3"));
+    public void test_get_with_wildcards_success() throws Exception {
+        when(localPersistence.getAllTopics(anyString(), anyInt())).thenReturn(Sets.newHashSet("topic/1",
+                "topic/2",
+                "topic/3"));
         final Set<String> topics = retainedMessagePersistence.getWithWildcards("topic/#").get();
 
         assertTrue(topics.contains("topic/1"));
@@ -205,23 +195,22 @@ public class RetainedMessagePersistenceImplTest {
             throw e.getCause();
         }
         verify(localPersistence).put(eq(message), eq("topic"), anyInt());
-        verify(payloadPersistence).add(any(byte[].class), eq(1L), anyLong());
     }
 
     @Test
-    public void test_cleanup() throws ExecutionException, InterruptedException {
+    public void test_cleanup() throws Exception {
         retainedMessagePersistence.cleanUp(1).get();
         verify(localPersistence).cleanUp(1);
     }
 
     @Test
-    public void test_close() throws ExecutionException, InterruptedException {
+    public void test_close() throws Exception {
         retainedMessagePersistence.closeDB().get();
         verify(localPersistence, times(64)).closeDB(anyInt());
     }
 
     @Test
-    public void test_clear() throws ExecutionException, InterruptedException {
+    public void test_clear() throws Exception {
         retainedMessagePersistence.clear().get();
         verify(localPersistence, times(64)).clear(anyInt());
     }

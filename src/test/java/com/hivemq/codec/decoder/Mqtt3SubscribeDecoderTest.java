@@ -16,10 +16,10 @@
 package com.hivemq.codec.decoder;
 
 import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.mqtt.message.subscribe.SUBSCRIBE;
-import com.hivemq.util.ChannelAttributes;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
@@ -27,9 +27,14 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.MockitoAnnotations;
+import util.DummyClientConnection;
 import util.TestMqttDecoder;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 public class Mqtt3SubscribeDecoderTest {
 
@@ -40,8 +45,8 @@ public class Mqtt3SubscribeDecoderTest {
         MockitoAnnotations.initMocks(this);
 
         channel = new EmbeddedChannel(TestMqttDecoder.create());
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1_1);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(new DummyClientConnection(channel, null));
+        ClientConnection.of(channel).setProtocolVersion(ProtocolVersion.MQTTv3_1_1);
     }
 
     @Test
@@ -287,8 +292,8 @@ public class Mqtt3SubscribeDecoderTest {
     @Test
     public void test_subscribe_invalid_header_mqtt_311() {
 
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1_1);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(new DummyClientConnection(channel, null));
+        ClientConnection.of(channel).setProtocolVersion(ProtocolVersion.MQTTv3_1_1);
         final ByteBuf buf = Unpooled.buffer();
         buf.writeByte(0b1000_0100);
         //Remaining length
@@ -317,8 +322,8 @@ public class Mqtt3SubscribeDecoderTest {
     @Test
     public void test_subscribe_invalid_header_mqtt_31() {
 
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(new DummyClientConnection(channel, null));
+        ClientConnection.of(channel).setProtocolVersion(ProtocolVersion.MQTTv3_1);
 
         final ByteBuf buf = Unpooled.buffer();
         buf.writeByte(0b1000_0100);
@@ -349,8 +354,8 @@ public class Mqtt3SubscribeDecoderTest {
     @Test
     public void test_subscribe_topic_length_max() {
 
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1_1);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(new DummyClientConnection(channel, null));
+        ClientConnection.of(channel).setProtocolVersion(ProtocolVersion.MQTTv3_1_1);
         final String maxTopic1 = RandomStringUtils.randomAlphabetic(65535);
 
         final ByteBuf buf = Unpooled.buffer();

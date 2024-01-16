@@ -18,6 +18,7 @@ package com.hivemq.extensions.handler;
 
 import com.google.common.collect.ImmutableList;
 import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
@@ -39,7 +40,6 @@ import com.hivemq.mqtt.handler.publish.PublishFlushHandler;
 import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.mqtt.message.mqtt5.Mqtt5UserProperties;
 import com.hivemq.mqtt.message.unsubscribe.UNSUBSCRIBE;
-import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.embedded.EmbeddedChannel;
@@ -50,6 +50,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
+import util.DummyClientConnection;
 import util.IsolatedExtensionClassloaderUtil;
 import util.TestConfigurationBootstrap;
 
@@ -57,7 +58,10 @@ import java.util.Collections;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -85,11 +89,11 @@ public class UnsubscribeInboundInterceptorHandlerTest {
         executor.postConstruct();
 
         channel = new EmbeddedChannel();
-        clientConnection = new ClientConnection(channel, mock(PublishFlushHandler.class));
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId("client");
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setRequestResponseInformation(true);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
+        clientConnection = new DummyClientConnection(channel, mock(PublishFlushHandler.class));
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(clientConnection);
+        ClientConnection.of(channel).setClientId("client");
+        ClientConnection.of(channel).setRequestResponseInformation(true);
+        ClientConnection.of(channel).setExtensionClientContext(clientContext);
         when(extension.getId()).thenReturn("extension");
 
         final FullConfigurationService configurationService =
@@ -118,7 +122,7 @@ public class UnsubscribeInboundInterceptorHandlerTest {
 
     @Test(timeout = 5000)
     public void test_client_id_not_set() {
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId(null);
+        ClientConnection.of(channel).setClientId(null);
         channel.writeInbound(testUnsubscribe());
         channel.runPendingTasks();
         assertNull(channel.readInbound());
@@ -128,12 +132,12 @@ public class UnsubscribeInboundInterceptorHandlerTest {
     public void test_simple_intercept() throws Exception {
         final ClientContextImpl clientContext =
                 new ClientContextImpl(extensions, new ModifiableDefaultPermissionsImpl());
-        final UnsubscribeInboundInterceptor interceptor = IsolatedExtensionClassloaderUtil.loadInstance(
-                temporaryFolder.getRoot().toPath(),
-                SimpleUnsubscribeTestInterceptor.class);
+        final UnsubscribeInboundInterceptor interceptor =
+                IsolatedExtensionClassloaderUtil.loadInstance(temporaryFolder.getRoot().toPath(),
+                        SimpleUnsubscribeTestInterceptor.class);
         clientContext.addUnsubscribeInboundInterceptor(interceptor);
 
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
+        ClientConnection.of(channel).setExtensionClientContext(clientContext);
         clientConnection.setProtocolVersion(ProtocolVersion.MQTTv3_1);
 
         when(extensions.getExtensionForClassloader(ArgumentMatchers.any(IsolatedExtensionClassloader.class))).thenReturn(
@@ -154,12 +158,12 @@ public class UnsubscribeInboundInterceptorHandlerTest {
     public void test_modifying_topics() throws Exception {
         final ClientContextImpl clientContext =
                 new ClientContextImpl(extensions, new ModifiableDefaultPermissionsImpl());
-        final UnsubscribeInboundInterceptor interceptor = IsolatedExtensionClassloaderUtil.loadInstance(
-                temporaryFolder.getRoot().toPath(),
-                ModifyUnsubscribeTestInterceptor.class);
+        final UnsubscribeInboundInterceptor interceptor =
+                IsolatedExtensionClassloaderUtil.loadInstance(temporaryFolder.getRoot().toPath(),
+                        ModifyUnsubscribeTestInterceptor.class);
         clientContext.addUnsubscribeInboundInterceptor(interceptor);
 
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setExtensionClientContext(clientContext);
+        ClientConnection.of(channel).setExtensionClientContext(clientContext);
         clientConnection.setProtocolVersion(ProtocolVersion.MQTTv3_1);
 
         when(extensions.getExtensionForClassloader(ArgumentMatchers.any(IsolatedExtensionClassloader.class))).thenReturn(

@@ -16,18 +16,27 @@
 package com.hivemq.codec.decoder;
 
 import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientConnectionContext;
+import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.message.ProtocolVersion;
-import com.hivemq.util.ChannelAttributes;
+import com.hivemq.mqtt.message.connack.CONNACK;
+import com.hivemq.mqtt.message.reason.Mqtt5ConnAckReasonCode;
+import com.hivemq.util.ReasonStrings;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.MockitoAnnotations;
+import util.DummyClientConnection;
+import util.TestConfigurationBootstrap;
 import util.TestMqttDecoder;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 public class MQTTMessageDecoderTest {
 
@@ -38,10 +47,10 @@ public class MQTTMessageDecoderTest {
     public void setUp() throws Exception {
         MockitoAnnotations.initMocks(this);
         channel = new EmbeddedChannel(TestMqttDecoder.create());
-        clientConnection = new ClientConnection(channel, null);
+        clientConnection = new DummyClientConnection(channel, null);
         //setting version to fake "connected" state
         clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(clientConnection);
     }
 
     /* ***********************
@@ -49,7 +58,7 @@ public class MQTTMessageDecoderTest {
      * ***********************/
 
     @Test
-    public void test_reserved_zero_received() {
+    public void decode_whenReceivesReservedZero_thenConnectionIsClosed() {
 
         final ByteBuf buf = Unpooled.buffer();
         buf.writeByte(0b0000_0000);
@@ -62,9 +71,9 @@ public class MQTTMessageDecoderTest {
     }
 
     @Test
-    public void test_reserved_fifteen_received() {
+    public void decode_whenReceivesReservedFifteen_thenConnectionIsClosed() {
 
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1_1);
+        ClientConnection.of(channel).setProtocolVersion(ProtocolVersion.MQTTv3_1_1);
         final ByteBuf buf = Unpooled.buffer();
         buf.writeByte(0b1111_0000);
         buf.writeByte(0b0000_000);
@@ -76,7 +85,7 @@ public class MQTTMessageDecoderTest {
     }
 
     @Test
-    public void test_connack_received() {
+    public void decode_whenReceivesCONNACK_thenConnectionIsClosed() {
 
         //We must not receive CONNACK from clients because only servers must send CONNACKs
         final ByteBuf buf = Unpooled.buffer();
@@ -90,7 +99,7 @@ public class MQTTMessageDecoderTest {
     }
 
     @Test
-    public void test_suback_received() {
+    public void decode_whenReceivesSUBACK_thenConnectionIsClosed() {
 
         //We must not receive a SUBACK from clients because only servers must send SUBACKs
         final ByteBuf buf = Unpooled.buffer();
@@ -104,7 +113,7 @@ public class MQTTMessageDecoderTest {
     }
 
     @Test
-    public void test_unsuback_received() {
+    public void decode_whenReceivesUNSUBACK_thenConnectionIsClosed() {
 
         //We must not receive a UNSUBACK from clients because only servers must send UNSUBACKs
         final ByteBuf buf = Unpooled.buffer();
@@ -118,7 +127,7 @@ public class MQTTMessageDecoderTest {
     }
 
     @Test
-    public void test_pingresp_received_received() {
+    public void decode_whenReceivesPINGRESP_thenConnectionIsClosed() {
 
         //We must not receive a PINGRESP from clients because only servers must send PINGRESPs
         final ByteBuf buf = Unpooled.buffer();
@@ -132,7 +141,7 @@ public class MQTTMessageDecoderTest {
     }
 
     @Test
-    public void test_second_connect_received() {
+    public void decode_whenReceivesSecondCONNECT_thenConnectionIsClosed() {
 
         clientConnection.setProtocolVersion(null);
 
@@ -155,8 +164,7 @@ public class MQTTMessageDecoderTest {
                 0,
                 // payload
                 //   client identifier
-                0, 4, 't', 'e', 's', 't'
-        };
+                0, 4, 't', 'e', 's', 't'};
 
         final ByteBuf buf = Unpooled.buffer();
         buf.writeBytes(connect);
@@ -172,4 +180,168 @@ public class MQTTMessageDecoderTest {
         assertFalse(channel.isOpen());
 
     }
+
+    @Test
+    public void decode_whenReceivesMqtt5CONNECTTooLarge_thenConnectionIsClosedAndCONNACKIsReceived() {
+        final byte[] mqtt5Connect = {
+                // fixed header
+                //   type, reserved
+                0b0001_0000,
+                // remaining length
+                17,
+                // variable header
+                //   protocol name
+                0, 4, 'M', 'Q', 'T', 'T',
+                //   protocol version
+                5,
+                //   connect flags
+                (byte) 0b0000_0000,
+                //   keep alive
+                0, 0,
+                //   properties
+                0,
+                // payload
+                //   client identifier
+                0, 4, 't', 'e', 's', 't'};
+
+        testConnectPacketSizeTooLarge(mqtt5Connect);
+
+        //verify that the client was disconnected
+        assertFalse(channel.isOpen());
+
+        //verify that the client received the proper CONNACK
+        final CONNACK connack = channel.readOutbound();
+        assertEquals(Mqtt5ConnAckReasonCode.PACKET_TOO_LARGE, connack.getReasonCode());
+        assertEquals(ReasonStrings.CONNACK_PACKET_TOO_LARGE, connack.getReasonString());
+    }
+
+    @Test
+    public void decode_whenReceives311CONNECTTooLarge_thenConnectionIsClosedAndCONNACKIsReceived() {
+        final byte[] mqtt311Connect = {
+                // fixed header
+                //   type, reserved
+                0b0001_0000,
+                // remaining length
+                17,
+                // variable header
+                //   protocol name
+                0, 4, 'M', 'Q', 'T', 'T',
+                //   protocol version
+                4,
+                //   connect flags
+                (byte) 0b0000_0000,
+                //   keep alive
+                0, 0,
+                //   properties
+                0,
+                // payload
+                //   client identifier
+                0, 4, 't', 'e', 's', 't'};
+
+        testConnectPacketSizeTooLarge(mqtt311Connect);
+
+        //verify that the client was disconnected
+        assertFalse(channel.isOpen());
+
+        //verify that the client received the proper CONNACK
+        final CONNACK connack = channel.readOutbound();
+        assertEquals(Mqtt5ConnAckReasonCode.NOT_AUTHORIZED, connack.getReasonCode());
+        assertNull(connack.getReasonString());
+    }
+
+    @Test
+    public void decode_whenReceives31CONNECTTooLarge_thenConnectionIsClosedAndCONNACKIsReceived() {
+        final byte[] mqtt31Connect = {
+                // fixed header
+                //   type, reserved
+                0b0001_0000,
+                // remaining length
+                17,
+                // variable header
+                //   protocol name
+                0, 6, 'M', 'Q', 'T', 'T',
+                //   protocol version
+                3, 1,
+                //   connect flags
+                (byte) 0b0000_0000,
+                //   keep alive
+                0, 0,
+                //   properties
+                0,
+                // payload
+                //   client identifier
+                0, 4, 't', 'e', 's', 't'};
+
+        testConnectPacketSizeTooLarge(mqtt31Connect);
+
+        //verify that the client was disconnected
+        assertFalse(channel.isOpen());
+
+        //verify that the client received the proper CONNACK
+        final CONNACK connack = channel.readOutbound();
+        assertEquals(Mqtt5ConnAckReasonCode.NOT_AUTHORIZED, connack.getReasonCode());
+        assertNull(connack.getReasonString());
+    }
+
+    @Test
+    public void decode_whenReceivesMqtt5PUBLISHTooLarge_thenConnectionIsClosed() {
+        testPublishPacketSizeTooLarge(ProtocolVersion.MQTTv5);
+    }
+
+    @Test
+    public void decode_whenReceivesMqtt311PUBLISHTooLarge_thenConnectionIsClosed() {
+        testPublishPacketSizeTooLarge(ProtocolVersion.MQTTv3_1_1);
+    }
+
+    @Test
+    public void decode_whenReceivesMqtt31PUBLISHTooLarge_thenConnectionIsClosed() {
+        testPublishPacketSizeTooLarge(ProtocolVersion.MQTTv3_1);
+    }
+
+    private void testPublishPacketSizeTooLarge(final @NotNull ProtocolVersion protocolVersion) {
+        final FullConfigurationService fullConfig = new TestConfigurationBootstrap().getFullConfigurationService();
+        fullConfig.mqttConfiguration().setMaxPacketSize(10);
+        channel = new EmbeddedChannel(TestMqttDecoder.create(fullConfig));
+        clientConnection = new DummyClientConnection(channel, null);
+        //setting version to fake "connected" state
+        clientConnection.setProtocolVersion(protocolVersion);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(clientConnection);
+
+        final byte[] publish = {
+                // fixed header
+                //   type, flags
+                0b0011_0000,
+                //   remaining length
+                22,
+                // variable header
+                //   topic name
+                0, 5, 't', 'o', 'p', 'i', 'c',
+                //   properties
+                14,
+                //     user properties
+                0x26, 0, 4, 't', 'e', 's', 't', 0, 5, 'v', 'a', 'l', 'u', 'e'
+
+        };
+
+        final ByteBuf buf = Unpooled.buffer();
+        buf.writeBytes(publish);
+        channel.writeInbound(buf);
+
+        //verify that the client was disconnected
+        assertFalse(channel.isOpen());
+    }
+
+    private void testConnectPacketSizeTooLarge(byte[] connect) {
+        final FullConfigurationService fullConfig = new TestConfigurationBootstrap().getFullConfigurationService();
+        fullConfig.mqttConfiguration().setMaxPacketSize(10);
+        channel = new EmbeddedChannel(TestMqttDecoder.create(fullConfig));
+        clientConnection = new DummyClientConnection(channel, null);
+        clientConnection.setProtocolVersion(null);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(clientConnection);
+
+        final ByteBuf buf = Unpooled.buffer();
+        buf.writeBytes(connect);
+        channel.writeInbound(buf);
+    }
+
 }

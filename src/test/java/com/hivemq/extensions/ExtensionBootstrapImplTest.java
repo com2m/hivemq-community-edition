@@ -39,54 +39,41 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
-import util.InitFutureUtilsExecutorRule;
 
 import java.io.File;
 import java.nio.file.Path;
 import java.util.HashMap;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * @author Christoph Schäbel
  */
-@SuppressWarnings("NullabilityAnnotations")
 public class ExtensionBootstrapImplTest {
 
     @Rule
-    public TemporaryFolder temporaryFolder = new TemporaryFolder();
+    public @NotNull TemporaryFolder temporaryFolder = new TemporaryFolder();
 
-    @Rule
-    public InitFutureUtilsExecutorRule executorRule = new InitFutureUtilsExecutorRule();
+    private final @NotNull ExtensionLoader extensionLoader = mock(ExtensionLoader.class);
+    private final @NotNull HiveMQExtensions hiveMQExtensions = mock(HiveMQExtensions.class);
+    private final @NotNull ShutdownHooks shutdownHooks = mock(ShutdownHooks.class);
+    private final @NotNull Authenticators authenticators = mock(Authenticators.class);
+    private final @NotNull EmbeddedExtension embeddedExtension = mock(EmbeddedExtension.class);
 
-    @Mock
-    private ExtensionLoader extensionLoader;
-
-    @Mock
-    HiveMQExtensions hiveMQExtensions;
-
-    @Mock
-    ShutdownHooks shutdownHooks;
-
-    @Mock
-    Authenticators authenticators;
-
-    @Mock
-    EmbeddedExtension embeddedExtension;
-
-    private ExtensionBootstrapImpl pluginBootstrap;
-    private ExtensionLifecycleHandler extensionLifecycleHandler;
+    private @NotNull ExtensionBootstrapImpl pluginBootstrap;
 
     @Before
     public void before() {
-        MockitoAnnotations.initMocks(this);
-
         final SystemInformationImpl systemInformation = new SystemInformationImpl();
         systemInformation.init();
 
-        extensionLifecycleHandler =
+        final ExtensionLifecycleHandler extensionLifecycleHandler =
                 new ExtensionLifecycleHandlerImpl(hiveMQExtensions, MoreExecutors.newDirectExecutorService());
         pluginBootstrap = new ExtensionBootstrapImpl(extensionLoader,
                 systemInformation,
@@ -98,8 +85,7 @@ public class ExtensionBootstrapImplTest {
 
     @Test
     public void test_startPluginSystem_shutdown_hook_registered() {
-
-        when(extensionLoader.loadExtensions(any(Path.class), anyBoolean(), any(Class.class))).thenReturn(ImmutableList.of());
+        when(extensionLoader.loadExtensions(any(Path.class), anyBoolean())).thenReturn(ImmutableList.of());
         pluginBootstrap.startExtensionSystem(null);
 
         verify(shutdownHooks).add(any(HiveMQShutdownHook.class));
@@ -107,9 +93,9 @@ public class ExtensionBootstrapImplTest {
 
     @Test
     public void test_startPluginSystem_with_embeddedExtensions() {
-
-        when(extensionLoader.loadExtensions(any(Path.class), anyBoolean(), any(Class.class))).thenReturn(ImmutableList.of());
-        when(extensionLoader.loadEmbeddedExtension(any(EmbeddedExtension.class))).thenReturn(new HiveMQExtensionEvent(HiveMQExtensionEvent.Change.ENABLE,
+        when(extensionLoader.loadExtensions(any(Path.class), anyBoolean())).thenReturn(ImmutableList.of());
+        when(extensionLoader.loadEmbeddedExtension(any(EmbeddedExtension.class))).thenReturn(new HiveMQExtensionEvent(
+                HiveMQExtensionEvent.Change.ENABLE,
                 "my-extension",
                 0,
                 new File("/tmp").toPath(),
@@ -122,13 +108,14 @@ public class ExtensionBootstrapImplTest {
 
     @Test
     public void test_startPluginSystem_mixed() {
-
-        when(extensionLoader.loadExtensions(any(Path.class), anyBoolean(), any(Class.class))).thenReturn(ImmutableList.of(new HiveMQExtensionEvent(HiveMQExtensionEvent.Change.ENABLE,
+        when(extensionLoader.loadExtensions(any(Path.class),
+                anyBoolean())).thenReturn(ImmutableList.of(new HiveMQExtensionEvent(HiveMQExtensionEvent.Change.ENABLE,
                 "my-extension-1",
                 0,
                 new File("/folder").toPath(),
                 false)));
-        when(extensionLoader.loadEmbeddedExtension(any(EmbeddedExtension.class))).thenReturn(new HiveMQExtensionEvent(HiveMQExtensionEvent.Change.ENABLE,
+        when(extensionLoader.loadEmbeddedExtension(any(EmbeddedExtension.class))).thenReturn(new HiveMQExtensionEvent(
+                HiveMQExtensionEvent.Change.ENABLE,
                 "my-extension-2",
                 0,
                 new File("/tmp").toPath(),
@@ -141,7 +128,6 @@ public class ExtensionBootstrapImplTest {
 
     @Test
     public void test_stopPluginSystem_all_enabled_plugins_stopped() {
-
         final HashMap<String, HiveMQExtension> extensions = Maps.newHashMap();
 
         extensions.put("extension-1", new TestHiveMQExtension("extension-1", temporaryFolder));
@@ -156,11 +142,10 @@ public class ExtensionBootstrapImplTest {
 
     private static class TestHiveMQExtension implements HiveMQExtension {
 
-        private final String pluginId;
-        private final TemporaryFolder temporaryFolder;
+        private final @NotNull String pluginId;
+        private final @NotNull TemporaryFolder temporaryFolder;
 
-        TestHiveMQExtension(final String pluginId, final TemporaryFolder temporaryFolder) {
-
+        TestHiveMQExtension(final @NotNull String pluginId, final @NotNull TemporaryFolder temporaryFolder) {
             this.pluginId = pluginId;
             this.temporaryFolder = temporaryFolder;
         }
@@ -172,7 +157,7 @@ public class ExtensionBootstrapImplTest {
 
         @Override
         public void setDisabled() {
-            //ignore
+            // ignore
         }
 
         @Override
@@ -185,9 +170,8 @@ public class ExtensionBootstrapImplTest {
             return 1000;
         }
 
-        @NotNull
         @Override
-        public String getName() {
+        public @NotNull String getName() {
             return pluginId + "-name";
         }
 
@@ -196,33 +180,28 @@ public class ExtensionBootstrapImplTest {
             return pluginId + "-author";
         }
 
-        @NotNull
         @Override
-        public String getVersion() {
+        public @NotNull String getVersion() {
             return pluginId + "-version";
         }
 
-        @NotNull
         @Override
-        public String getId() {
+        public @NotNull String getId() {
             return pluginId;
         }
 
-        @NotNull
         @Override
-        public Class<? extends ExtensionMain> getExtensionMainClazz() {
+        public @NotNull Class<? extends ExtensionMain> getExtensionMainClazz() {
             return TestExtensionMain.class;
         }
 
-        @Nullable
         @Override
-        public IsolatedExtensionClassloader getExtensionClassloader() {
+        public @Nullable IsolatedExtensionClassloader getExtensionClassloader() {
             return null;
         }
 
-        @NotNull
         @Override
-        public Path getExtensionFolderPath() {
+        public @NotNull Path getExtensionFolderPath() {
             return temporaryFolder.getRoot().toPath();
         }
 
@@ -233,26 +212,22 @@ public class ExtensionBootstrapImplTest {
 
         @Override
         public void setPreviousVersion(final String previousVersion) {
-
         }
 
         @Override
         public void start(
                 final @NotNull ExtensionStartInput extensionStartInput,
                 final @NotNull ExtensionStartOutput extensionStartOutput) {
-
         }
 
         @Override
         public void stop(
                 final @NotNull ExtensionStopInput extensionStopInput,
                 final @NotNull ExtensionStopOutput extensionStopOutput) {
-
         }
 
         @Override
         public void clean(final boolean disable) {
-
         }
 
         @Override
@@ -265,14 +240,11 @@ public class ExtensionBootstrapImplTest {
 
         @Override
         public void extensionStart(
-                final @NotNull ExtensionStartInput input,
-                final @NotNull ExtensionStartOutput output) {
-
+                final @NotNull ExtensionStartInput input, final @NotNull ExtensionStartOutput output) {
         }
 
         @Override
         public void extensionStop(final @NotNull ExtensionStopInput input, final @NotNull ExtensionStopOutput output) {
-
         }
     }
 }

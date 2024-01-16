@@ -26,7 +26,9 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Before;
 import org.junit.Test;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 
 /**
  * @author Christoph Schäbel
@@ -62,12 +64,12 @@ public class ClientSessionPersistenceSerializerTest {
         final long timestamp = serializer.deserializeTimestamp(bytes);
 
         assertEquals(session.isConnected(), result.isConnected());
-        assertEquals(UnsignedDataTypes.UNSIGNED_INT_MAX_VALUE, result.getSessionExpiryInterval());
+        assertEquals(UnsignedDataTypes.UNSIGNED_INT_MAX_VALUE, result.getSessionExpiryIntervalSec());
         assertEquals(1234567890L, timestamp);
 
         final ClientSession result2 = serializer.deserializeValueWithoutWill(bytes);
         assertEquals(session.isConnected(), result2.isConnected());
-        assertEquals(UnsignedDataTypes.UNSIGNED_INT_MAX_VALUE, result2.getSessionExpiryInterval());
+        assertEquals(UnsignedDataTypes.UNSIGNED_INT_MAX_VALUE, result2.getSessionExpiryIntervalSec());
         assertNull(result2.getWillPublish());
     }
 
@@ -81,20 +83,26 @@ public class ClientSessionPersistenceSerializerTest {
         final long timestamp = serializer.deserializeTimestamp(bytes);
 
         assertEquals(session.isConnected(), result.isConnected());
-        assertEquals(10000L, result.getSessionExpiryInterval());
+        assertEquals(10000L, result.getSessionExpiryIntervalSec());
         assertEquals(1234567890L, timestamp);
 
         final ClientSession result2 = serializer.deserializeValueWithoutWill(bytes);
         assertEquals(session.isConnected(), result2.isConnected());
-        assertEquals(10000L, result2.getSessionExpiryInterval());
+        assertEquals(10000L, result2.getSessionExpiryIntervalSec());
         assertNull(result2.getWillPublish());
     }
 
     @Test
     public void test_will_without_properties() throws Exception {
 
-        final MqttWillPublish willPublish = new MqttWillPublish.Mqtt5Builder().withTopic("topic").withDelayInterval(1).withMessageExpiryInterval(3)
-                .withQos(QoS.AT_MOST_ONCE).withRetain(true).withHivemqId("hivemqId").withUserProperties(Mqtt5UserProperties.NO_USER_PROPERTIES).build();
+        final MqttWillPublish willPublish = new MqttWillPublish.Mqtt5Builder().withTopic("topic")
+                .withDelayInterval(1)
+                .withMessageExpiryInterval(3)
+                .withQos(QoS.AT_MOST_ONCE)
+                .withRetain(true)
+                .withHivemqId("hivemqId")
+                .withUserProperties(Mqtt5UserProperties.NO_USER_PROPERTIES)
+                .build();
         final ClientSessionWill clientSessionWill = new ClientSessionWill(willPublish, 2L);
 
         final ClientSession session = new ClientSession(false, 10000, clientSessionWill, null);
@@ -104,7 +112,7 @@ public class ClientSessionPersistenceSerializerTest {
         final long timestamp = serializer.deserializeTimestamp(bytes);
 
         assertEquals(session.isConnected(), result.isConnected());
-        assertEquals(10000L, result.getSessionExpiryInterval());
+        assertEquals(10000L, result.getSessionExpiryIntervalSec());
         assertEquals(1234567890L, timestamp);
 
         final ClientSessionWill resultWill = result.getWillPublish();
@@ -121,10 +129,18 @@ public class ClientSessionPersistenceSerializerTest {
     @Test
     public void test_will_with_properties() throws Exception {
 
-        final MqttWillPublish willPublish = new MqttWillPublish.Mqtt5Builder().withTopic("topic").withDelayInterval(1).withMessageExpiryInterval(3)
-                .withQos(QoS.AT_MOST_ONCE).withRetain(true).withHivemqId("hivemqId").withUserProperties(Mqtt5UserProperties.NO_USER_PROPERTIES)
-                .withPayloadFormatIndicator(Mqtt5PayloadFormatIndicator.UTF_8).withResponseTopic("responseTopic").withContentType("contentType")
-                .withCorrelationData(new byte[]{1, 2, 3}).build();
+        final MqttWillPublish willPublish = new MqttWillPublish.Mqtt5Builder().withTopic("topic")
+                .withDelayInterval(1)
+                .withMessageExpiryInterval(3)
+                .withQos(QoS.AT_MOST_ONCE)
+                .withRetain(true)
+                .withHivemqId("hivemqId")
+                .withUserProperties(Mqtt5UserProperties.NO_USER_PROPERTIES)
+                .withPayloadFormatIndicator(Mqtt5PayloadFormatIndicator.UTF_8)
+                .withResponseTopic("responseTopic")
+                .withContentType("contentType")
+                .withCorrelationData(new byte[]{1, 2, 3})
+                .build();
         final ClientSessionWill clientSessionWill = new ClientSessionWill(willPublish, 2L);
 
         final ClientSession session = new ClientSession(false, 10000, clientSessionWill, null);
@@ -134,7 +150,7 @@ public class ClientSessionPersistenceSerializerTest {
         final long timestamp = serializer.deserializeTimestamp(bytes);
 
         assertEquals(session.isConnected(), result.isConnected());
-        assertEquals(10000L, result.getSessionExpiryInterval());
+        assertEquals(10000L, result.getSessionExpiryIntervalSec());
         assertEquals(1234567890L, timestamp);
 
         final ClientSessionWill resultWill = result.getWillPublish();
@@ -155,16 +171,22 @@ public class ClientSessionPersistenceSerializerTest {
 
         final ClientSession result2 = serializer.deserializeValueWithoutWill(bytes);
         assertEquals(session.isConnected(), result2.isConnected());
-        assertEquals(10000L, result2.getSessionExpiryInterval());
+        assertEquals(10000L, result2.getSessionExpiryIntervalSec());
         assertNull(result2.getWillPublish());
     }
 
     @Test
     public void test_will_with_one_properties() throws Exception {
 
-        final MqttWillPublish willPublish = new MqttWillPublish.Mqtt5Builder().withTopic("topic").withDelayInterval(1).withMessageExpiryInterval(3)
-                .withQos(QoS.AT_MOST_ONCE).withRetain(true).withHivemqId("hivemqId").withUserProperties(Mqtt5UserProperties.NO_USER_PROPERTIES)
-                .withContentType("contentType").build();
+        final MqttWillPublish willPublish = new MqttWillPublish.Mqtt5Builder().withTopic("topic")
+                .withDelayInterval(1)
+                .withMessageExpiryInterval(3)
+                .withQos(QoS.AT_MOST_ONCE)
+                .withRetain(true)
+                .withHivemqId("hivemqId")
+                .withUserProperties(Mqtt5UserProperties.NO_USER_PROPERTIES)
+                .withContentType("contentType")
+                .build();
         final ClientSessionWill clientSessionWill = new ClientSessionWill(willPublish, 2L);
 
         final ClientSession session = new ClientSession(false, 10000, clientSessionWill, null);
@@ -174,7 +196,7 @@ public class ClientSessionPersistenceSerializerTest {
         final long timestamp = serializer.deserializeTimestamp(bytes);
 
         assertEquals(session.isConnected(), result.isConnected());
-        assertEquals(10000L, result.getSessionExpiryInterval());
+        assertEquals(10000L, result.getSessionExpiryIntervalSec());
         assertEquals(1234567890L, timestamp);
 
         final ClientSessionWill resultWill = result.getWillPublish();
@@ -196,15 +218,14 @@ public class ClientSessionPersistenceSerializerTest {
     @Test
     public void test_value_with_queue_limit() throws Exception {
 
-        final ClientSession session = new ClientSession(true, UnsignedDataTypes.UNSIGNED_INT_MAX_VALUE,
-                null, 123L);
+        final ClientSession session = new ClientSession(true, UnsignedDataTypes.UNSIGNED_INT_MAX_VALUE, null, 123L);
 
         final byte[] bytes = serializer.serializeValue(session, 1234567890L);
         final ClientSession result = serializer.deserializeValue(bytes);
         final long timestamp = serializer.deserializeTimestamp(bytes);
 
         assertEquals(session.isConnected(), result.isConnected());
-        assertEquals(UnsignedDataTypes.UNSIGNED_INT_MAX_VALUE, result.getSessionExpiryInterval());
+        assertEquals(UnsignedDataTypes.UNSIGNED_INT_MAX_VALUE, result.getSessionExpiryIntervalSec());
         assertEquals(123L, result.getQueueLimit().longValue());
         assertEquals(1234567890L, timestamp);
     }

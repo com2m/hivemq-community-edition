@@ -15,132 +15,126 @@
  */
 package com.hivemq.persistence.payload;
 
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
 
-import java.util.Queue;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.LinkedList;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
-/**
- * @author Lukas Brandl
- */
 public class RemoveEntryTaskTest {
 
-    @Mock
-    private PublishPayloadLocalPersistence localPersistence;
-
-    private Cache<Long, byte[]> payloadCache;
-    private BucketLock bucketLock;
-    private Queue<RemovablePayload> removablePayloads;
-    private PayloadReferenceCounterRegistry referenceCounterRegistry;
+    private @NotNull PayloadReferenceCounterRegistry referenceCounter;
+    private @NotNull PublishPayloadLocalPersistence localPersistence;
+    private @NotNull BucketLock bucketLock;
+    private @NotNull RemovablePayloads removablePayloads;
 
     @Before
     public void setUp() throws Exception {
-        MockitoAnnotations.initMocks(this);
-
-        payloadCache = CacheBuilder.newBuilder()
-                .concurrencyLevel(1)
-                .build();
+        referenceCounter = new PayloadReferenceCounterRegistryImpl(new BucketLock(1));
+        localPersistence = mock(PublishPayloadLocalPersistence.class);
         bucketLock = new BucketLock(1);
-        removablePayloads = new LinkedTransferQueue<>();
-        referenceCounterRegistry = new PayloadReferenceCounterRegistryImpl(bucketLock);
+        removablePayloads = new RemovablePayloads(0, new LinkedList<>());
     }
 
     @Test
-    public void test_no_remove_during_delay() throws Exception {
-        removablePayloads.add(new RemovablePayload(1, System.currentTimeMillis()));
-        payloadCache.put(1L, "test".getBytes());
-        referenceCounterRegistry.getAndIncrementBy(1L, 1);
-        referenceCounterRegistry.decrementAndGet(1L);
-
-        final RemoveEntryTask task = new RemoveEntryTask(payloadCache, localPersistence, bucketLock, removablePayloads, 10000L, referenceCounterRegistry, 10000);
+    public void run_whenPayloadNoMoreInUse_removesPayloadEntirely() {
+        removablePayloads.getQueue().add(1L);
+        referenceCounter.getAndIncrement(1L);
+        referenceCounter.decrementAndGet(1L);
+        final RemoveEntryTask task = new RemoveEntryTask(bucketLock,
+                referenceCounter,
+                localPersistence,
+                new RemovablePayloads[]{removablePayloads});
         task.run();
-        assertNotNull(payloadCache.getIfPresent(1L));
-        assertEquals(1, removablePayloads.size());
-        assertEquals(1, referenceCounterRegistry.size());
+        assertEquals(0, removablePayloads.getQueue().size());
+        assertEquals(0, referenceCounter.size());
+        verify(localPersistence, times(1)).remove(anyLong());
     }
 
     @Test
-    public void test_no_remove_if_refcount_not_zero() throws Exception {
-        removablePayloads.add(new RemovablePayload(1, System.currentTimeMillis() - 100L));
-        payloadCache.put(1L, "test".getBytes());
-        referenceCounterRegistry.getAndIncrementBy(1L, 1);
-        final RemoveEntryTask task = new RemoveEntryTask(payloadCache, localPersistence, bucketLock, removablePayloads, 10L, referenceCounterRegistry, 10000);
+    public void run_whenThePayloadIsInUse_removesThePayloadFromRemovablePayloadsWithoutDecrementing() {
+        removablePayloads.getQueue().add(1L);
+        referenceCounter.getAndIncrement(1L);
+        final RemoveEntryTask task = new RemoveEntryTask(bucketLock,
+                referenceCounter,
+                localPersistence,
+                new RemovablePayloads[]{removablePayloads});
         task.run();
-        assertNotNull(payloadCache.getIfPresent(1L));
-        assertEquals(0, removablePayloads.size());
-        assertEquals(1, referenceCounterRegistry.size());
+        assertEquals(0, removablePayloads.getQueue().size());
+        assertEquals(1, referenceCounter.size());
+        verify(localPersistence, never()).remove(anyLong());
     }
 
     @Test
-    public void test_remove_after_delay() throws Exception {
-        removablePayloads.add(new RemovablePayload(1, System.currentTimeMillis() - 100L));
-        payloadCache.put(1L, "test".getBytes());
-        referenceCounterRegistry.getAndIncrementBy(1L, 1);
-        referenceCounterRegistry.decrementAndGet(1L);
-        final RemoveEntryTask task = new RemoveEntryTask(payloadCache, localPersistence, bucketLock, removablePayloads, 10L, referenceCounterRegistry, 10000);
+    public void run_whenSomePayloadsInUseAndOthersNot_removesOnlyPayloadsWhichAreNotInUse() {
+        removablePayloads.getQueue().add(1L);
+        removablePayloads.getQueue().add(1L);
+        referenceCounter.getAndIncrement(1L);
+        referenceCounter.getAndIncrement(2L);
+        referenceCounter.decrementAndGet(1L);
+        referenceCounter.decrementAndGet(2L);
+        final RemoveEntryTask task = new RemoveEntryTask(bucketLock,
+                referenceCounter,
+                localPersistence,
+                new RemovablePayloads[]{removablePayloads});
         task.run();
-        assertNull(payloadCache.getIfPresent(1L));
-        assertEquals(0, removablePayloads.size());
-        assertEquals(0, referenceCounterRegistry.size());
+        assertEquals(0, removablePayloads.getQueue().size());
+        assertEquals(1, referenceCounter.size());
+        verify(localPersistence, times(1)).remove(anyLong());
     }
 
     @Test
-    public void test_both() throws Exception {
-        removablePayloads.add(new RemovablePayload(1, System.currentTimeMillis() - 100000L));
-        removablePayloads.add(new RemovablePayload(2, System.currentTimeMillis()));
-        payloadCache.put(1L, "test".getBytes());
-        payloadCache.put(2L, "test".getBytes());
-        final RemoveEntryTask task = new RemoveEntryTask(payloadCache, localPersistence, bucketLock, removablePayloads, 10000L, referenceCounterRegistry, 10000);
-        referenceCounterRegistry.getAndIncrementBy(1L,0);
-        referenceCounterRegistry.getAndIncrementBy(2L,0);
+    public void run_forDuplicateEntries_removesAPayloadOnlyOnce() {
+        removablePayloads.getQueue().add(1L);
+        removablePayloads.getQueue().add(1L);
+        referenceCounter.getAndIncrement(1L);
+        referenceCounter.decrementAndGet(1L);
+        final RemoveEntryTask task = new RemoveEntryTask(bucketLock,
+                referenceCounter,
+                localPersistence,
+                new RemovablePayloads[]{removablePayloads});
         task.run();
-        assertNull(payloadCache.getIfPresent(1L));
-        assertNotNull(payloadCache.getIfPresent(2L));
-        assertEquals(1, removablePayloads.size());
-        assertEquals(1, referenceCounterRegistry.size());
+        assertEquals(0, removablePayloads.getQueue().size());
+        assertEquals(0, referenceCounter.size());
+        verify(localPersistence, times(1)).remove(anyLong());
     }
 
     @Test
-    public void test_remove_if_marked_twice() throws Exception {
-        removablePayloads.add(new RemovablePayload(1, System.currentTimeMillis() - 100L));
-        removablePayloads.add(new RemovablePayload(1, System.currentTimeMillis() - 500L));
-        payloadCache.put(1L, "test".getBytes());
-        final RemoveEntryTask task = new RemoveEntryTask(payloadCache, localPersistence, bucketLock, removablePayloads, 10L, referenceCounterRegistry, 10000);
-        referenceCounterRegistry.getAndIncrementBy(1L,0);
+    public void run_whenAThrowableIsThrownDuringRemoval_thenDontReThrow() {
+        final RemoveEntryTask task = createWithThrowableDuringRun(new Throwable("this is expected"));
         task.run();
-        assertNull(payloadCache.getIfPresent(1L));
-        assertEquals(0, removablePayloads.size());
-        assertEquals(0, referenceCounterRegistry.size());
+        assertEquals(1, removablePayloads.getQueue().size());
+        assertEquals(1, referenceCounter.size());
     }
 
-    @Test(timeout = 5000)
-    public void test_dont_stop_in_case_of_exception() throws Exception {
-        removablePayloads.add(new RemovablePayload(1, System.currentTimeMillis() - 100L));
-        removablePayloads.add(new RemovablePayload(1, System.currentTimeMillis() - 100L));
-        payloadCache.put(1L, "test".getBytes());
-        referenceCounterRegistry.getAndIncrementBy(1L,0);
-        doThrow(new RuntimeException("expected")).doNothing().when(localPersistence).remove(anyLong());
-        final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
-        final RemoveEntryTask task = new RemoveEntryTask(payloadCache, localPersistence, bucketLock, removablePayloads, 10L, referenceCounterRegistry, 10000);
-        executorService.scheduleAtFixedRate(task, 10, 10, TimeUnit.MILLISECONDS);
+    @Test(expected = Error.class)
+    public void run_whenAnErrorIsThrownDuringRemoval_thenReThrow() {
+        final RemoveEntryTask task = createWithThrowableDuringRun(new Error("this is expected"));
+        task.run();
+        assertEquals(1, removablePayloads.getQueue().size());
+        assertEquals(1, referenceCounter.size());
+    }
 
-        while (payloadCache.getIfPresent(1L) != null || removablePayloads.size() > 0 || referenceCounterRegistry.size() > 0) {
-            Thread.sleep(10);
-        }
-
-        assertNull(payloadCache.getIfPresent(1L));
-        assertEquals(0, removablePayloads.size());
-        assertEquals(0, referenceCounterRegistry.size());
-        executorService.shutdown();
+    private @NotNull RemoveEntryTask createWithThrowableDuringRun(final @NotNull Throwable throwable) {
+        // Cover duplicate adds, too.
+        removablePayloads.getQueue().add(1L);
+        removablePayloads.getQueue().add(1L);
+        referenceCounter.getAndIncrement(1L);
+        referenceCounter.decrementAndGet(1L);
+        doAnswer(invocation -> {
+            throw throwable;
+        }).when(localPersistence).remove(anyLong());
+        return new RemoveEntryTask(bucketLock,
+                referenceCounter,
+                localPersistence,
+                new RemovablePayloads[]{removablePayloads});
     }
 }

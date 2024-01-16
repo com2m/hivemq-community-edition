@@ -16,6 +16,7 @@
 package com.hivemq.mqtt.handler.publish;
 
 import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.mqtt.event.PublishDroppedEvent;
@@ -24,7 +25,6 @@ import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.publish.PUBLISH;
 import com.hivemq.mqtt.message.pubrel.PUBREL;
-import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.embedded.EmbeddedChannel;
@@ -33,13 +33,16 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import util.DummyClientConnection;
 import util.LogbackCapturingAppender;
 import util.TestMessageUtil;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.when;
 
 /**
@@ -60,10 +63,10 @@ public class MessageExpiryHandlerTest {
         MockitoAnnotations.initMocks(this);
         final MessageExpiryHandler messageExpiryHandler = new MessageExpiryHandler();
         channel = new EmbeddedChannel();
-        final ClientConnection clientConnection = new ClientConnection(channel, null);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        final ClientConnection clientConnection = new DummyClientConnection(channel, null);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(clientConnection);
         clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId("ClientId");
+        ClientConnection.of(channel).setClientId("ClientId");
         channel.pipeline().addLast(messageExpiryHandler);
         when(ctx.channel()).thenReturn(channel);
         logCapture = LogbackCapturingAppender.Factory.weaveInto(MessageExpiryHandler.log);
@@ -200,7 +203,7 @@ public class MessageExpiryHandlerTest {
         InternalConfigurations.EXPIRE_INFLIGHT_PUBRELS_ENABLED = true;
 
         final PUBREL pubrel = new PUBREL(1);
-        pubrel.setExpiryInterval(0L);
+        pubrel.setMessageExpiryInterval(0L);
         pubrel.setPublishTimestamp(System.currentTimeMillis());
         final CountDownLatch droppedEventFiredLatch = new CountDownLatch(1);
         channel.pipeline().addLast(new ChannelInboundHandlerAdapter() {
@@ -215,7 +218,7 @@ public class MessageExpiryHandlerTest {
 
         channel.writeOutbound(pubrel);
         assertTrue(droppedEventFiredLatch.await(5, TimeUnit.SECONDS));
-        assertEquals(0L, pubrel.getExpiryInterval().longValue());
+        assertEquals(0L, pubrel.getMessageExpiryInterval().longValue());
 
     }
 
@@ -223,7 +226,7 @@ public class MessageExpiryHandlerTest {
     public void test_pubrel_dont_expired() throws InterruptedException {
         InternalConfigurations.EXPIRE_INFLIGHT_PUBRELS_ENABLED = false;
         final PUBREL pubrel = new PUBREL(1);
-        pubrel.setExpiryInterval(0L);
+        pubrel.setMessageExpiryInterval(0L);
         pubrel.setPublishTimestamp(System.currentTimeMillis());
         final CountDownLatch droppedEventFiredLatch = new CountDownLatch(1);
 
@@ -239,6 +242,6 @@ public class MessageExpiryHandlerTest {
 
         channel.writeOutbound(pubrel);
         assertFalse(droppedEventFiredLatch.await(50, TimeUnit.MILLISECONDS));
-        assertEquals(0L, pubrel.getExpiryInterval().longValue());
+        assertEquals(0L, pubrel.getMessageExpiryInterval().longValue());
     }
 }

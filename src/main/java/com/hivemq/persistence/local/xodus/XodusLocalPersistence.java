@@ -24,7 +24,11 @@ import com.hivemq.persistence.local.xodus.bucket.Bucket;
 import com.hivemq.persistence.local.xodus.bucket.BucketUtils;
 import com.hivemq.util.LocalPersistenceFileUtil;
 import jetbrains.exodus.ExodusException;
-import jetbrains.exodus.env.*;
+import jetbrains.exodus.env.Environment;
+import jetbrains.exodus.env.EnvironmentConfig;
+import jetbrains.exodus.env.Environments;
+import jetbrains.exodus.env.Store;
+import jetbrains.exodus.env.StoreConfig;
 import jetbrains.exodus.io.FileDataWriter;
 import jetbrains.exodus.log.LogConfig;
 import org.slf4j.Logger;
@@ -39,11 +43,10 @@ import static com.hivemq.configuration.service.InternalConfigurations.PERSISTENC
 
 public abstract class XodusLocalPersistence implements LocalPersistence, FilePersistence {
 
-
     private final @NotNull EnvironmentUtil environmentUtil;
     private final @NotNull LocalPersistenceFileUtil localPersistenceFileUtil;
     private final @NotNull PersistenceStartup persistenceStartup;
-    protected final AtomicBoolean stopped = new AtomicBoolean(false);
+    protected final @NotNull AtomicBoolean stopped = new AtomicBoolean(false);
 
     protected @NotNull Bucket[] buckets;
     protected int bucketCount;
@@ -56,13 +59,13 @@ public abstract class XodusLocalPersistence implements LocalPersistence, FilePer
             final @NotNull EnvironmentUtil environmentUtil,
             final @NotNull LocalPersistenceFileUtil localPersistenceFileUtil,
             final @NotNull PersistenceStartup persistenceStartup,
-            final int internalBucketCount,
+            final int bucketCount,
             final boolean enabled) {
 
         this.environmentUtil = environmentUtil;
         this.localPersistenceFileUtil = localPersistenceFileUtil;
         this.persistenceStartup = persistenceStartup;
-        this.bucketCount = internalBucketCount;
+        this.bucketCount = bucketCount;
         this.buckets = new Bucket[bucketCount];
         this.enabled = enabled;
 
@@ -70,21 +73,17 @@ public abstract class XodusLocalPersistence implements LocalPersistence, FilePer
         this.closeRetryInterval = PERSISTENCE_CLOSE_RETRY_INTERVAL_MSEC.get();
     }
 
-    @NotNull
-    protected abstract String getName();
+    protected abstract @NotNull String getName();
 
-    @NotNull
-    protected abstract String getVersion();
+    protected abstract @NotNull String getVersion();
 
     public int getBucketCount() {
         return bucketCount;
     }
 
-    @NotNull
-    protected abstract StoreConfig getStoreConfig();
+    protected abstract @NotNull StoreConfig getStoreConfig();
 
-    @NotNull
-    protected abstract Logger getLogger();
+    protected abstract @NotNull Logger getLogger();
 
     protected void postConstruct() {
         if (enabled) {
@@ -99,7 +98,6 @@ public abstract class XodusLocalPersistence implements LocalPersistence, FilePer
 
         final String name = getName();
         final String version = getVersion();
-        final int bucketCount = getBucketCount();
         final StoreConfig storeConfig = getStoreConfig();
         final Logger logger = getLogger();
 
@@ -119,13 +117,15 @@ public abstract class XodusLocalPersistence implements LocalPersistence, FilePer
                 logConfig.setWriter(new XodusNoLockDataWriter(persistenceFile, logConfig));
 
                 final Environment environment = Environments.newContextualInstance(logConfig, environmentConfig);
-                final Store store = environment.computeInTransaction(txn -> environment.openStore(name, storeConfig, txn));
+                final Store store =
+                        environment.computeInTransaction(txn -> environment.openStore(name, storeConfig, txn));
 
                 buckets[i] = new Bucket(environment, store);
             }
 
         } catch (final ExodusException e) {
-            logger.error("An error occurred while opening the {} persistence. Is another HiveMQ instance running?", name);
+            logger.error("An error occurred while opening the {} persistence. Is another HiveMQ instance running?",
+                    name);
             logger.info("Original Exception:", e);
             throw new UnrecoverableException();
         }
@@ -138,7 +138,6 @@ public abstract class XodusLocalPersistence implements LocalPersistence, FilePer
 
         final String name = getName();
         final String version = getVersion();
-        final int bucketCount = getBucketCount();
         final StoreConfig storeConfig = getStoreConfig();
         final Logger logger = getLogger();
 
@@ -162,7 +161,8 @@ public abstract class XodusLocalPersistence implements LocalPersistence, FilePer
                     logConfig.setWriter(new XodusNoLockDataWriter(persistenceFile, logConfig));
 
                     final Environment environment = Environments.newContextualInstance(logConfig, environmentConfig);
-                    final Store store = environment.computeInTransaction(txn -> environment.openStore(name, storeConfig, txn));
+                    final Store store =
+                            environment.computeInTransaction(txn -> environment.openStore(name, storeConfig, txn));
 
                     buckets[finalI] = new Bucket(environment, store);
                     counter.countDown();
@@ -172,7 +172,8 @@ public abstract class XodusLocalPersistence implements LocalPersistence, FilePer
             counter.await();
 
         } catch (final ExodusException | InterruptedException e) {
-            logger.error("An error occurred while opening the {} persistence. Is another HiveMQ instance running?", name);
+            logger.error("An error occurred while opening the {} persistence. Is another HiveMQ instance running?",
+                    name);
             logger.info("Original Exception:", e);
             throw new UnrecoverableException();
         }
@@ -206,13 +207,15 @@ public abstract class XodusLocalPersistence implements LocalPersistence, FilePer
         }
         if (bucket.close()) {
             if (bucket.getEnvironment().isOpen()) {
-                new EnvironmentCloser(getName() + "-closer", bucket.getEnvironment(), closeRetries, closeRetryInterval).close();
+                new EnvironmentCloser(getName() + "-closer",
+                        bucket.getEnvironment(),
+                        closeRetries,
+                        closeRetryInterval).close();
             }
         }
     }
 
-    @NotNull
-    public Bucket getBucket(final @NotNull String key) {
+    public @NotNull Bucket getBucket(final @NotNull String key) {
         return buckets[BucketUtils.getBucket(key, bucketCount)];
     }
 

@@ -16,7 +16,7 @@
 package com.hivemq.mqtt.handler.disconnect;
 
 import com.google.common.base.Preconditions;
-import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.bootstrap.ClientState;
 import com.hivemq.configuration.service.InternalConfigurations;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
@@ -29,7 +29,6 @@ import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.mqtt.message.disconnect.DISCONNECT;
 import com.hivemq.mqtt.message.mqtt5.Mqtt5UserProperties;
 import com.hivemq.mqtt.message.reason.Mqtt5DisconnectReasonCode;
-import com.hivemq.util.ChannelAttributes;
 import com.hivemq.util.Checkpoints;
 import com.hivemq.util.ThreadPreConditions;
 import io.netty.channel.Channel;
@@ -41,7 +40,6 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 
 import static com.hivemq.mqtt.message.disconnect.DISCONNECT.SESSION_EXPIRY_NOT_SET;
-import static com.hivemq.util.ChannelUtils.getChannelIP;
 
 @Singleton
 public class MqttServerDisconnectorImpl implements MqttServerDisconnector {
@@ -73,21 +71,32 @@ public class MqttServerDisconnectorImpl implements MqttServerDisconnector {
         Preconditions.checkNotNull(channel, "Channel must never be null");
         ThreadPreConditions.inNettyChildEventloop();
 
-        final ClientConnection clientConnection = channel.attr(ChannelAttributes.CLIENT_CONNECTION).get();
-        final ClientState oldClientState = clientConnection.getClientState();
-        clientConnection.proposeClientState(ClientState.DISCONNECTING);
+        final ClientConnectionContext clientConnectionContext = ClientConnectionContext.of(channel);
+        final ClientState oldClientState = clientConnectionContext.getClientState();
+        clientConnectionContext.proposeClientState(ClientState.DISCONNECTING);
 
         Checkpoints.checkpoint("on-client-disconnect");
 
-        if (!clientConnection.getClientState().disconnected()) {
-            log(clientConnection, logMessage, eventLogMessage);
-            fireEvents(clientConnection, oldClientState, reasonCode, reasonString, userProperties, isAuthentication);
-            closeConnection(clientConnection, disconnectWithReasonCode, disconnectWithReasonString, reasonCode, reasonString, userProperties, forceClose);
+        if (!clientConnectionContext.getClientState().disconnected()) {
+            log(clientConnectionContext, logMessage, eventLogMessage);
+            fireEvents(clientConnectionContext,
+                    oldClientState,
+                    reasonCode,
+                    reasonString,
+                    userProperties,
+                    isAuthentication);
+            closeConnection(clientConnectionContext,
+                    disconnectWithReasonCode,
+                    disconnectWithReasonString,
+                    reasonCode,
+                    reasonString,
+                    userProperties,
+                    forceClose);
         }
     }
 
     private void fireEvents(
-            final @NotNull ClientConnection clientConnection,
+            final @NotNull ClientConnectionContext clientConnectionContext,
             final @NotNull ClientState oldClientState,
             final @Nullable Mqtt5DisconnectReasonCode reasonCode,
             final @Nullable String reasonString,
@@ -98,28 +107,30 @@ public class MqttServerDisconnectorImpl implements MqttServerDisconnector {
 
             final DisconnectedReasonCode disconnectedReasonCode =
                     (reasonCode == null) ? null : reasonCode.toDisconnectedReasonCode();
-            clientConnection.getChannel().pipeline().fireUserEventTriggered(isAuthentication ?
-                    new OnAuthFailedEvent(disconnectedReasonCode, reasonString, userProperties) :
-                    new OnServerDisconnectEvent(disconnectedReasonCode, reasonString, userProperties));
+            clientConnectionContext.getChannel()
+                    .pipeline()
+                    .fireUserEventTriggered(isAuthentication ?
+                            new OnAuthFailedEvent(disconnectedReasonCode, reasonString, userProperties) :
+                            new OnServerDisconnectEvent(disconnectedReasonCode, reasonString, userProperties));
         }
     }
 
     private void log(
-            final @NotNull ClientConnection clientConnection,
+            final @NotNull ClientConnectionContext clientConnectionContext,
             final @Nullable String logMessage,
             final @Nullable String eventLogMessage) {
 
         if (log.isDebugEnabled() && logMessage != null && !logMessage.isEmpty()) {
-            log.debug(logMessage, getChannelIP(clientConnection.getChannel()).orElse("UNKNOWN"));
+            log.debug(logMessage, clientConnectionContext.getChannelIP().orElse("UNKNOWN"));
         }
 
         if (eventLogMessage != null && !eventLogMessage.isEmpty()) {
-            eventLog.clientWasDisconnected(clientConnection.getChannel(), eventLogMessage);
+            eventLog.clientWasDisconnected(clientConnectionContext.getChannel(), eventLogMessage);
         }
     }
 
     private static void closeConnection(
-            final @NotNull ClientConnection clientConnection,
+            final @NotNull ClientConnectionContext clientConnectionContext,
             final boolean withReasonCode,
             final boolean withReasonString,
             @Nullable Mqtt5DisconnectReasonCode reasonCode,
@@ -128,17 +139,17 @@ public class MqttServerDisconnectorImpl implements MqttServerDisconnector {
             final boolean forceClose) {
 
         if (reasonCode == Mqtt5DisconnectReasonCode.SESSION_TAKEN_OVER) {
-            clientConnection.proposeClientState(ClientState.DISCONNECTED_TAKEN_OVER);
+            clientConnectionContext.proposeClientState(ClientState.DISCONNECTED_TAKEN_OVER);
         } else {
-            clientConnection.proposeClientState(ClientState.DISCONNECTED_BY_SERVER);
+            clientConnectionContext.proposeClientState(ClientState.DISCONNECTED_BY_SERVER);
         }
 
         if (forceClose) {
-            clientConnection.getChannel().close();
+            clientConnectionContext.getChannel().close();
             return;
         }
 
-        final ProtocolVersion version = clientConnection.getProtocolVersion();
+        final ProtocolVersion version = clientConnectionContext.getProtocolVersion();
 
         if (withReasonCode) {
             if (version == ProtocolVersion.MQTTv5) {
@@ -153,11 +164,12 @@ public class MqttServerDisconnectorImpl implements MqttServerDisconnector {
         }
 
         if (reasonCode != null && version == ProtocolVersion.MQTTv5) {
-            final DISCONNECT disconnect = new DISCONNECT(reasonCode, reasonString, userProperties, null, SESSION_EXPIRY_NOT_SET);
-            clientConnection.getChannel().writeAndFlush(disconnect).addListener(ChannelFutureListener.CLOSE);
+            final DISCONNECT disconnect =
+                    new DISCONNECT(reasonCode, reasonString, userProperties, null, SESSION_EXPIRY_NOT_SET);
+            clientConnectionContext.getChannel().writeAndFlush(disconnect).addListener(ChannelFutureListener.CLOSE);
         } else {
             // close channel without sending DISCONNECT (Mqtt 3)
-            clientConnection.getChannel().close();
+            clientConnectionContext.getChannel().close();
         }
     }
 }

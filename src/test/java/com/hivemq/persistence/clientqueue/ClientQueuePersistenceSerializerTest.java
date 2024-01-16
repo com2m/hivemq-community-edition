@@ -25,32 +25,30 @@ import com.hivemq.mqtt.message.mqtt5.MqttUserProperty;
 import com.hivemq.mqtt.message.publish.PUBLISH;
 import com.hivemq.mqtt.message.publish.PUBLISHFactory;
 import com.hivemq.mqtt.message.pubrel.PUBREL;
-import com.hivemq.persistence.payload.PublishPayloadPersistence;
 import jetbrains.exodus.ByteIterable;
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.nio.charset.StandardCharsets;
 
 import static com.hivemq.persistence.clientqueue.ClientQueuePersistenceImpl.Key;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 /**
  * @author Lukas Brandl
  */
 public class ClientQueuePersistenceSerializerTest {
 
-    @Mock
-    private PublishPayloadPersistence payloadPersistence;
-
     private ClientQueuePersistenceSerializer serializer;
 
     @Before
     public void setUp() throws Exception {
         MockitoAnnotations.initMocks(this);
-        serializer = new ClientQueuePersistenceSerializer(payloadPersistence);
+        serializer = new ClientQueuePersistenceSerializer();
         ClientQueuePersistenceSerializer.NEXT_PUBLISH_NUMBER.set(Long.MAX_VALUE / 2);
     }
 
@@ -100,13 +98,13 @@ public class ClientQueuePersistenceSerializerTest {
     @Test
     public void test_serialize_pubrel_with_expiry() {
         final PUBREL pubrel = new PUBREL(10);
-        pubrel.setExpiryInterval(1L);
+        pubrel.setMessageExpiryInterval(1L);
         pubrel.setPublishTimestamp(2L);
         final ByteIterable bytes = serializer.serializePubRel(pubrel, true);
         final PUBREL deserializedPubrel = (PUBREL) serializer.deserializeValue(bytes);
         assertEquals(10, deserializedPubrel.getPacketIdentifier());
         assertTrue(serializer.deserializeRetained(bytes));
-        assertEquals(1L, deserializedPubrel.getExpiryInterval().longValue());
+        assertEquals(1L, deserializedPubrel.getMessageExpiryInterval().longValue());
         assertEquals(2L, deserializedPubrel.getPublishTimestamp().longValue());
     }
 
@@ -118,7 +116,6 @@ public class ClientQueuePersistenceSerializerTest {
                 .withPublishId(123)
                 .withTimestamp(456)
                 .withHivemqId("hivemqId")
-                .withPersistence(payloadPersistence)
                 .withTopic("topic")
                 .withDuplicateDelivery(false)
                 .build();
@@ -144,8 +141,9 @@ public class ClientQueuePersistenceSerializerTest {
 
     @Test
     public void test_serialize_mqtt_5_publish() {
-        final Mqtt5UserProperties properties = Mqtt5UserProperties.of(
-                ImmutableList.of(new MqttUserProperty("name1", "value1"), new MqttUserProperty("name2", "value2")));
+        final Mqtt5UserProperties properties =
+                Mqtt5UserProperties.of(ImmutableList.of(new MqttUserProperty("name1", "value1"),
+                        new MqttUserProperty("name2", "value2")));
 
         final PUBLISH publish = new PUBLISHFactory.Mqtt5Builder().withPacketIdentifier(10)
                 .withQoS(QoS.AT_LEAST_ONCE)
@@ -153,7 +151,6 @@ public class ClientQueuePersistenceSerializerTest {
                 .withPublishId(123)
                 .withTimestamp(456)
                 .withHivemqId("hivemqId")
-                .withPersistence(payloadPersistence)
                 .withMessageExpiryInterval(PUBLISH.MESSAGE_EXPIRY_INTERVAL_MAX)
                 .withTopic("topic")
                 .withRetain(true)
@@ -204,7 +201,6 @@ public class ClientQueuePersistenceSerializerTest {
                 .withPublishId(123)
                 .withTimestamp(456)
                 .withHivemqId("hivemqId")
-                .withPersistence(payloadPersistence)
                 .withMessageExpiryInterval(PUBLISH.MESSAGE_EXPIRY_INTERVAL_MAX)
                 .withTopic("topic")
                 .withRetain(true)

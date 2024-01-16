@@ -32,6 +32,7 @@ import com.hivemq.metrics.handler.GlobalMQTTMessageCounter;
 import com.hivemq.mqtt.handler.InterceptorHandler;
 import com.hivemq.mqtt.handler.auth.AuthHandler;
 import com.hivemq.mqtt.handler.auth.AuthInProgressMessageHandler;
+import com.hivemq.mqtt.handler.connack.MqttConnacker;
 import com.hivemq.mqtt.handler.connect.ConnectHandler;
 import com.hivemq.mqtt.handler.connect.ConnectionLimiterHandler;
 import com.hivemq.mqtt.handler.connect.NoConnectIdleHandler;
@@ -51,114 +52,110 @@ import org.mockito.MockitoAnnotations;
 
 import static org.junit.Assert.assertNotNull;
 
-/**
- * @author Florian Limpöck
- * @since 4.1.0
- */
-@SuppressWarnings("NullabilityAnnotations")
 public class ChannelDependenciesTest {
 
-    private ChannelDependencies channelDependencies;
+    @Mock
+    private @NotNull NoConnectIdleHandler noConnectIdleHandler;
 
     @Mock
-    private NoConnectIdleHandler noConnectIdleHandler;
+    private @NotNull ConnectHandler connectHandler;
 
     @Mock
-    private ConnectHandler connectHandler;
+    private @NotNull DisconnectHandler disconnectHandler;
 
     @Mock
-    private DisconnectHandler disconnectHandler;
+    private @NotNull SubscribeHandler subscribeHandler;
 
     @Mock
-    private SubscribeHandler subscribeHandler;
+    private @NotNull UnsubscribeHandler unsubscribeHandler;
 
     @Mock
-    private UnsubscribeHandler unsubscribeHandler;
+    private @NotNull ChannelGroup channelGroup;
 
     @Mock
-    private ChannelGroup channelGroup;
+    private @NotNull FullConfigurationService fullConfigurationService;
 
     @Mock
-    private FullConfigurationService fullConfigurationService;
+    private @NotNull GlobalTrafficShapingHandler globalTrafficShapingHandler;
 
     @Mock
-    private GlobalTrafficShapingHandler globalTrafficShapingHandler;
+    private @NotNull MetricsHolder metricsHolder;
 
     @Mock
-    private MetricsHolder metricsHolder;
+    private @NotNull ExceptionHandler exceptionHandler;
 
     @Mock
-    private ExceptionHandler exceptionHandler;
+    private @NotNull PingRequestHandler pingRequestHandler;
 
     @Mock
-    private PingRequestHandler pingRequestHandler;
+    private @NotNull RestrictionsConfigurationService restrictionsConfigurationService;
 
     @Mock
-    private RestrictionsConfigurationService restrictionsConfigurationService;
+    private @NotNull MqttConnectDecoder mqttConnectDecoder;
 
     @Mock
-    private MqttConnectDecoder mqttConnectDecoder;
+    private @NotNull MqttConnacker mqttConnacker;
 
     @Mock
-    private EncoderFactory encoderFactory;
+    private @NotNull EncoderFactory encoderFactory;
 
     @Mock
-    private EventLog eventLog;
+    private @NotNull EventLog eventLog;
 
     @Mock
-    private SslParameterHandler sslParameterHandler;
+    private @NotNull SslParameterHandler sslParameterHandler;
 
     @Mock
-    private MqttDecoders mqttDecoders;
+    private @NotNull MqttDecoders mqttDecoders;
 
     @Mock
-    private AuthHandler authHandler;
+    private @NotNull AuthHandler authHandler;
 
     @Mock
-    private PluginInitializerHandler pluginInitializerHandler;
+    private @NotNull PluginInitializerHandler pluginInitializerHandler;
 
     @Mock
-    private ClientLifecycleEventHandler clientLifecycleEventHandler;
+    private @NotNull ClientLifecycleEventHandler clientLifecycleEventHandler;
 
     @Mock
-    private AuthInProgressMessageHandler authInProgressMessageHandler;
+    private @NotNull AuthInProgressMessageHandler authInProgressMessageHandler;
 
     @Mock
-    private MessageExpiryHandler messageExpiryHandler;
+    private @NotNull MessageExpiryHandler messageExpiryHandler;
 
     @Mock
-    private IncomingPublishHandler incomingPublishHandler;
+    private @NotNull IncomingPublishHandler incomingPublishHandler;
 
     @Mock
-    private IncomingSubscribeHandler incomingSubscribeHandler;
+    private @NotNull IncomingSubscribeHandler incomingSubscribeHandler;
 
     @Mock
-    private ConnectionLimiterHandler connectionLimiterHandler;
+    private @NotNull ConnectionLimiterHandler connectionLimiterHandler;
 
     @Mock
-    private MqttServerDisconnector mqttServerDisconnector;
+    private @NotNull MqttServerDisconnector mqttServerDisconnector;
 
     @Mock
-    private InterceptorHandler interceptorHandler;
+    private @NotNull InterceptorHandler interceptorHandler;
 
     @Mock
-    private GlobalMQTTMessageCounter globalMQTTMessageCounter;
+    private @NotNull GlobalMQTTMessageCounter globalMQTTMessageCounter;
 
     @Mock
-    private ShutdownHooks shutdownHooks;
+    private @NotNull ShutdownHooks shutdownHooks;
+
+    private @NotNull ChannelDependencies channelDependencies;
 
     @Before
     public void setUp() throws Exception {
-
         MockitoAnnotations.initMocks(this);
 
-        channelDependencies = new ChannelDependencies(
-                noConnectIdleHandler,
+        channelDependencies = new ChannelDependencies(noConnectIdleHandler,
                 () -> connectHandler,
                 connectionLimiterHandler,
                 disconnectHandler,
                 () -> subscribeHandler,
-                () -> unsubscribeHandler,
+                unsubscribeHandler,
                 channelGroup,
                 fullConfigurationService,
                 globalTrafficShapingHandler,
@@ -167,6 +164,7 @@ public class ChannelDependenciesTest {
                 pingRequestHandler,
                 restrictionsConfigurationService,
                 mqttConnectDecoder,
+                mqttConnacker,
                 eventLog,
                 sslParameterHandler,
                 mqttDecoders,
@@ -185,8 +183,7 @@ public class ChannelDependenciesTest {
     }
 
     @Test
-    public void test_all_provided() {
-
+    public void getters_returnAllHandlers() {
         assertNotNull(channelDependencies.getNoConnectIdleHandler());
         assertNotNull(channelDependencies.getConnectHandler());
         assertNotNull(channelDependencies.getDisconnectHandler());

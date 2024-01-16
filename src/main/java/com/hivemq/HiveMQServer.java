@@ -39,11 +39,12 @@ import com.hivemq.migration.Migrations;
 import com.hivemq.migration.meta.PersistenceType;
 import com.hivemq.persistence.PersistenceStartup;
 import com.hivemq.statistics.UsageStatistics;
-import com.hivemq.util.TemporaryFileUtils;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
@@ -70,12 +71,7 @@ public class HiveMQServer {
     private @Nullable FullConfigurationService configService;
 
     public HiveMQServer() {
-        this(
-                new SystemInformationImpl(true),
-                new MetricRegistry(),
-                null,
-                true
-        );
+        this(new SystemInformationImpl(true), new MetricRegistry(), null, true);
     }
 
     public HiveMQServer(
@@ -140,7 +136,7 @@ public class HiveMQServer {
 
         //ungraceful shutdown does not delete tmp folders, so we clean them up on broker start
         log.trace("Cleaning up temporary folders");
-        TemporaryFileUtils.deleteTmpFolder(systemInformation.getDataFolder());
+        deleteTmpFolder(systemInformation.getDataFolder());
 
         //must happen before persistence injector bootstrap as it creates the persistence folder.
         log.trace("Checking for migrations");
@@ -148,9 +144,11 @@ public class HiveMQServer {
         final Set<MigrationUnit> valueMigrations = Migrations.checkForValueMigration(systemInformation);
 
         log.trace("Initializing persistences");
-        final Injector persistenceInjector =
-                GuiceBootstrap.persistenceInjector(systemInformation, metricRegistry, hivemqId, configService,
-                        lifecycleModule);
+        final Injector persistenceInjector = GuiceBootstrap.persistenceInjector(systemInformation,
+                metricRegistry,
+                hivemqId,
+                configService,
+                lifecycleModule);
         //blocks until all persistences started
         persistenceInjector.getInstance(PersistenceStartup.class).finish();
 
@@ -185,8 +183,12 @@ public class HiveMQServer {
         }
 
         log.trace("Initializing Guice");
-        injector = GuiceBootstrap.bootstrapInjector(systemInformation, metricRegistry, hivemqId,
-                configService, persistenceInjector, lifecycleModule);
+        injector = GuiceBootstrap.bootstrapInjector(systemInformation,
+                metricRegistry,
+                hivemqId,
+                configService,
+                persistenceInjector,
+                lifecycleModule);
     }
 
     public void startInstance(final @Nullable EmbeddedExtension embeddedExtension) throws Exception {
@@ -260,10 +262,25 @@ public class HiveMQServer {
         if (configService.persistenceConfigurationService().getMode() == PersistenceMode.FILE) {
             dataLock.unlock();
         }
+        LoggingBootstrap.resetLogging();
     }
 
     public @Nullable Injector getInjector() {
         return injector;
+    }
+
+    private static void deleteTmpFolder(final @NotNull File dataFolder) {
+        final String tmpFolder = dataFolder.getPath() + File.separator + "tmp";
+        try {
+            //ungraceful shutdown does not delete tmp folders, so we clean them up on broker start
+            FileUtils.deleteDirectory(new File(tmpFolder));
+        } catch (IOException e) {
+            //No error because it's not business breaking
+            log.warn("The temporary folder could not be deleted ({}).", tmpFolder);
+            if (log.isDebugEnabled()) {
+                log.debug("Original Exception: ", e);
+            }
+        }
     }
 
     /**
@@ -281,14 +298,16 @@ public class HiveMQServer {
                 channel = FileChannel.open(lockFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
             } catch (final Throwable e) {
                 log.error("Could not open data lock file.", e);
-                throw new StartAbortedException("An error occurred while opening the persistence. Is another HiveMQ instance running?");
+                throw new StartAbortedException(
+                        "An error occurred while opening the persistence. Is another HiveMQ instance running?");
             }
             try {
                 fileLock = channel.tryLock();
             } catch (final Throwable ignored) {
             }
             if (fileLock == null) {
-                throw new StartAbortedException("An error occurred while opening the persistence. Is another HiveMQ instance running?");
+                throw new StartAbortedException(
+                        "An error occurred while opening the persistence. Is another HiveMQ instance running?");
             }
         }
 

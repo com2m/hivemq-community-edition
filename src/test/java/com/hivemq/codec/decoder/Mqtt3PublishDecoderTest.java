@@ -17,11 +17,11 @@ package com.hivemq.codec.decoder;
 
 import com.google.common.primitives.Bytes;
 import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.mqtt.message.QoS;
 import com.hivemq.mqtt.message.publish.PUBLISH;
-import com.hivemq.util.ChannelAttributes;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
@@ -29,11 +29,17 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.MockitoAnnotations;
+import util.DummyClientConnection;
 import util.TestConfigurationBootstrap;
 import util.TestMqttDecoder;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 @SuppressWarnings("NullabilityAnnotations")
 public class Mqtt3PublishDecoderTest {
@@ -45,8 +51,8 @@ public class Mqtt3PublishDecoderTest {
         MockitoAnnotations.initMocks(this);
 
         channel = new EmbeddedChannel(TestMqttDecoder.create());
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setProtocolVersion(ProtocolVersion.MQTTv3_1_1);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(new DummyClientConnection(channel, null));
+        ClientConnection.of(channel).setProtocolVersion(ProtocolVersion.MQTTv3_1_1);
     }
 
     @Test
@@ -172,7 +178,7 @@ public class Mqtt3PublishDecoderTest {
         fullConfig.mqttConfiguration().setRetainedMessagesEnabled(false);
 
         channel = new EmbeddedChannel(TestMqttDecoder.create(fullConfig));
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(new ClientConnection(channel, null));
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(new DummyClientConnection(channel, null));
 
 
         final String topic = "topic";
@@ -378,6 +384,30 @@ public class Mqtt3PublishDecoderTest {
         final int invalidLength = 1000;
 
         final String topic = "topic";
+        final String payload = "payload";
+
+        final ByteBuf buf = Unpooled.buffer();
+        buf.writeByte(0b0011_0000);
+        buf.writeByte(topic.getBytes(UTF_8).length + 2 + payload.getBytes(UTF_8).length);
+        buf.writeShort(invalidLength);
+        buf.writeBytes(topic.getBytes(UTF_8));
+        buf.writeBytes(payload.getBytes(UTF_8));
+        channel.writeInbound(buf);
+
+        final PUBLISH publish = channel.readInbound();
+
+        assertNull(publish);
+
+        //Make sure we did get disconnected
+        assertFalse(channel.isActive());
+    }
+
+    @Test
+    public void test_invalid_topic_empty() {
+
+        final int invalidLength = 0;
+
+        final String topic = "";
         final String payload = "payload";
 
         final ByteBuf buf = Unpooled.buffer();

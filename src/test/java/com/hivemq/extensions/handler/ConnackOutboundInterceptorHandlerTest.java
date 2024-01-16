@@ -18,6 +18,7 @@ package com.hivemq.extensions.handler;
 
 import com.google.common.collect.ImmutableMap;
 import com.hivemq.bootstrap.ClientConnection;
+import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.common.shutdown.ShutdownHooks;
 import com.hivemq.configuration.service.FullConfigurationService;
 import com.hivemq.extension.sdk.api.annotations.NotNull;
@@ -39,7 +40,6 @@ import com.hivemq.logging.EventLog;
 import com.hivemq.mqtt.handler.publish.PublishFlushHandler;
 import com.hivemq.mqtt.message.ProtocolVersion;
 import com.hivemq.mqtt.message.connack.CONNACK;
-import com.hivemq.util.ChannelAttributes;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
@@ -49,6 +49,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.mockito.Mockito;
+import util.DummyClientConnection;
 import util.IsolatedExtensionClassloaderUtil;
 import util.TestConfigurationBootstrap;
 import util.TestMessageUtil;
@@ -89,12 +90,12 @@ public class ConnackOutboundInterceptorHandlerTest {
         executor.postConstruct();
 
         channel = new EmbeddedChannel();
-        final ClientConnection clientConnection = new ClientConnection(channel, publishFlushHandler);
+        final ClientConnection clientConnection = new DummyClientConnection(channel, publishFlushHandler);
         clientConnection.setProtocolVersion(ProtocolVersion.MQTTv5);
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).set(clientConnection);
+        channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(clientConnection);
 
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId("client");
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setRequestResponseInformation(true);
+        ClientConnection.of(channel).setClientId("client");
+        ClientConnection.of(channel).setRequestResponseInformation(true);
 
         when(extension.getId()).thenReturn("extension");
 
@@ -124,7 +125,7 @@ public class ConnackOutboundInterceptorHandlerTest {
 
     @Test(timeout = 5000)
     public void test_client_id_not_set() {
-        channel.attr(ChannelAttributes.CLIENT_CONNECTION).get().setClientId(null);
+        ClientConnection.of(channel).setClientId(null);
 
         final CONNACK initial = testConnack();
         channel.writeOutbound(initial);

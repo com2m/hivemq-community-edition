@@ -24,17 +24,15 @@ import com.hivemq.mqtt.message.publish.PUBLISH;
 import com.hivemq.mqtt.services.InternalPublishServiceImpl;
 import com.hivemq.mqtt.services.PublishDistributor;
 import com.hivemq.mqtt.topic.SubscriberWithIdentifiers;
-import com.hivemq.mqtt.topic.SubscriptionFlags;
+import com.hivemq.mqtt.topic.SubscriptionFlag;
 import com.hivemq.mqtt.topic.tree.LocalTopicTree;
 import com.hivemq.mqtt.topic.tree.TopicSubscribers;
 import com.hivemq.persistence.retained.RetainedMessagePersistence;
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import util.InitFutureUtilsExecutorRule;
 import util.TestException;
 import util.TestMessageUtil;
 
@@ -45,19 +43,23 @@ import java.util.concurrent.ExecutorService;
 
 import static com.hivemq.mqtt.handler.publish.PublishReturnCode.FAILED;
 import static com.hivemq.mqtt.handler.publish.PublishReturnCode.NO_MATCHING_SUBSCRIBERS;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.anyMap;
+import static org.mockito.Mockito.anySet;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
-/**
- * @author Christoph Schäbel
- */
 @SuppressWarnings("unchecked")
 public class InternalPublishServiceImplTest {
-
-    @Rule
-    public InitFutureUtilsExecutorRule initFutureUtilsExecutorRule = new InitFutureUtilsExecutorRule();
 
     @Mock
     private RetainedMessagePersistence retainedMessagePersistence;
@@ -79,22 +81,25 @@ public class InternalPublishServiceImplTest {
 
         executorService = MoreExecutors.newDirectExecutorService();
 
-        when(publishDistributor.distributeToNonSharedSubscribers(anyMap(), any(PUBLISH.class), eq(executorService))).thenReturn(Futures.immediateFuture(null));
-        when(publishDistributor.distributeToSharedSubscribers(anySet(), any(PUBLISH.class), eq(executorService))).thenReturn(Futures.immediateFuture(null));
+        when(publishDistributor.distributeToNonSharedSubscribers(anyMap(),
+                any(PUBLISH.class),
+                eq(executorService))).thenReturn(Futures.immediateFuture(null));
+        when(publishDistributor.distributeToSharedSubscribers(anySet(),
+                any(PUBLISH.class),
+                eq(executorService))).thenReturn(Futures.immediateFuture(null));
 
-        publishService = new InternalPublishServiceImpl(
-                retainedMessagePersistence,
-                topicTree,
-                publishDistributor);
+        publishService = new InternalPublishServiceImpl(retainedMessagePersistence, topicTree, publishDistributor);
     }
 
     @Test(timeout = 20000)
     public void test_retained_message_remove() throws Exception {
 
-        when(topicTree.findTopicSubscribers(anyString())).thenReturn(new TopicSubscribers(ImmutableSet.of(), ImmutableSet.of()));
+        when(topicTree.findTopicSubscribers(anyString())).thenReturn(new TopicSubscribers(ImmutableSet.of(),
+                ImmutableSet.of()));
         publishService = new InternalPublishServiceImpl(retainedMessagePersistence, topicTree, publishDistributor);
 
-        final PUBLISH publish = TestMessageUtil.createMqtt3Publish("hivemqId", "subonly", QoS.AT_LEAST_ONCE, new byte[0], true);
+        final PUBLISH publish =
+                TestMessageUtil.createMqtt3Publish("hivemqId", "subonly", QoS.AT_LEAST_ONCE, new byte[0], true);
 
         when(retainedMessagePersistence.remove(anyString())).thenReturn(Futures.immediateFuture(null));
 
@@ -107,10 +112,12 @@ public class InternalPublishServiceImplTest {
     @Test(timeout = 20000)
     public void test_retained_message_remove_failed() throws Exception {
 
-        when(topicTree.findTopicSubscribers(anyString())).thenReturn(new TopicSubscribers(ImmutableSet.of(), ImmutableSet.of()));
+        when(topicTree.findTopicSubscribers(anyString())).thenReturn(new TopicSubscribers(ImmutableSet.of(),
+                ImmutableSet.of()));
         publishService = new InternalPublishServiceImpl(retainedMessagePersistence, topicTree, publishDistributor);
 
-        final PUBLISH publish = TestMessageUtil.createMqtt3Publish("hivemqId", "subonly", QoS.AT_LEAST_ONCE, new byte[0], true);
+        final PUBLISH publish =
+                TestMessageUtil.createMqtt3Publish("hivemqId", "subonly", QoS.AT_LEAST_ONCE, new byte[0], true);
 
         when(retainedMessagePersistence.remove(anyString())).thenReturn(Futures.immediateFailedFuture(TestException.INSTANCE));
 
@@ -122,7 +129,8 @@ public class InternalPublishServiceImplTest {
     @Test(timeout = 20000)
     public void test_no_subs() throws ExecutionException, InterruptedException {
 
-        when(topicTree.findTopicSubscribers(anyString())).thenReturn(new TopicSubscribers(ImmutableSet.of(), ImmutableSet.of()));
+        when(topicTree.findTopicSubscribers(anyString())).thenReturn(new TopicSubscribers(ImmutableSet.of(),
+                ImmutableSet.of()));
 
         final PUBLISH publish = TestMessageUtil.createMqtt5Publish("topic");
 
@@ -136,18 +144,21 @@ public class InternalPublishServiceImplTest {
     @Test(timeout = 20000)
     public void test_no_local() {
 
-        final byte noLocalFlag = SubscriptionFlags.getDefaultFlags(false, false, true);
+        final byte noLocalFlag = SubscriptionFlag.getDefaultFlags(false, false, true);
         final SubscriberWithIdentifiers sub1 = new SubscriberWithIdentifiers("sub1", 1, noLocalFlag, null);
         final SubscriberWithIdentifiers sub2 = new SubscriberWithIdentifiers("sub2", 1, (byte) 0, null);
 
-        when(topicTree.findTopicSubscribers("topic")).thenReturn(new TopicSubscribers(ImmutableSet.of(sub1, sub2), ImmutableSet.of()));
+        when(topicTree.findTopicSubscribers("topic")).thenReturn(new TopicSubscribers(ImmutableSet.of(sub1, sub2),
+                ImmutableSet.of()));
 
         final PUBLISH publish = TestMessageUtil.createMqtt5Publish("topic");
 
         publishService.publish(publish, executorService, "sub1");
 
         final ArgumentCaptor<Map> mapArgumentCaptor = ArgumentCaptor.forClass(Map.class);
-        verify(publishDistributor, atLeastOnce()).distributeToNonSharedSubscribers(mapArgumentCaptor.capture(), any(), any());
+        verify(publishDistributor, atLeastOnce()).distributeToNonSharedSubscribers(mapArgumentCaptor.capture(),
+                any(),
+                any());
 
         final Map map = mapArgumentCaptor.getAllValues().get(0);
 
@@ -162,14 +173,17 @@ public class InternalPublishServiceImplTest {
         final SubscriberWithIdentifiers sub1 = new SubscriberWithIdentifiers("sub1", 1, (byte) 0, null);
         final SubscriberWithIdentifiers sub2 = new SubscriberWithIdentifiers("sub2", 1, (byte) 0, null);
 
-        when(topicTree.findTopicSubscribers("topic")).thenReturn(new TopicSubscribers(ImmutableSet.of(sub1, sub2), ImmutableSet.of()));
+        when(topicTree.findTopicSubscribers("topic")).thenReturn(new TopicSubscribers(ImmutableSet.of(sub1, sub2),
+                ImmutableSet.of()));
 
         final PUBLISH publish = TestMessageUtil.createMqtt5Publish("topic");
 
         publishService.publish(publish, executorService, "sub1");
 
         final ArgumentCaptor<Map> mapArgumentCaptor = ArgumentCaptor.forClass(Map.class);
-        verify(publishDistributor, atLeastOnce()).distributeToNonSharedSubscribers(mapArgumentCaptor.capture(), any(), any());
+        verify(publishDistributor, atLeastOnce()).distributeToNonSharedSubscribers(mapArgumentCaptor.capture(),
+                any(),
+                any());
 
         final Map map = mapArgumentCaptor.getAllValues().get(0);
 
@@ -184,7 +198,8 @@ public class InternalPublishServiceImplTest {
         final SubscriberWithIdentifiers sub1 = new SubscriberWithIdentifiers("sub1", 1, (byte) 0, null);
         final SubscriberWithIdentifiers sub2 = new SubscriberWithIdentifiers("sub2", 1, (byte) 0, null);
 
-        when(topicTree.findTopicSubscribers("topic")).thenReturn(new TopicSubscribers(ImmutableSet.of(sub1, sub2), ImmutableSet.of()));
+        when(topicTree.findTopicSubscribers("topic")).thenReturn(new TopicSubscribers(ImmutableSet.of(sub1, sub2),
+                ImmutableSet.of()));
 
         final PUBLISH publish = TestMessageUtil.createMqtt5Publish("topic");
         publish.setDuplicateDelivery(true);
@@ -205,11 +220,14 @@ public class InternalPublishServiceImplTest {
         final SubscriberWithIdentifiers sub1 = new SubscriberWithIdentifiers("sub1", 1, (byte) 0, null);
         final SubscriberWithIdentifiers sub2 = new SubscriberWithIdentifiers("sub2", 1, (byte) 0, null);
 
-        when(topicTree.findTopicSubscribers("topic")).thenReturn(new TopicSubscribers(ImmutableSet.of(sub1, sub2), ImmutableSet.of()));
+        when(topicTree.findTopicSubscribers("topic")).thenReturn(new TopicSubscribers(ImmutableSet.of(sub1, sub2),
+                ImmutableSet.of()));
 
         final PUBLISH publish = TestMessageUtil.createMqtt5Publish("topic");
 
-        when(publishDistributor.distributeToNonSharedSubscribers(anyMap(), any(), any())).thenReturn(Futures.immediateFailedFuture(TestException.INSTANCE));
+        when(publishDistributor.distributeToNonSharedSubscribers(anyMap(),
+                any(),
+                any())).thenReturn(Futures.immediateFailedFuture(TestException.INSTANCE));
 
         final PublishReturnCode returnCode = publishService.publish(publish, executorService, "sub1").get();
 
@@ -219,14 +237,17 @@ public class InternalPublishServiceImplTest {
     @Test(timeout = 20000)
     public void test_shared_subs_different_groups() {
 
-        when(topicTree.findTopicSubscribers("topic")).thenReturn(new TopicSubscribers(ImmutableSet.of(), ImmutableSet.of("group1/topic", "group2/topic")));
+        when(topicTree.findTopicSubscribers("topic")).thenReturn(new TopicSubscribers(ImmutableSet.of(),
+                ImmutableSet.of("group1/topic", "group2/topic")));
 
         final PUBLISH publish = TestMessageUtil.createMqtt5Publish("topic");
 
         publishService.publish(publish, executorService, "sub1");
 
         final ArgumentCaptor<Set> setArgumentCaptor = ArgumentCaptor.forClass(Set.class);
-        verify(publishDistributor, atLeastOnce()).distributeToSharedSubscribers(setArgumentCaptor.capture(), any(), any());
+        verify(publishDistributor, atLeastOnce()).distributeToSharedSubscribers(setArgumentCaptor.capture(),
+                any(),
+                any());
 
         final Set set = setArgumentCaptor.getAllValues().get(0);
 
@@ -239,14 +260,17 @@ public class InternalPublishServiceImplTest {
     @Test(timeout = 20000)
     public void test_shared_subs_same_group() {
 
-        when(topicTree.findTopicSubscribers("topic")).thenReturn(new TopicSubscribers(ImmutableSet.of(), ImmutableSet.of("group1/topic", "group1/#")));
+        when(topicTree.findTopicSubscribers("topic")).thenReturn(new TopicSubscribers(ImmutableSet.of(),
+                ImmutableSet.of("group1/topic", "group1/#")));
 
         final PUBLISH publish = TestMessageUtil.createMqtt5Publish("topic");
 
         publishService.publish(publish, executorService, "sub1");
 
         final ArgumentCaptor<Set> sharedSubsCaptor = ArgumentCaptor.forClass(Set.class);
-        verify(publishDistributor, atLeastOnce()).distributeToSharedSubscribers(sharedSubsCaptor.capture(), any(), any());
+        verify(publishDistributor, atLeastOnce()).distributeToSharedSubscribers(sharedSubsCaptor.capture(),
+                any(),
+                any());
 
         final Set set = sharedSubsCaptor.getAllValues().get(0);
 
@@ -261,7 +285,8 @@ public class InternalPublishServiceImplTest {
 
         final SubscriberWithIdentifiers sub = new SubscriberWithIdentifiers("sub2", 1, (byte) 0, null);
 
-        when(topicTree.findTopicSubscribers("topic")).thenReturn(new TopicSubscribers(ImmutableSet.of(sub), ImmutableSet.of("group1/topic")));
+        when(topicTree.findTopicSubscribers("topic")).thenReturn(new TopicSubscribers(ImmutableSet.of(sub),
+                ImmutableSet.of("group1/topic")));
 
         final PUBLISH publish = TestMessageUtil.createMqtt5Publish("topic");
 
@@ -269,7 +294,9 @@ public class InternalPublishServiceImplTest {
 
         final ArgumentCaptor<Set> sharedSubsCaptor = ArgumentCaptor.forClass(Set.class);
         final ArgumentCaptor<Map> subsCaptor = ArgumentCaptor.forClass(Map.class);
-        verify(publishDistributor, atLeastOnce()).distributeToSharedSubscribers(sharedSubsCaptor.capture(), any(), any());
+        verify(publishDistributor, atLeastOnce()).distributeToSharedSubscribers(sharedSubsCaptor.capture(),
+                any(),
+                any());
         verify(publishDistributor, atLeastOnce()).distributeToNonSharedSubscribers(subsCaptor.capture(), any(), any());
 
         final Set<String> sharedSet = sharedSubsCaptor.getAllValues().get(0);
