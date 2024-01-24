@@ -51,6 +51,9 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @LazySingleton
 public class SslContextFactory {
@@ -70,7 +73,8 @@ public class SslContextFactory {
             final KeyManagerFactory keyManagerFactory = SslUtil.getKeyManagerFactory(tls);
             final X509KeyManager origKm = (X509KeyManager) keyManagerFactory.getKeyManagers()[0];
 
-            final Map<String, String> dnsHostnameMap = createDnsHostnameMap(tls.getKeystorePath(), tls.getKeystorePassword());
+            final Map<String, String> dnsHostnameMap =
+                    createDnsHostnameMap(tls.getKeystorePath(), tls.getKeystorePassword());
 
             final X509ExtendedKeyManager customKeyManager = new X509ExtendedKeyManager() {
 
@@ -80,7 +84,8 @@ public class SslContextFactory {
                 }
 
                 @Override
-                public String chooseClientAlias(final String[] keyType, final Principal[] issuers, final Socket socket) {
+                public String chooseClientAlias(
+                        final String[] keyType, final Principal[] issuers, final Socket socket) {
                     return origKm.chooseClientAlias(keyType, issuers, socket);
                 }
 
@@ -105,9 +110,12 @@ public class SslContextFactory {
                 }
 
                 @Override
-                public String chooseEngineServerAlias(final String keyType, final Principal[] issuers, final SSLEngine engine) {
+                public String chooseEngineServerAlias(
+                        final String keyType, final Principal[] issuers, final SSLEngine engine) {
                     final String certificateAlias = dnsHostnameMap.get(engine.getPeerHost());
-                    log.info("Choose engine server alias for host: {} found alias: {}", engine.getPeerHost(), certificateAlias);
+                    log.info("Choose engine server alias for host: {} found alias: {}",
+                            engine.getPeerHost(),
+                            certificateAlias);
                     return certificateAlias;
                 }
             };
@@ -135,59 +143,91 @@ public class SslContextFactory {
         }
     }
 
+    private static Map<String, String> createDnsHostnameMap(
+            final @NotNull String keystorePath, final @NotNull String keystorePassword) {
+        final KeyStore keystore;
+        final Enumeration<String> aliases;
 
-    public Map<String, String> createDnsHostnameMap(final @NotNull String keystorePath,
-                                                    final @NotNull String keystorePassword) {
-        // Map certificate dns names => keystore alias
-        final HashMap<String,String> dnsHostnameMap = new HashMap<>();
         try (final FileInputStream fis = new FileInputStream(keystorePath)) {
-            final KeyStore keystore = KeyStore.getInstance(KeyStore.getDefaultType());
+            keystore = KeyStore.getInstance(KeyStore.getDefaultType());
             keystore.load(fis, keystorePassword.toCharArray());
 
-            final Enumeration<String> aliases = keystore.aliases();
-            if (aliases == null) {
-                return Collections.emptyMap();
-            }
-            aliases.asIterator().forEachRemaining((final String alias) -> {
-                try {
-                    final Certificate[] certificateChain = keystore.getCertificateChain(alias);
-                    for (final Certificate certificateChainItem : certificateChain) {
-                        if (!(certificateChainItem instanceof X509Certificate)) {
-                            continue;
-                        }
-                        final X509Certificate x509Cert = (X509Certificate) certificateChainItem;
-                        fillCertificateDnsHostnameMap(dnsHostnameMap, alias, x509Cert);
-                    }
-                } catch (final KeyStoreException e) {
-                    log.warn("Failed to get certificate with alias {} from keystore", alias);
-                }
-            });
-            log.info("Parsed hostNames: {}", dnsHostnameMap.isEmpty() ? "no hostnames available" : String.join(", ", dnsHostnameMap.values()));
+            aliases = keystore.aliases();
         } catch (final IOException | NoSuchAlgorithmException | CertificateException | KeyStoreException e) {
             log.warn("Failed to open keystore for certificate processing");
+
+            return Collections.emptyMap();
         }
+
+        if (aliases == null) {
+            return Collections.emptyMap();
+        }
+
+        final Map<String, String> dnsHostnameMap = new HashMap<>();
+
+        for (final String alias : Collections.list(aliases)) {
+            final Certificate[] certificateChain;
+
+            try {
+                certificateChain = keystore.getCertificateChain(alias);
+            } catch (final KeyStoreException e) {
+                log.warn("Failed to get certificate with alias {} from keystore", alias);
+                continue;
+            }
+
+            for (final Certificate certificateChainItem : certificateChain) {
+                if (!(certificateChainItem instanceof X509Certificate)) {
+                    continue;
+                }
+
+                final X509Certificate x509Cert = (X509Certificate) certificateChainItem;
+
+                Set<String> dnsHostnames = null;
+
+                try {
+                    dnsHostnames = getDnsHostnamesFromCertificate(x509Cert);
+                } catch (final CertificateParsingException e) {
+                    log.warn("Failed to parse certificate for alias: {}", alias);
+                }
+
+                if (dnsHostnames == null) {
+                    continue;
+                }
+
+                dnsHostnames.forEach(dnsHostname -> dnsHostnameMap.put(dnsHostname, alias));
+            }
+        }
+
+        log.info("Parsed hostNames: {}",
+                dnsHostnameMap.isEmpty() ? "no hostnames available" : String.join(", ", dnsHostnameMap.values()));
 
         return dnsHostnameMap;
     }
 
-    private static void fillCertificateDnsHostnameMap(final HashMap<String, String> hostnameMap, final String alias, final X509Certificate x509Cert) {
-        try {
-            final Collection<List<?>> altNames = x509Cert.getSubjectAlternativeNames();
+    private static Set<String> getDnsHostnamesFromCertificate(final X509Certificate x509Cert)
+            throws CertificateParsingException {
+        final Collection<List<?>> altNames = x509Cert.getSubjectAlternativeNames();
 
-            if (altNames != null) {
-                for (final List<?> altName : altNames) {
-                    if (altName.size() < 2) continue;
-                    if ((Integer) altName.get(0) == DNS_NAME_TYPE) {
-                        final Object data = altName.get(1);
-                        if (data instanceof String) {
-                            hostnameMap.put((String) data, alias);
-                        }
-                    }
-                }
-            }
-        } catch (CertificateParsingException e) {
-            log.warn("Failed to parse certificate for alias: {}", alias);
+        if (altNames == null) {
+            return null;
         }
+
+        return altNames.stream().map(altName -> {
+            if (altName.size() < 2) {
+                return null;
+            }
+
+            if ((Integer) altName.get(0) != DNS_NAME_TYPE) {
+                return null;
+            }
+
+            final Object data = altName.get(1);
+            if (data instanceof String) {
+                return (String) data;
+            }
+
+            return null;
+        }).filter(Objects::nonNull).collect(Collectors.toSet());
     }
 
     private static @NotNull ClientAuth toClientAuth(final @NotNull Tls.ClientAuthMode clientAuthMode) {
