@@ -13,6 +13,7 @@ public class DnsResolverTest {
     public static final String TEST_EXAMPLE_COM = "test.example.com";
     public static final String TEST_OTHER_COM = "test.other.com";
     public static final String TEST_FOO_BAR = "test.foo.bar";
+    public static final String WILDCARD_EXAMPLE_COM = "*.example.com";
 
     @Test
     public void test_resolve_simple_dns_name() {
@@ -38,7 +39,7 @@ public class DnsResolverTest {
     @Test
     public void test_resolve_wildcard_dns_name() {
         final DnsResolver dnsResolver =
-                new DnsResolver(Map.of("*.example.com", ALIAS_1, TEST_OTHER_COM, ALIAS_2, TEST_FOO_BAR, ALIAS_3));
+                new DnsResolver(Map.of(WILDCARD_EXAMPLE_COM, ALIAS_1, TEST_OTHER_COM, ALIAS_2, TEST_FOO_BAR, ALIAS_3));
 
         final String resolve = dnsResolver.resolve(TEST_EXAMPLE_COM);
 
@@ -49,7 +50,7 @@ public class DnsResolverTest {
     @Test
     public void test_resolve_nested_wildcard_dns_name() {
         final DnsResolver dnsResolver =
-                new DnsResolver(Map.of("*.example.com", ALIAS_1, "test.example.com", ALIAS_2, TEST_FOO_BAR, ALIAS_3));
+                new DnsResolver(Map.of(WILDCARD_EXAMPLE_COM, ALIAS_1, "test.example.com", ALIAS_2, TEST_FOO_BAR, ALIAS_3));
 
         final String resolve = dnsResolver.resolve("sub.test.example.com");
 
@@ -69,11 +70,22 @@ public class DnsResolverTest {
     @Test
     public void test_prefer_full_cert_before_wildcard_cert() {
         final DnsResolver dnsResolver =
-                new DnsResolver(Map.of("test.example.com", ALIAS_1, "*.example.com", ALIAS_2, TEST_FOO_BAR, ALIAS_3));
+                new DnsResolver(Map.of("test.example.com", ALIAS_1, WILDCARD_EXAMPLE_COM, ALIAS_2, TEST_FOO_BAR, ALIAS_3));
 
         final String resolve = dnsResolver.resolve("test.example.com");
 
         assertNotNull(resolve);
         assertEquals(ALIAS_1, resolve);
+    }
+
+    @Test
+    public void test_prefer_best_matching_wildcard_cert() {
+        final DnsResolver dnsResolver =
+                new DnsResolver(Map.of(WILDCARD_EXAMPLE_COM, ALIAS_1, "*.test.example.com", ALIAS_2, TEST_FOO_BAR, ALIAS_3));
+
+        final String resolve = dnsResolver.resolve("sub.test.example.com");
+
+        assertNotNull(resolve);
+        assertEquals(ALIAS_2, resolve);
     }
 }
