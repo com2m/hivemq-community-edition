@@ -112,7 +112,7 @@ public class SslContextFactory {
                 public String chooseEngineServerAlias(
                         final String keyType, final Principal[] issuers, final SSLEngine engine) {
                     final String certificateAlias = dnsResolver.resolve(engine.getPeerHost());
-                    log.info("Choose engine server alias for host: {} found alias: {}",
+                    log.trace("Choose engine server alias for host: {} found alias: {}",
                             engine.getPeerHost(),
                             certificateAlias);
                     return certificateAlias;
