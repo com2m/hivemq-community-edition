@@ -18,22 +18,20 @@ package com.hivemq.security.ssl;
 import com.hivemq.bootstrap.ClientConnection;
 import com.hivemq.bootstrap.ClientConnectionContext;
 import com.hivemq.configuration.service.entity.TcpListener;
-import io.netty.buffer.ByteBufAllocator;
+import com.hivemq.configuration.service.entity.Tls;
+import com.hivemq.mqtt.handler.disconnect.MqttServerDisconnector;
 import io.netty.channel.Channel;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslHandler;
+import io.netty.util.concurrent.DefaultPromise;
+import io.netty.util.concurrent.Future;
+import io.netty.util.concurrent.GlobalEventExecutor;
 import org.junit.Test;
-import org.mockito.Mockito;
 import util.DummyClientConnection;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertSame;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -47,14 +45,25 @@ public class SslSniHandlerTest {
 
         final SslHandler sslHandler = mock(SslHandler.class);
         final SslContext sslContext = mock(SslContext.class);
+        final SslFactory sslFactory = mock(SslFactory.class);
+        final Tls tls = mock(Tls.class);
 
-        final SslSniHandler sslSniHandler = new SslSniHandler(sslHandler, sslContext);
+        final Channel ch = mock(Channel.class);
+        final MqttServerDisconnector mqttServerDisconnector = mock(MqttServerDisconnector.class);
+
+        final SslSniHandler sslSniHandler = new SslSniHandler(sslContext,
+                sslFactory,
+                mqttServerDisconnector, ch, tls, (final Channel channel) -> {});
         final Channel channel = new EmbeddedChannel(sslSniHandler);
         final DummyClientConnection dummyClientConnection = new DummyClientConnection(channel, null, new TcpListener(8883, "localhost", "ssl"));
 
+
+        final Future<Channel> value = new DefaultPromise<>(GlobalEventExecutor.INSTANCE);
+        when(sslHandler.handshakeFuture()).thenReturn(value);
+        when(sslFactory.getSslHandler(ch, tls, sslContext, "abc.com", 8883)).thenReturn(sslHandler);
+
         channel.attr(ClientConnectionContext.CHANNEL_ATTRIBUTE_NAME).set(dummyClientConnection);
 
-        when(sslContext.newHandler(channel.pipeline().firstContext().alloc(), "abc.com", 8883)).thenReturn(sslHandler);
         sslSniHandler.replaceHandler(channel.pipeline().firstContext(), "abc.com", sslContext);
 
         assertEquals("abc.com", ClientConnection.of(channel).getAuthSniHostname());
