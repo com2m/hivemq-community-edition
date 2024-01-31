@@ -61,7 +61,7 @@ public class SslSniHandler extends SniHandler {
             //This could be used to return a different SslContext depending on the provided hostname
             //For now the same SslContext is returned independent of the provided hostname
 
-            log.info("SSLContext with input {}, cipherSuites {} and attributes {}", input, sslContext.cipherSuites(), sslContext.attributes());
+            log.trace("SSLContext with input {}, cipherSuites {} and attributes {}", input, sslContext.cipherSuites(), sslContext.attributes());
             promise.setSuccess(sslContext);
             return promise;
         });
@@ -101,7 +101,7 @@ public class SslSniHandler extends SniHandler {
         SslHandler sslHandlerInstance = null;
         try {
             final int port = ClientConnectionContext.of(ctx.channel()).getConnectedListener().getPort();
-            log.info("Replace ssl handler for hostname: {} and port: {}", hostname, port);
+            log.trace("Replace ssl handler for hostname: {} and port: {}", hostname, port);
             if (!aliasSslHandlerMap.containsKey(hostname)) {
                 aliasSslHandlerMap.put(hostname, sslFactory.getSslHandler(ch, tls, sslContext, hostname, port));
             }
