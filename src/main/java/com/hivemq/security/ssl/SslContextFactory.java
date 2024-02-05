@@ -153,12 +153,12 @@ public class SslContextFactory {
 
             aliases = keystore.aliases();
         } catch (final IOException | NoSuchAlgorithmException | CertificateException | KeyStoreException e) {
-            log.warn("Failed to open keystore for certificate processing");
+            log.warn("Failed to open keystore for certificate processing, the message is: {}", e.getMessage());
 
             return Collections.emptyMap();
         }
 
-        if (aliases == null) {
+        if (aliases == null || !aliases.hasMoreElements()) {
             return Collections.emptyMap();
         }
 
@@ -170,7 +170,7 @@ public class SslContextFactory {
             try {
                 certificateChain = keystore.getCertificateChain(alias);
             } catch (final KeyStoreException e) {
-                log.warn("Failed to get certificate with alias {} from keystore", alias);
+                log.warn("Failed to get certificate with alias {} from keystore, the message is: {}", alias, e.getMessage());
                 continue;
             }
 
@@ -186,7 +186,7 @@ public class SslContextFactory {
                 try {
                     dnsHostnames = getDnsHostnamesFromCertificate(x509Cert);
                 } catch (final CertificateParsingException e) {
-                    log.warn("Failed to parse certificate for alias: {}", alias);
+                    log.warn("Failed to parse certificate for alias: {}, the message is: {}", alias, e.getMessage());
                 }
 
                 if (dnsHostnames == null) {
