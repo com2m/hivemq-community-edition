@@ -45,7 +45,6 @@ public class SslSniHandler extends SniHandler {
     private static final Logger log = LoggerFactory.getLogger(SslSniHandler.class);
     private final @NotNull Tls tls;
     private final @NotNull Channel ch;
-    private final MqttServerDisconnector mqttServerDisconnector;
     private final Consumer<Channel> idleHandlerFunction;
     private final @NotNull SslFactory sslFactory;
     private final @NotNull HashMap<String, SslHandler> aliasSslHandlerMap = new HashMap<>();
@@ -68,7 +67,6 @@ public class SslSniHandler extends SniHandler {
 
         this.tls = tls;
         this.ch = ch;
-        this.mqttServerDisconnector = mqttServerDisconnector;
         this.idleHandlerFunction = idleHandlerFunction;
         this.sslFactory = sslFactory;
 
