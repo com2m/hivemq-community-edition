@@ -48,7 +48,7 @@ public class SslSniHandler extends SniHandler {
     private final MqttServerDisconnector mqttServerDisconnector;
     private final Consumer<Channel> idleHandlerFunction;
     private final @NotNull SslFactory sslFactory;
-    private final @NotNull HashMap<String, SslHandler> aliasSslHandlerMap = new HashMap<>();
+    private final @NotNull HashMap<String, SslHandler> hostnameSslHandlerMap = new HashMap<>();
 
     private final IdleStateHandler idleStateHandler;
     private final NoTlsHandshakeIdleHandler noTlsHandshakeIdleHandler;
@@ -102,10 +102,10 @@ public class SslSniHandler extends SniHandler {
         try {
             final int port = ClientConnectionContext.of(ctx.channel()).getConnectedListener().getPort();
             log.trace("Replace ssl handler for hostname: {} and port: {}", hostname, port);
-            if (!aliasSslHandlerMap.containsKey(hostname)) {
-                aliasSslHandlerMap.put(hostname, sslFactory.getSslHandler(ch, tls, sslContext, hostname, port));
+            if (!hostnameSslHandlerMap.containsKey(hostname)) {
+                hostnameSslHandlerMap.put(hostname, sslFactory.getSslHandler(ch, tls, sslContext, hostname, port));
             }
-            sslHandlerInstance = aliasSslHandlerMap.get(hostname);
+            sslHandlerInstance = hostnameSslHandlerMap.get(hostname);
 
             sslHandlerInstance.handshakeFuture().addListener(future -> {
                 if (tls.getHandshakeTimeout() > 0) {
